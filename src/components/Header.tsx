@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'bg-slate-200 text-slate-700'
                 }`}
               >
-                {currentUser.role === 'ADMIN' ? '관리자' : '일반사원'}
+                {currentUser.role === 'ADMIN' ? '관리자' : '현장담당자'}
               </span>
 
               {currentUser.role === 'ADMIN' && onOpenUserApprovalModal && (

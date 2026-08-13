@@ -195,10 +195,10 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                       ) : (
                         <Unlock className="w-3 h-3 text-emerald-600 shrink-0" />
                       )}
-                      <span className="truncate">{t.name}</span>
+                      <span className="truncate">{t.name.replace(/\s*\(\d+단계\)/g, '')}</span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
-                      총 {t.processes.length}단계 공정
+                      총 {t.processes.length}개 공정
                     </span>
                   </div>
                   <span className="text-[11px] font-mono font-extrabold text-blue-600 bg-blue-100/60 px-2 py-0.5 rounded shrink-0">

@@ -258,9 +258,10 @@ export async function registerUserAccount(
   const normalizedEmail = email.toLowerCase().trim();
   const usersSnap = await getDocs(collection(db, 'users'));
   const isSuperAdmin = normalizedEmail === 'noworriesmate01@gmail.com';
-  const isFirstUser = usersSnap.empty || isSuperAdmin;
+  const isFirstUser = usersSnap.empty;
 
-  const finalRole = isSuperAdmin ? 'ADMIN' : (isFirstUser ? 'ADMIN' : requestedRole);
+  // Respect the requestedRole! Only force ADMIN for superAdmin or if ADMIN was explicitly requested on first user
+  const finalRole = isSuperAdmin ? 'ADMIN' : requestedRole;
   const finalApproved = isSuperAdmin ? true : (isFirstUser ? true : false);
 
   let uid: string;

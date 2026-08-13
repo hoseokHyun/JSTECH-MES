@@ -604,7 +604,9 @@ export default function App() {
                 onArchiveOrder={handleArchiveOrder}
                 onUpdateOrder={handleUpdateOrder}
                 onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
+                onNavigateToOrderForm={() => setActiveTab('order-form')}
                 onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
+                currentUser={currentUser}
               />
 
               {/* MCT Machine & Worker Monitoring Status Board */}

@@ -368,7 +368,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       : 'bg-slate-950 border-slate-800 text-slate-400'
                   }`}
                 >
-                  👷 현장 작업자 (USER)
+                  👷 현장 담당자 (USER)
                 </button>
                 <button
                   type="button"

@@ -369,7 +369,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                   onClick={() => handleQuickDemoLogin('USER')}
                   className="flex-1 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold rounded"
                 >
-                  👷 일반사원 접속
+                  👷 현장담당자 접속
                 </button>
               </div>
             </div>
@@ -435,7 +435,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                 onChange={(e) => setSignUpRole(e.target.value as 'USER' | 'ADMIN')}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold bg-white focus:ring-2 focus:ring-blue-500"
               >
-                <option value="USER">일반 사원 (현장 공정 완료/취소 권한)</option>
+                <option value="USER">현장 담당자 (현장 공정 완료/취소 및 실적 등록 권한)</option>
                 <option value="ADMIN">관리자 (레퍼런스 공정 수정 & 수주 삭제 가능)</option>
               </select>
             </div>
@@ -1340,11 +1340,14 @@ export const CopyTypeModal: React.FC<CopyTypeModalProps> = ({
               onChange={(e) => handleSourceChange(e.target.value)}
               className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold bg-slate-50 focus:ring-2 focus:ring-emerald-500"
             >
-              {(Object.values(productTypes) as ProductType[]).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.isReference ? `🔒 ${t.name}` : t.name}
-                </option>
-              ))}
+              {(Object.values(productTypes) as ProductType[]).map((t) => {
+                const cleanedName = t.name.replace(/\s*\(\d+단계\)/g, '');
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.isReference ? `🔒 ${cleanedName}` : cleanedName}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

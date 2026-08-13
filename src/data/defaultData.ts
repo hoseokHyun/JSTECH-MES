@@ -48,7 +48,7 @@ export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
   "TYPE_SLIT_NOZZLE": {
     id: "TYPE_SLIT_NOZZLE",
     isReference: true,
-    name: "슬릿 노즐 공정 (83단계)",
+    name: "슬릿 노즐 공정",
     processes: [
       { name: "소재 절단", category: "외주", durationHours: 48.0 },
       { name: "열처리", category: "외주", durationHours: 96.0 },
@@ -135,7 +135,7 @@ export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
   "TYPE_WIDE_3P": {
     id: "TYPE_WIDE_3P",
     isReference: true,
-    name: "광폭 3P 공정 (89단계)",
+    name: "광폭 3P 공정",
     processes: [
       { name: "소재 절단", category: "외주", durationHours: 72.0 },
       { name: "열처리", category: "외주", durationHours: 96.0 },
@@ -251,7 +251,7 @@ export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
   "TYPE_WIDE_2P": {
     id: "TYPE_WIDE_2P",
     isReference: true,
-    name: "광폭 2P 공정 (78단계)",
+    name: "광폭 2P 공정",
     processes: [
       { name: "소재 절단", category: "외주", durationHours: 72.0 },
       { name: "열처리", category: "외주", durationHours: 96.0 },
@@ -342,7 +342,7 @@ export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
   "TYPE_STD_CARBIDE_2P": {
     id: "TYPE_STD_CARBIDE_2P",
     isReference: true,
-    name: "표준폭 초경 2P 공정 (79단계)",
+    name: "표준폭 초경 2P 공정",
     processes: [
       { name: "소재 절단", category: "외주", durationHours: 48.0 },
       { name: "열처리", category: "외주", durationHours: 96.0 },

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Order, ProductType, ScheduledTaskItem, FilterOptions, ProcessStep } from '../types';
+import { Order, ProductType, ScheduledTaskItem, FilterOptions, ProcessStep, User } from '../types';
 import {
   BarChart3,
   TrendingUp,
@@ -12,7 +12,8 @@ import {
   Trash2,
   Search,
   Filter,
-  Pencil
+  Pencil,
+  Plus
 } from 'lucide-react';
 import { EditOrderModal } from './Modals';
 
@@ -26,12 +27,14 @@ interface ExecutiveSummaryProps {
   onArchiveOrder: (orderId: string) => void;
   onUpdateOrder: (updatedOrder: Order) => void;
   onOpenArchiveModal?: () => void;
+  onNavigateToOrderForm?: () => void;
   onCompleteAllOrderProcesses?: (
     orderId: string,
     forceComplete: boolean,
     overrideProcesses?: ProcessStep[],
     overrideQty?: number
   ) => void;
+  currentUser?: User | null;
 }
 
 export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
@@ -44,9 +47,17 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   onArchiveOrder,
   onUpdateOrder,
   onOpenArchiveModal,
+  onNavigateToOrderForm,
   onCompleteAllOrderProcesses,
+  currentUser,
 }) => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Permission check for editing order details
+  const canEditOrder =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canEditOrder === true;
   const activeOrders: Order[] = (Object.values(orders) as Order[]).filter((o) => !o.archived);
   
   // Calculate completion percentage for each order based on scheduledTasks
@@ -192,6 +203,16 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             >
               📦 보관함: <span className="text-amber-900 font-extrabold">{archivedList.length}</span>건
             </button>
+            {onNavigateToOrderForm && (
+              <button
+                onClick={onNavigateToOrderForm}
+                className="bg-[#0B3A82] hover:bg-[#00C4B4] text-white px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs ml-1"
+                title="신규 수주 등록 페이지로 이동"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#00C4B4]" />
+                <span>신규 수주 등록</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -312,9 +333,19 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                       <td className="p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => setEditingOrder(ord)}
-                            className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5"
-                            title="수주 정보 수정"
+                            onClick={() => {
+                              if (!canEditOrder) {
+                                alert('⚠️ 수주 정보 수정 권한이 없습니다.\n(수주 스펙 수정 및 삭제는 시스템 관리자(ADMIN)만 가능합니다.)');
+                                return;
+                              }
+                              setEditingOrder(ord);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5 ${
+                              canEditOrder
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer'
+                                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            }`}
+                            title={canEditOrder ? "수주 정보 수정" : "수주 정보 수정 권한 없음 (관리자 전용)"}
                           >
                             <Pencil className="w-3 h-3 text-blue-600" />
                             <span>수정</span>

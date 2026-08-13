@@ -185,7 +185,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   return (
     <div className="bg-white rounded-2xl shadow-md border border-slate-200 p-5 space-y-5">
       {/* Header */}
-      <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+      <div className="flex flex-wrap justify-between items-start gap-2 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
             <ShoppingCart className="w-5 h-5" />
@@ -200,12 +200,28 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
         </div>
 
-        <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded-lg font-black border border-slate-200">
-          총 {Object.keys(orders).length}건 수주 등록됨
-        </span>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-black border border-slate-200 hidden sm:inline-block">
+              총 {Object.keys(orders).length}건 수주 등록됨
+            </span>
+            <button
+              type="submit"
+              form="new-order-form"
+              className="px-5 py-2.5 bg-[#00C4B4] hover:bg-[#00a89a] text-white font-black rounded-xl text-xs transition flex items-center gap-2 shadow-md hover:shadow-lg shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-white" />
+              <span>신규 수주 등록</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-500 font-medium text-[11px]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>등록 시 모든 공정별 할당정보가 즉시 데이터베이스 및 OEE 가동판에 저장됩니다.</span>
+          </div>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5 text-xs">
+      <form id="new-order-form" onSubmit={handleSubmit} className="space-y-5 text-xs">
         {/* Basic Order Info Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
           {/* Project Name */}
@@ -235,7 +251,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             >
               {(Object.values(productTypes) as ProductType[]).map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.processes?.length || 0}개 공정)
+                  {t.name.replace(/\s*\(\d+단계\)/g, '')} ({t.processes?.length || 0}개 공정)
                 </option>
               ))}
             </select>
@@ -375,22 +391,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               </tbody>
             </table>
           </div>
-        </div>
-
-        {/* Submit button bar */}
-        <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-slate-500 font-medium text-[11px]">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>등록 시 모든 공정별 할당정보가 즉시 데이터베이스 및 OEE 가동판에 저장됩니다.</span>
-          </div>
-
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-[#0B3A82] hover:bg-[#00C4B4] text-white font-black rounded-xl text-xs transition flex items-center gap-2 shadow-md hover:shadow-lg"
-          >
-            <Plus className="w-4 h-4 text-[#00C4B4]" />
-            <span>신규 수주 저장 & 타임라인/설비 가동판 자동 연동</span>
-          </button>
         </div>
       </form>
     </div>
