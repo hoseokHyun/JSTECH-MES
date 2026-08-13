@@ -25,8 +25,18 @@ interface LoginScreenProps {
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [tab, setTab] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
 
+  // Remember Email State
+  const [rememberEmail, setRememberEmail] = useState<boolean>(() => {
+    return localStorage.getItem('remember_email') === 'true';
+  });
+
   // Login Form
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState<string>(() => {
+    if (localStorage.getItem('remember_email') === 'true') {
+      return localStorage.getItem('saved_user_email') || '';
+    }
+    return '';
+  });
   const [password, setPassword] = useState('');
 
   // Sign Up Form
@@ -49,6 +59,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       setErrorMsg('이메일과 비밀번호를 모두 입력해주세요.');
       return;
     }
+
+    // Save or clear remembered email
+    if (rememberEmail) {
+      localStorage.setItem('saved_user_email', email.trim());
+      localStorage.setItem('remember_email', 'true');
+    } else {
+      localStorage.removeItem('saved_user_email');
+      localStorage.setItem('remember_email', 'false');
+    }
+
     setLoading(true);
     try {
       const user = await loginUserAccount(email.trim(), password);
@@ -148,7 +168,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               생산 공정 스케줄러 로그인
             </h1>
             <p className="text-xs text-slate-400 font-medium max-w-xs mx-auto">
-              2차전지 코팅 장비 (Slot Die) 및 정밀 가공 생산 관리를 위한 인증 시스템
+              Slot Die 및 정밀 가공 생산 관리
             </p>
           </div>
         </div>
@@ -233,6 +253,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 placeholder="••••••••"
                 className="w-full bg-slate-950 border border-slate-800 focus:border-[#00C4B4] text-white px-3.5 py-2.5 rounded-xl text-xs font-medium outline-none transition"
               />
+            </div>
+
+            {/* Remember Email Checkbox */}
+            <div className="flex items-center justify-between pt-0.5 pb-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300 font-semibold hover:text-white transition">
+                <input
+                  type="checkbox"
+                  checked={rememberEmail}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRememberEmail(checked);
+                    if (!checked) {
+                      localStorage.removeItem('saved_user_email');
+                      localStorage.setItem('remember_email', 'false');
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-[#00C4B4] focus:ring-[#00C4B4] accent-[#00C4B4] cursor-pointer"
+                />
+                <span>아이디(이메일) 기억하기</span>
+              </label>
             </div>
 
             <button
@@ -361,37 +401,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </form>
         )}
 
-        {/* Divider */}
-        <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-slate-800" />
-          <span className="flex-shrink mx-3 text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
-            빠른 데모 체험 (Quick Access)
-          </span>
-          <div className="flex-grow border-t border-slate-800" />
-        </div>
-
-        {/* Demo Login Buttons */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={() => handleQuickDemoLogin('ADMIN')}
-            className="bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/40 text-amber-300 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-          >
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span>⚡ 관리자 데모 로그인</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickDemoLogin('USER')}
-            className="bg-blue-950/40 hover:bg-blue-900/60 border border-blue-500/40 text-blue-300 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-          >
-            <UserIcon className="w-3.5 h-3.5 text-blue-400" />
-            <span>👷 작업자 데모 로그인</span>
-          </button>
-        </div>
-
         {/* Footer info */}
-        <div className="text-center text-[11px] text-slate-500 pt-1">
+        <div className="text-center text-[11px] text-slate-500 pt-1 border-t border-slate-800/80 mt-2">
           로그인 후 실시간 MES 생산 스케줄러 데이터 접근 및 편집이 가능합니다.
         </div>
       </div>
