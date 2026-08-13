@@ -10,6 +10,53 @@
   }
 }
 
+/* Dark Mode Global Overrides for Full Screen Background & Cards */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #090d16 !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .bg-\[\#F0F6F9\] {
+  background-color: #090d16 !important;
+}
+
+html.dark .bg-white {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700 {
+  color: #f3f4f6 !important;
+}
+
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+  color: #9ca3af !important;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: #1f2937 !important;
+}
+
 /* Custom Scrollbars for High Density UI */
 ::-webkit-scrollbar {
   width: 6px;

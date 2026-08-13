@@ -123,6 +123,23 @@ export default function App() {
     };
   }, []);
 
+  // Initial Theme Initialization
+  useEffect(() => {
+    const themeMode = (localStorage.getItem('mes_theme_mode') as 'light' | 'dark' | 'system') || 'light';
+    const applyTheme = (mode: 'light' | 'dark' | 'system') => {
+      const isDark =
+        mode === 'dark' ||
+        (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    applyTheme(themeMode);
+  }, []);
+
   // Compute approvedOperators list combining registered approved field operators (role === 'USER') and defaults
   const approvedOperators = useMemo(() => {
     const registeredApproved = usersList
@@ -616,7 +633,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#F0F6F9] text-[#0F172A] overflow-hidden">
+    <div className="flex h-screen w-full bg-[#F0F6F9] dark:bg-[#090d16] text-[#0F172A] dark:text-slate-100 overflow-hidden">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}

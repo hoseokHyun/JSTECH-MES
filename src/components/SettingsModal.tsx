@@ -76,9 +76,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [dateFormat, setDateFormat] = useState<string>(() => {
     return localStorage.getItem('mes_opt_date_format') || 'YYYY-MM-DD';
   });
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState<string>(() => {
-    return localStorage.getItem('mes_opt_auto_refresh') || '0';
-  });
 
   // Apply Day/Night Mode to Document Root
   useEffect(() => {
@@ -419,7 +416,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>화면 표시 및 데이/나이트 모드</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    화면 테마(데이/나이트 모드), 날짜 포맷 및 자동 새로고침 주기를 설정할 수 있습니다.
+                    화면 테마(데이/나이트 모드) 및 날짜 포맷을 설정할 수 있습니다.
                   </p>
                 </div>
 
@@ -525,40 +522,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         >
                           <span>{fmt.label}</span>
                           {dateFormat === fmt.id && <Check className="w-3.5 h-3.5 text-[#00C4B4]" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Auto Refresh Interval */}
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-slate-500" />
-                      <span>대시보드 실시간 자동 새로고침 주기</span>
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { id: '0', label: '실시간 (Firestore)' },
-                        { id: '30', label: '30초 마다' },
-                        { id: '60', label: '1분 마다' },
-                        { id: '300', label: '5분 마다' },
-                      ].map((rf) => (
-                        <button
-                          key={rf.id}
-                          type="button"
-                          onClick={() =>
-                            handleSelectOption('mes_opt_auto_refresh', rf.id, setAutoRefreshInterval)
-                          }
-                          className={`px-3 py-2 rounded-xl text-xs font-bold border transition text-left flex items-center justify-between cursor-pointer ${
-                            autoRefreshInterval === rf.id
-                              ? 'bg-[#0B3A82] text-white border-[#0B3A82]'
-                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <span>{rf.label}</span>
-                          {autoRefreshInterval === rf.id && (
-                            <Check className="w-3.5 h-3.5 text-[#00C4B4]" />
-                          )}
                         </button>
                       ))}
                     </div>
