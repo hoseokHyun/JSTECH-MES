@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Archive, User as UserIcon, LogIn, LogOut, Clock, UserCheck } from 'lucide-react';
+import { Archive, User as UserIcon, LogIn, LogOut, Clock, UserCheck, Settings } from 'lucide-react';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -8,6 +8,7 @@ interface HeaderProps {
   onOpenLoginModal: () => void;
   onOpenArchiveModal: () => void;
   onOpenUserApprovalModal?: () => void;
+  onOpenSettingsModal?: () => void;
   onLogout: () => void;
 }
 
@@ -17,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLoginModal,
   onOpenArchiveModal,
   onOpenUserApprovalModal,
+  onOpenSettingsModal,
   onLogout,
 }) => {
   const [timeStr, setTimeStr] = useState<string>('');
@@ -96,6 +98,18 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
+
+          {/* Settings Modal Button */}
+          {onOpenSettingsModal && (
+            <button
+              onClick={onOpenSettingsModal}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 text-xs shadow-xs shrink-0 cursor-pointer"
+              title="시스템 환경설정 및 데이터 백업/초기화"
+            >
+              <Settings className="w-3.5 h-3.5 text-[#00C4B4]" />
+              <span>설정</span>
+            </button>
+          )}
 
           {/* User Info / Login */}
           {currentUser ? (

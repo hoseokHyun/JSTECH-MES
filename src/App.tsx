@@ -26,7 +26,7 @@ import {
   subscribeProcessProgress,
   saveProcessProgressToFirestore,
   subscribeUsersList,
-  resetFirestoreData,
+  resetDataToDefaultInFirestore,
   logoutUserAccount
 } from './lib/firebase';
 
@@ -42,6 +42,7 @@ import { EquipmentView } from './components/EquipmentView';
 import { ArchiveView } from './components/ArchiveView';
 import { QualityInspectionView } from './components/QualityInspectionView';
 import { LoginScreen } from './components/LoginScreen';
+import { SettingsModal } from './components/SettingsModal';
 import {
   ArchiveModal,
   LoginModal,
@@ -136,6 +137,7 @@ export default function App() {
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isUserApprovalModalOpen, setIsUserApprovalModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isNewTypeModalOpen, setIsNewTypeModalOpen] = useState(false);
   const [isCopyTypeModalOpen, setIsCopyTypeModalOpen] = useState(false);
 
@@ -552,8 +554,8 @@ export default function App() {
     saveProductTypeToFirestore(updatedType);
   };
 
-  const handleResetData = () => {
-    if (confirm('초기 데모 수주 데이터로 전체 리셋하시겠습니까? 클라우드 및 기존 변경사항이 초기화됩니다.')) {
+  const handleResetData = async () => {
+    try {
       setOrders(INITIAL_ORDERS);
       setProductTypes(DEFAULT_PRODUCT_TYPES);
       setProcessProgressMap(INITIAL_PROCESS_PROGRESS);
@@ -561,7 +563,37 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY_TYPES);
       localStorage.removeItem(STORAGE_KEY_PROGRESS);
       setSelectedTaskKey(null);
-      resetFirestoreData();
+      await resetDataToDefaultInFirestore();
+      alert('✅ 수주 및 공정 데이터가 초기 기본 데이터로 원복되었습니다.');
+    } catch (e) {
+      console.error(e);
+      alert('데이터 초기화 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleImportBackupData = (importedData: {
+    orders?: Record<string, Order>;
+    productTypes?: Record<string, ProductType>;
+    processProgressMap?: ProcessProgressMap;
+  }) => {
+    if (importedData.orders) {
+      setOrders(importedData.orders);
+      Object.values(importedData.orders).forEach((o) => saveOrderToFirestore(o));
+    }
+    if (importedData.productTypes) {
+      setProductTypes(importedData.productTypes);
+      Object.values(importedData.productTypes).forEach((pt) => saveProductTypeToFirestore(pt));
+    }
+    if (importedData.processProgressMap) {
+      setProcessProgressMap(importedData.processProgressMap);
+      Object.entries(importedData.processProgressMap).forEach(([k, v]) =>
+        saveProcessProgressToFirestore(k, {
+          isCompleted: Boolean(v.isCompleted),
+          completedAt: v.completedAt,
+          worker: v.worker,
+          machine: v.machine,
+        })
+      );
     }
   };
 
@@ -606,6 +638,7 @@ export default function App() {
           onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
           onOpenUserApprovalModal={() => setIsUserApprovalModalOpen(true)}
+          onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -767,6 +800,17 @@ export default function App() {
         onClose={() => setIsCopyTypeModalOpen(false)}
         productTypes={productTypes}
         onCopyType={handleCopyProductType}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        currentUser={currentUser}
+        orders={orders}
+        productTypes={productTypes}
+        processProgressMap={processProgressMap}
+        onResetData={handleResetData}
+        onImportBackupData={handleImportBackupData}
       />
     </div>
   );

@@ -451,3 +451,45 @@ export async function deleteUserFromFirestore(uid: string) {
     console.error('Failed to delete user:', err);
   }
 }
+
+// Reset all orders, product types, and process progress to factory initial defaults
+export async function resetDataToDefaultInFirestore() {
+  try {
+    // 1. Clear LocalStorage
+    localStorage.removeItem('mes_orders_v2');
+    localStorage.removeItem('mes_product_types_v2');
+    localStorage.removeItem('mes_process_progress_v2');
+
+    // 2. Clear & Seed Orders in Firestore
+    const ordersSnap = await getDocs(collection(db, 'orders'));
+    const orderBatch = writeBatch(db);
+    ordersSnap.forEach((dSnap) => orderBatch.delete(dSnap.ref));
+    Object.values(INITIAL_ORDERS).forEach((ord) => {
+      orderBatch.set(doc(db, 'orders', ord.id), cleanUndefined(ord));
+    });
+    await orderBatch.commit();
+
+    // 3. Clear & Seed Product Types in Firestore
+    const typesSnap = await getDocs(collection(db, 'productTypes'));
+    const typeBatch = writeBatch(db);
+    typesSnap.forEach((dSnap) => typeBatch.delete(dSnap.ref));
+    Object.values(DEFAULT_PRODUCT_TYPES).forEach((t) => {
+      typeBatch.set(doc(db, 'productTypes', t.id), cleanUndefined(t));
+    });
+    await typeBatch.commit();
+
+    // 4. Clear & Seed Process Progress in Firestore
+    const progressSnap = await getDocs(collection(db, 'processProgress'));
+    const progressBatch = writeBatch(db);
+    progressSnap.forEach((dSnap) => progressBatch.delete(dSnap.ref));
+    Object.entries(INITIAL_PROCESS_PROGRESS).forEach(([key, val]) => {
+      progressBatch.set(doc(db, 'processProgress', key), cleanUndefined(val));
+    });
+    await progressBatch.commit();
+
+    console.log('Database successfully reset to initial default state.');
+  } catch (err) {
+    console.error('Failed to reset Firestore data:', err);
+    throw err;
+  }
+}
