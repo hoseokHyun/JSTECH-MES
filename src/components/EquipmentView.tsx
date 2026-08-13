@@ -380,10 +380,14 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             approvedOperators.map((w) => {
               const workerTasks = items.filter((i) => i.worker === w);
               const active = workerTasks.filter((i) => !i.isCompleted);
-              const isSelf = currentUser?.name === w;
               const userRecord = usersList.find((u) => u.name === w);
-              // Online status: True only if currently logged-in active user or marked online in DB
-              const isOnline = isSelf || Boolean(userRecord?.isOnline);
+              const isSelf = currentUser?.name === w || Boolean(userRecord && currentUser?.email && userRecord.email?.toLowerCase() === currentUser.email.toLowerCase());
+              // Online status: Realtime session sync, explicit Firestore online status, or recent login record
+              const isOnline = Boolean(
+                isSelf ||
+                userRecord?.isOnline === true ||
+                (userRecord?.isOnline === undefined && userRecord?.loginAt && (!userRecord?.logoutAt || new Date(userRecord.logoutAt) < new Date(userRecord.loginAt)))
+              );
 
               return (
                 <div
@@ -394,8 +398,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                       : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1.5 pb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="relative flex items-center justify-center pb-1 text-center w-full min-w-0 min-h-[22px]">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center pl-0.5">
                       {isOnline ? (
                         <span className="relative flex h-2.5 w-2.5 shrink-0" title={isSelf ? '접속중 (본인)' : '접속중'}>
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -404,10 +408,10 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                       ) : (
                         <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" title="미접속/대기"></span>
                       )}
-                      <span className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm whitespace-nowrap" title={w}>
-                        {w} {isSelf && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">(나)</span>}
-                      </span>
                     </div>
+                    <span className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm whitespace-nowrap truncate text-center px-3" title={w}>
+                      {w} {isSelf && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">(나)</span>}
+                    </span>
                   </div>
 
                   <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">

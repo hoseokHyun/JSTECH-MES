@@ -27,7 +27,8 @@ import {
   saveProcessProgressToFirestore,
   subscribeUsersList,
   resetDataToDefaultInFirestore,
-  logoutUserAccount
+  logoutUserAccount,
+  setUserOnlineStatus
 } from './lib/firebase';
 
 import { Header } from './components/Header';
@@ -122,6 +123,14 @@ export default function App() {
       unsubUsers();
     };
   }, []);
+
+  // Sync current user online status with Firestore
+  useEffect(() => {
+    if (currentUser) {
+      const ident = currentUser.uid || currentUser.email || currentUser.name;
+      setUserOnlineStatus(ident, true);
+    }
+  }, [currentUser]);
 
   // Initial Theme Initialization
   useEffect(() => {
