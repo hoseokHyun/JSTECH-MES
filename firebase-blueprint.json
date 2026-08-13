@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "orders": {
+      "title": "Order",
+      "description": "Production orders for MES",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "typeId": { "type": "string" },
+        "qty": { "type": "number" },
+        "startDate": { "type": "string" },
+        "status": { "type": "string" },
+        "archived": { "type": "boolean" },
+        "mctMachine": { "type": "string" },
+        "memo": { "type": "string" }
+      },
+      "required": ["id", "name", "typeId", "qty", "startDate", "status", "archived"]
+    },
+    "processProgress": {
+      "title": "ProcessProgress",
+      "description": "Process progress records for order items",
+      "type": "object",
+      "properties": {
+        "processKey": { "type": "string" },
+        "isCompleted": { "type": "boolean" },
+        "completedAt": { "type": "string" },
+        "worker": { "type": "string" },
+        "machine": { "type": "string" }
+      },
+      "required": ["processKey", "isCompleted"]
+    },
+    "productTypes": {
+      "title": "ProductType",
+      "description": "Product type routing definitions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isReference": { "type": "boolean" },
+        "processes": { "type": "array" }
+      },
+      "required": ["id", "name", "processes"]
+    },
+    "users": {
+      "title": "User",
+      "description": "System user profiles and approval states",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "name", "role", "isApproved"]
+    }
+  }
+}
