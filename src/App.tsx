@@ -165,6 +165,12 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isNewTypeModalOpen, setIsNewTypeModalOpen] = useState(false);
   const [isCopyTypeModalOpen, setIsCopyTypeModalOpen] = useState(false);
+  const [pendingCopyOrder, setPendingCopyOrder] = useState<Order | null>(null);
+
+  const handleCopyOrderToNew = (order: Order) => {
+    setPendingCopyOrder(order);
+    setActiveTab('order-form');
+  };
 
   // 4. Filters State
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -707,6 +713,9 @@ export default function App() {
               approvedOperators={approvedOperators}
               onCreateOrder={handleCreateOrder}
               currentUser={currentUser}
+              processProgressMap={processProgressMap}
+              pendingCopyOrder={pendingCopyOrder}
+              onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
             />
           )}
 
@@ -787,6 +796,7 @@ export default function App() {
               orders={orders}
               productTypes={productTypes}
               onRestoreOrder={handleRestoreOrder}
+              onCopyOrderToNew={handleCopyOrderToNew}
             />
           )}
         </div>
@@ -799,6 +809,7 @@ export default function App() {
         orders={orders}
         productTypes={productTypes}
         onRestoreOrder={handleRestoreOrder}
+        onCopyOrderToNew={handleCopyOrderToNew}
       />
 
       <LoginModal

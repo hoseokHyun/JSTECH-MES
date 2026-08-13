@@ -48,6 +48,7 @@ interface ArchiveModalProps {
   orders: Record<string, Order>;
   productTypes: Record<string, ProductType>;
   onRestoreOrder: (orderId: string) => void;
+  onCopyOrderToNew?: (order: Order) => void;
 }
 
 export const ArchiveModal: React.FC<ArchiveModalProps> = ({
@@ -56,6 +57,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
   orders,
   productTypes,
   onRestoreOrder,
+  onCopyOrderToNew,
 }) => {
   if (!isOpen) return null;
 
@@ -97,7 +99,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
                   <th className="p-3">제품 타입</th>
                   <th className="p-3 text-center">수량</th>
                   <th className="p-3 text-center">완료일시</th>
-                  <th className="p-3 text-center">복원</th>
+                  <th className="p-3 text-center">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -123,13 +125,28 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
                           {ord.completedAt || '-'}
                         </td>
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => onRestoreOrder(ord.id)}
-                            className="bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100 px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 mx-auto text-xs cursor-pointer active:scale-95"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>목록으로 복원</span>
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {onCopyOrderToNew && (
+                              <button
+                                onClick={() => {
+                                  onCopyOrderToNew(ord);
+                                  onClose();
+                                }}
+                                className="bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-xs cursor-pointer active:scale-95 shrink-0"
+                                title="이 수주의 공정, 설비, 담당자 사양을 신규 수주 등록으로 복사합니다."
+                              >
+                                <Copy className="w-3 h-3 text-amber-600" />
+                                <span>공정 복사</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onRestoreOrder(ord.id)}
+                              className="bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-xs cursor-pointer active:scale-95 shrink-0"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>복원</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

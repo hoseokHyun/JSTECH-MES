@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Order, ProductType } from '../types';
-import { Archive, RotateCcw, Search, CheckCircle2, PackageCheck } from 'lucide-react';
+import { Archive, RotateCcw, Search, CheckCircle2, PackageCheck, Copy } from 'lucide-react';
 
 interface ArchiveViewProps {
   orders: Record<string, Order>;
   productTypes: Record<string, ProductType>;
   onRestoreOrder: (orderId: string) => void;
+  onCopyOrderToNew?: (order: Order) => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({
   orders,
   productTypes,
   onRestoreOrder,
+  onCopyOrderToNew,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -141,15 +143,27 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => {
-                            onRestoreOrder(ord.id);
-                          }}
-                          className="bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100 px-3 py-1 rounded-lg font-bold transition inline-flex items-center gap-1.5 text-xs shadow-2xs cursor-pointer active:scale-95"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                          <span>목록으로 복원</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {onCopyOrderToNew && (
+                            <button
+                              onClick={() => onCopyOrderToNew(ord)}
+                              className="bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold transition inline-flex items-center gap-1 text-xs shadow-2xs cursor-pointer active:scale-95 shrink-0"
+                              title="이 수주의 공정, 설비, 담당자 사양을 신규 수주 등록으로 복사합니다."
+                            >
+                              <Copy className="w-3.5 h-3.5 text-amber-600" />
+                              <span>신규 수주로 복사</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              onRestoreOrder(ord.id);
+                            }}
+                            className="bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100 px-2.5 py-1 rounded-lg font-bold transition inline-flex items-center gap-1 text-xs shadow-2xs cursor-pointer active:scale-95 shrink-0"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                            <span>복원</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

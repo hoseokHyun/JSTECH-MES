@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Order,
   ProductType,
@@ -21,7 +21,14 @@ import {
   CheckCircle2,
   HelpCircle,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Archive,
+  Sparkles,
+  X,
+  Search,
+  ArrowRight,
+  Check
 } from 'lucide-react';
 
 interface OrderFormProps {
@@ -30,6 +37,9 @@ interface OrderFormProps {
   approvedOperators: string[];
   onCreateOrder: (newOrder: Order, initialProgressMap?: ProcessProgressMap) => void;
   currentUser?: User | null;
+  processProgressMap?: ProcessProgressMap;
+  pendingCopyOrder?: Order | null;
+  onClearPendingCopyOrder?: () => void;
 }
 
 interface StepAssignment {
@@ -43,23 +53,111 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   approvedOperators,
   onCreateOrder,
   currentUser,
+  processProgressMap,
+  pendingCopyOrder,
+  onClearPendingCopyOrder,
 }) => {
   const canEditOrder =
     !currentUser ||
     currentUser.role === 'ADMIN' ||
     currentUser.permissions?.canEditOrder === true;
+  const getCurrentDateTimeString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
   const [name, setName] = useState('');
   const [typeId, setTypeId] = useState<string>(
     Object.keys(productTypes)[0] || 'TYPE_SLIT_NOZZLE'
   );
   const [qty, setQty] = useState<number>(1);
-  const [startDate, setStartDate] = useState<string>('2026-03-02T08:30');
+  const [startDate, setStartDate] = useState<string>(getCurrentDateTimeString);
   const [memo, setMemo] = useState<string>('');
 
   // Per-step machine & worker assignment state
   const [stepAssignments, setStepAssignments] = useState<Record<number, StepAssignment>>({});
 
+  // Archive copy state
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
+  const [copiedSourceOrder, setCopiedSourceOrder] = useState<Order | null>(null);
+  const skipTypeResetRef = useRef(false);
+
   const selectedType = productTypes[typeId];
+
+  // List of completed / archived orders available for copying
+  const completedOrArchivedOrders = (Object.values(orders) as Order[]).filter(
+    (o) => o.archived || o.status === 'COMPLETED'
+  );
+
+  // Helper to copy process, machine, and worker specifications from an archived order
+  const applyCopyFromOrder = (sourceOrder: Order) => {
+    const targetTypeId = sourceOrder.typeId;
+    if (productTypes[targetTypeId]) {
+      skipTypeResetRef.current = true;
+      setTypeId(targetTypeId);
+    }
+
+    const targetType = productTypes[targetTypeId] || selectedType;
+    const processes =
+      sourceOrder.customProcesses && sourceOrder.customProcesses.length > 0
+        ? sourceOrder.customProcesses
+        : targetType?.processes || [];
+
+    const newAssignments: Record<number, StepAssignment> = {};
+
+    processes.forEach((proc, idx) => {
+      let machine = '';
+      let worker = '';
+
+      if (processProgressMap) {
+        const keys = Object.keys(processProgressMap);
+        const exactKey = `${sourceOrder.id}_Q1_P${idx}`;
+        if (processProgressMap[exactKey]) {
+          machine = processProgressMap[exactKey].machine || '';
+          worker = processProgressMap[exactKey].worker || '';
+        } else {
+          const fuzzyKey = keys.find(
+            (k) => k.startsWith(`${sourceOrder.id}_`) && k.endsWith(`_P${idx}`)
+          );
+          if (fuzzyKey && processProgressMap[fuzzyKey]) {
+            machine = processProgressMap[fuzzyKey].machine || '';
+            worker = processProgressMap[fuzzyKey].worker || '';
+          }
+        }
+      }
+
+      if (!machine) machine = proc.assignedMachine || '';
+
+      newAssignments[idx] = {
+        machine,
+        worker,
+      };
+    });
+
+    setStepAssignments(newAssignments);
+    setName(`[재수주] ${sourceOrder.name}`);
+    setQty(sourceOrder.qty || 1);
+    setMemo(`[완료보관함 사양복사] 원본수주: ${sourceOrder.id} (${sourceOrder.name})`);
+    setStartDate(getCurrentDateTimeString());
+    setCopiedSourceOrder(sourceOrder);
+    setIsArchiveModalOpen(false);
+  };
+
+  // Handle pendingCopyOrder passed from parent (e.g., from ArchiveView)
+  useEffect(() => {
+    if (pendingCopyOrder) {
+      applyCopyFromOrder(pendingCopyOrder);
+      if (onClearPendingCopyOrder) {
+        onClearPendingCopyOrder();
+      }
+    }
+  }, [pendingCopyOrder]);
 
   // Options for Equipment Searchable Select
   const equipmentOptions: SelectOption[] = [
@@ -98,6 +196,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   // Initialize or reset step assignments whenever productType changes
   useEffect(() => {
+    if (skipTypeResetRef.current) {
+      skipTypeResetRef.current = false;
+      return;
+    }
     if (!selectedType || !selectedType.processes) return;
 
     const initialAssignments: Record<number, StepAssignment> = {};
@@ -189,6 +291,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     onCreateOrder(newOrder, initialProgressMap);
     setName('');
     setMemo('');
+    setStartDate(getCurrentDateTimeString());
     alert(`🎉 수주건 [${newOrder.name}] 및 각 공정별 설비/담당자 할당이 성공적으로 등록되었습니다!\n설비 가동판(OEE) 및 Gantt 타임라인에 실시간 연동되었습니다.`);
   };
 
@@ -224,6 +327,16 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsArchiveModalOpen(true)}
+              disabled={!canEditOrder}
+              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+              title="완료보관함 수주건의 공정 단계별 설비 및 담당자 정보를 복사하여 신규 수주에 적용합니다."
+            >
+              <Copy className="w-3.5 h-3.5 text-amber-600" />
+              <span>완료보관함 공정 복사</span>
+            </button>
             <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-black border border-slate-200 hidden sm:inline-block">
               총 {Object.keys(orders).length}건 수주 등록됨
             </span>
@@ -248,6 +361,31 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Banner if copied from archived order */}
+      {copiedSourceOrder && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 animate-bounce" />
+            <div>
+              <span className="font-extrabold text-emerald-950">
+                [완료 보관함 사양 복사 완료]
+              </span>{' '}
+              <span>
+                원본 수주 <strong className="underline font-bold">{copiedSourceOrder.name}</strong> ({copiedSourceOrder.id})의 공정 단계별 설비 및 담당자 설정이 불러와졌습니다.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCopiedSourceOrder(null)}
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-emerald-100 transition cursor-pointer"
+            title="알림 닫기"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <form id="new-order-form" onSubmit={handleSubmit} className="space-y-5 text-xs">
         {/* Basic Order Info Grid */}
@@ -299,9 +437,19 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
           {/* Start Date */}
           <div>
-            <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" /> 생산 시작일시
-            </label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="font-bold text-slate-700 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" /> 생산 시작일시
+              </label>
+              <button
+                type="button"
+                onClick={() => setStartDate(getCurrentDateTimeString())}
+                className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer"
+                title="현재 날짜/시간으로 초기화"
+              >
+                현재 일시 세팅
+              </button>
+            </div>
             <input
               type="datetime-local"
               value={startDate}
@@ -421,6 +569,175 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
         </div>
       </form>
+
+      {/* Modal: Copy Process Specifications from Archive Vault */}
+      {isArchiveModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+                  <Archive className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <span>완료 보관함 공정/설비/담당자 사양 복사</span>
+                    <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-amber-200">
+                      {completedOrArchivedOrders.length}건 보관 중
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    출하 완료된 이전 수주건의 공정 단계, 담당 설비 및 작업자 지정을 그대로 복사하여 신규 수주에 적용합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsArchiveModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="수주명 또는 제품 타입 검색..."
+                  value={archiveSearchTerm}
+                  onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+              </div>
+
+              {/* List of Archived Orders */}
+              <div className="space-y-2.5">
+                {completedOrArchivedOrders.filter((ord) => {
+                  if (!archiveSearchTerm.trim()) return true;
+                  const term = archiveSearchTerm.toLowerCase();
+                  const type = productTypes[ord.typeId];
+                  return (
+                    ord.name.toLowerCase().includes(term) ||
+                    (type && type.name.toLowerCase().includes(term))
+                  );
+                }).length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 font-bold bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <Archive className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="text-xs text-slate-600">완료 보관함에 복사 가능한 수주가 없습니다.</p>
+                  </div>
+                ) : (
+                  completedOrArchivedOrders
+                    .filter((ord) => {
+                      if (!archiveSearchTerm.trim()) return true;
+                      const term = archiveSearchTerm.toLowerCase();
+                      const type = productTypes[ord.typeId];
+                      return (
+                        ord.name.toLowerCase().includes(term) ||
+                        (type && type.name.toLowerCase().includes(term))
+                      );
+                    })
+                    .map((ord) => {
+                      const type = productTypes[ord.typeId];
+                      const processes =
+                        ord.customProcesses && ord.customProcesses.length > 0
+                          ? ord.customProcesses
+                          : type?.processes || [];
+
+                      return (
+                        <div
+                          key={ord.id}
+                          className="bg-white border border-slate-200 rounded-xl p-3.5 hover:border-amber-400 hover:shadow-md transition space-y-2.5"
+                        >
+                          <div className="flex flex-wrap justify-between items-start gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                  {ord.name}
+                                </span>
+                                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold border border-slate-200">
+                                  {ord.id}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                                <span>제품 타입: <strong className="text-slate-800">{type?.name || '커스텀'}</strong></span>
+                                <span>•</span>
+                                <span>수량: <strong className="text-slate-800">{ord.qty}개</strong></span>
+                                <span>•</span>
+                                <span>완료일시: <strong className="text-slate-700">{ord.completedAt || '-'}</strong></span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => applyCopyFromOrder(ord)}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 shrink-0"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>이 공정 사양 적용</span>
+                            </button>
+                          </div>
+
+                          {/* Steps preview */}
+                          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            <div className="text-[10px] font-bold text-slate-500 mb-1.5">
+                              📋 복사될 공정 단계별 설비 및 담당자 구성 ({processes.length}단계):
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {processes.map((proc, pIdx) => {
+                                let m = proc.assignedMachine || '';
+                                let w = '';
+                                if (processProgressMap) {
+                                  const exactKey = `${ord.id}_Q1_P${pIdx}`;
+                                  if (processProgressMap[exactKey]) {
+                                    m = processProgressMap[exactKey].machine || m;
+                                    w = processProgressMap[exactKey].worker || '';
+                                  } else {
+                                    const keys = Object.keys(processProgressMap);
+                                    const fuzzyKey = keys.find(
+                                      (k) => k.startsWith(`${ord.id}_`) && k.endsWith(`_P${pIdx}`)
+                                    );
+                                    if (fuzzyKey && processProgressMap[fuzzyKey]) {
+                                      m = processProgressMap[fuzzyKey].machine || m;
+                                      w = processProgressMap[fuzzyKey].worker || '';
+                                    }
+                                  }
+                                }
+
+                                return (
+                                  <div
+                                    key={pIdx}
+                                    className="bg-white border border-slate-200 p-1.5 rounded text-[11px] flex justify-between items-center"
+                                  >
+                                    <span className="font-bold text-slate-800 truncate mr-1">
+                                      {pIdx + 1}. {proc.name}
+                                    </span>
+                                    <div className="flex items-center gap-1 text-[10px] shrink-0">
+                                      <span className="bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded font-bold border border-blue-100">
+                                        {m || '설비 미지정'}
+                                      </span>
+                                      <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-bold border border-emerald-100">
+                                        {w || '담당자 미지정'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
