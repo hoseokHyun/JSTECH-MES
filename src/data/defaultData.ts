@@ -531,37 +531,37 @@ export const INITIAL_PROCESS_PROGRESS: import('../types').ProcessProgressMap = {
   "ORD-2026-001_Q1_P0": {
     isCompleted: true,
     completedAt: "8월 5일 17:30",
-    worker: "담당자 1",
+    worker: "미지정",
     machine: "(외주/협력사)"
   },
   "ORD-2026-001_Q1_P1": {
     isCompleted: true,
     completedAt: "8월 9일 12:00",
-    worker: "담당자 2",
+    worker: "미지정",
     machine: "(외주/협력사)"
   },
   "ORD-2026-001_Q1_P2": {
     isCompleted: true,
     completedAt: "8월 11일 18:00",
-    worker: "담당자 1",
+    worker: "미지정",
     machine: "(외주/협력사)"
   },
   "ORD-2026-001_Q2_P0": {
     isCompleted: true,
     completedAt: "8월 5일 17:30",
-    worker: "담당자 1",
+    worker: "미지정",
     machine: "(외주/협력사)"
   },
   "ORD-2026-001_Q2_P1": {
     isCompleted: true,
     completedAt: "8월 9일 12:00",
-    worker: "담당자 2",
+    worker: "미지정",
     machine: "(외주/협력사)"
   },
   "ORD-2026-001_Q2_P2": {
     isCompleted: true,
     completedAt: "8월 11일 18:00",
-    worker: "담당자 1",
+    worker: "미지정",
     machine: "(외주/협력사)"
   }
 };

@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'dashboard',
       label: '생산 종합 대시보드',
-      sublabel: '설비 21대/담당자 20명 현황',
+      sublabel: '설비 21대/실시간 현황',
       icon: LayoutDashboard,
       badge: inProgressCount > 0 ? `${inProgressCount}건` : null,
       badgeColor: 'bg-blue-600 text-white',

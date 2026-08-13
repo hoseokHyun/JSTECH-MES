@@ -15,7 +15,7 @@ interface ProcessDetailModalProps {
 export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
   selectedItem,
   currentUser,
-  approvedOperators = Array.from({ length: 20 }, (_, i) => `담당자 ${i + 1}`),
+  approvedOperators = [],
   onClose,
   onUpdateAssignee,
   onToggleComplete,

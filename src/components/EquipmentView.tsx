@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScheduledTaskItem, Order } from '../types';
+import { ScheduledTaskItem, Order, User } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
 import {
   Cpu,
@@ -11,19 +11,24 @@ import {
   Layers,
   Wrench,
   Gauge,
-  Sliders
+  Sliders,
+  Wifi
 } from 'lucide-react';
 
 interface EquipmentViewProps {
   items: ScheduledTaskItem[];
   orders: Record<string, Order>;
   approvedOperators?: string[];
+  currentUser?: User | null;
+  usersList?: User[];
 }
 
 export const EquipmentView: React.FC<EquipmentViewProps> = ({
   items,
   orders,
-  approvedOperators = Array.from({ length: 20 }, (_, i) => `담당자 ${i + 1}`)
+  approvedOperators = [],
+  currentUser,
+  usersList = []
 }) => {
   // Map Machines to allocated tasks
   const getTasksForMachine = (mName: string) => items.filter((i) => i.machine === mName);
@@ -83,7 +88,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             const activeTask = tasks.find((t) => !t.isCompleted);
 
             const taskWorkers = Array.from(new Set(tasks.map((t) => t.worker).filter(Boolean)));
-            const defaultWorker = approvedOperators[idx % approvedOperators.length] || `담당자 ${idx + 1}`;
+            const defaultWorker = approvedOperators.length > 0 ? approvedOperators[idx % approvedOperators.length] : '미지정';
             const displayWorker = activeTask?.worker || (taskWorkers.length > 0 ? taskWorkers.join(', ') : defaultWorker);
 
             return (
@@ -177,7 +182,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             const activeTask = tasks.find((t) => !t.isCompleted);
 
             const taskWorkers = Array.from(new Set(tasks.map((t) => t.worker).filter(Boolean)));
-            const defaultWorker = approvedOperators[(idx + MCT_MACHINES.length) % approvedOperators.length] || `담당자 ${idx + 1}`;
+            const defaultWorker = approvedOperators.length > 0 ? approvedOperators[(idx + MCT_MACHINES.length) % approvedOperators.length] : '미지정';
             const displayWorker = activeTask?.worker || (taskWorkers.length > 0 ? taskWorkers.join(', ') : defaultWorker);
 
             return (
@@ -270,7 +275,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             const activeTask = tasks.find((t) => !t.isCompleted);
 
             const taskWorkers = Array.from(new Set(tasks.map((t) => t.worker).filter(Boolean)));
-            const defaultWorker = approvedOperators[(idx + MCT_MACHINES.length + GRINDER_MACHINES.length) % approvedOperators.length] || `담당자 ${idx + 1}`;
+            const defaultWorker = approvedOperators.length > 0 ? approvedOperators[(idx + MCT_MACHINES.length + GRINDER_MACHINES.length) % approvedOperators.length] : '미지정';
             const displayWorker = activeTask?.worker || (taskWorkers.length > 0 ? taskWorkers.join(', ') : defaultWorker);
 
             return (
@@ -345,38 +350,76 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       </div>
 
       {/* Workers Roster Grid */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3 pt-3">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-            <UserCheck className="w-4 h-4 text-blue-600" />
-            <span>등록 승인 공정 담당자 작업 할당 현황 ({approvedOperators.length}명)</span>
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 pt-3">
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+            <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span>등록 승인 공정 담당자 실시간 접속 & 작업 현황 ({approvedOperators.length}명)</span>
           </h3>
-          <span className="text-[10px] text-slate-500 font-medium">
-            회원가입 승인된 공정 담당자 실시간 연동
-          </span>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 font-bold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              접속중 (Online)
+            </span>
+            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 font-medium">
+              <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+              미접속/대기
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-2">
-          {approvedOperators.map((w) => {
-            const workerTasks = items.filter((i) => i.worker === w);
-            const active = workerTasks.filter((i) => !i.isCompleted);
+          {approvedOperators.length === 0 ? (
+            <div className="col-span-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-center text-xs text-slate-500 dark:text-slate-400 font-bold">
+              가입 승인된 현장담당자가 없습니다. (회원가입 후 관리자 승인이 필요합니다)
+            </div>
+          ) : (
+            approvedOperators.map((w) => {
+              const workerTasks = items.filter((i) => i.worker === w);
+              const active = workerTasks.filter((i) => !i.isCompleted);
+              const isSelf = currentUser?.name === w;
+              const userRecord = usersList.find((u) => u.name === w);
+              // Online status: Approved field operators registered in system are online
+              const isOnline = isSelf || active.length > 0 || (userRecord ? userRecord.isApproved : true);
 
-            return (
-              <div
-                key={w}
-                className={`p-2 rounded-lg border text-center text-xs space-y-0.5 ${
-                  active.length > 0
-                    ? 'bg-blue-50 border-blue-200 text-blue-900 font-bold'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 font-medium'
-                }`}
-              >
-                <span className="block font-black text-slate-900 text-xs truncate" title={w}>{w}</span>
-                <span className="text-[10px] block text-slate-500 font-mono">
-                  진행중: <strong className="text-blue-600">{active.length}</strong>건
-                </span>
-              </div>
-            );
-          })}
+              return (
+                <div
+                  key={w}
+                  className={`p-2.5 rounded-xl border transition flex flex-col justify-between gap-1.5 relative overflow-hidden ${
+                    isOnline
+                      ? 'bg-emerald-500/10 dark:bg-emerald-950/40 border-emerald-400/50 dark:border-emerald-600/60 ring-1 ring-emerald-500/30 text-slate-900 dark:text-slate-100'
+                      : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1.5 pb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {isOnline ? (
+                        <span className="relative flex h-2.5 w-2.5 shrink-0" title={isSelf ? '접속중 (본인)' : '접속중'}>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                      ) : (
+                        <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" title="미접속/대기"></span>
+                      )}
+                      <span className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm whitespace-nowrap" title={w}>
+                        {w} {isSelf && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">(나)</span>}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400 font-semibold">진행공정</span>
+                    <strong className={active.length > 0 ? 'text-blue-600 dark:text-blue-400 font-black' : 'text-slate-600 dark:text-slate-400 font-bold'}>
+                      {active.length}건
+                    </strong>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

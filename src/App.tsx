@@ -140,13 +140,12 @@ export default function App() {
     applyTheme(themeMode);
   }, []);
 
-  // Compute approvedOperators list combining registered approved field operators (role === 'USER') and defaults
+  // Compute approvedOperators list containing registered approved field operators (role !== 'ADMIN')
   const approvedOperators = useMemo(() => {
     const registeredApproved = usersList
       .filter((u) => u.isApproved && u.role !== 'ADMIN')
       .map((u) => u.name);
-    const defaults = Array.from({ length: 20 }, (_, i) => `담당자 ${i + 1}`);
-    return Array.from(new Set([...registeredApproved, ...defaults]));
+    return Array.from(new Set(registeredApproved));
   }, [usersList]);
 
   // 3. Selection & Modal States
@@ -685,6 +684,8 @@ export default function App() {
                 items={scheduledTasks}
                 orders={orders}
                 approvedOperators={approvedOperators}
+                currentUser={currentUser}
+                usersList={usersList}
               />
             </>
           )}

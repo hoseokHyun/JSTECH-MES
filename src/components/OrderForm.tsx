@@ -91,10 +91,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     ...approvedOperators.map((op) => ({
       value: op,
       label: op,
-      badge: op.startsWith('담당자') ? '공정담당자' : '등록회원',
-      badgeColor: op.startsWith('담당자')
-        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+      badge: '승인회원',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border border-emerald-200'
     }))
   ];
 
@@ -115,7 +113,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         defaultMachine = '(외주/협력사)';
       }
 
-      const defaultWorker = approvedOperators[idx % approvedOperators.length] || `담당자 ${idx + 1}`;
+      const defaultWorker = approvedOperators.length > 0 ? (approvedOperators[idx % approvedOperators.length] || '') : '';
 
       initialAssignments[idx] = {
         machine: defaultMachine,

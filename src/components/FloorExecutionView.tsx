@@ -36,7 +36,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   items,
   processProgressMap,
   currentUser,
-  approvedOperators = Array.from({ length: 20 }, (_, i) => `담당자 ${i + 1}`),
+  approvedOperators = [],
   onToggleComplete,
   onUpdateAssignee,
 }) => {
