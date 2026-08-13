@@ -3,7 +3,8 @@ import {
   Order,
   ProductType,
   ProcessProgressMap,
-  ProcessStep
+  ProcessStep,
+  User
 } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES, ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
@@ -19,7 +20,8 @@ import {
   Gauge,
   CheckCircle2,
   HelpCircle,
-  FileText
+  FileText,
+  AlertCircle
 } from 'lucide-react';
 
 interface OrderFormProps {
@@ -27,6 +29,7 @@ interface OrderFormProps {
   orders: Record<string, Order>;
   approvedOperators: string[];
   onCreateOrder: (newOrder: Order, initialProgressMap?: ProcessProgressMap) => void;
+  currentUser?: User | null;
 }
 
 interface StepAssignment {
@@ -39,7 +42,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   orders,
   approvedOperators,
   onCreateOrder,
+  currentUser,
 }) => {
+  const canEditOrder =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canEditOrder === true;
   const [name, setName] = useState('');
   const [typeId, setTypeId] = useState<string>(
     Object.keys(productTypes)[0] || 'TYPE_SLIT_NOZZLE'
@@ -140,6 +148,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditOrder) {
+      alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록 권한이 제한되어 있습니다. 관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+      return;
+    }
     if (!name.trim()) {
       alert('수주번호 / 프로젝트명을 입력해주세요.');
       return;
@@ -184,6 +196,18 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   return (
     <div className="bg-white rounded-2xl shadow-md border border-slate-200 p-5 space-y-5">
+      {!canEditOrder && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>⚠️ 현재 계정({currentUser?.name || '현장담당자'})은 수주 등록 권한이 없습니다. 수주 정보 등록/수주는 관리자 또는 영업담당자 계정 권한이 필요합니다.</span>
+          </div>
+          <span className="bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded text-[10px] font-black shrink-0">
+            권한 제한됨
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap justify-between items-start gap-2 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-3">
@@ -208,7 +232,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             <button
               type="submit"
               form="new-order-form"
-              className="px-5 py-2.5 bg-[#00C4B4] hover:bg-[#00a89a] text-white font-black rounded-xl text-xs transition flex items-center gap-2 shadow-md hover:shadow-lg shrink-0 cursor-pointer"
+              disabled={!canEditOrder}
+              className={`px-5 py-2.5 font-black rounded-xl text-xs transition flex items-center gap-2 shadow-md shrink-0 ${
+                canEditOrder
+                  ? 'bg-[#00C4B4] hover:bg-[#00a89a] text-white cursor-pointer hover:shadow-lg'
+                  : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-60'
+              }`}
+              title={canEditOrder ? "신규 수주 등록" : "수주 등록 권한 없음 (관리자/영업 전용)"}
             >
               <Plus className="w-4 h-4 text-white" />
               <span>신규 수주 등록</span>

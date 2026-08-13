@@ -16,7 +16,7 @@ import {
   FilePlus,
   Calendar
 } from 'lucide-react';
-import { ScheduledTaskItem } from '../types';
+import { ScheduledTaskItem, User } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
 
 interface SidebarProps {
@@ -27,6 +27,7 @@ interface SidebarProps {
   archivedCount?: number;
   scheduledTasks?: ScheduledTaskItem[];
   operatorCount?: number;
+  currentUser?: User | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,8 +38,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   archivedCount = 0,
   scheduledTasks = [],
   operatorCount = 20,
+  currentUser,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+
+  const canEditOrder =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canEditOrder === true;
+  const canArchive =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canArchive === true;
 
   // Calculate real-time OEE / Active Line Utilization
   const activeMachinesCount = ALL_EQUIPMENT_LIST.filter((machineName) =>
@@ -154,10 +165,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const Icon = item.icon;
           const isActive = activeTab === item.id;
 
+          const handleMenuClick = () => {
+            if (item.id === 'order-form' && !canEditOrder) {
+              alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록 권한이 제한되어 있습니다. 관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+              return;
+            }
+            if (item.id === 'archive' && !canArchive) {
+              alert('⚠️ 완료 보관함 접근 권한이 없습니다.\n(수주 아카이브 조회의 경우 관리자 권한이 필요합니다.)');
+              return;
+            }
+            setActiveTab(item.id);
+          };
+
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={handleMenuClick}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all group ${
                 isActive
                   ? 'bg-[#00C4B4] text-white shadow-md shadow-[#00C4B4]/25 border border-[#00B3A4]'

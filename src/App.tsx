@@ -239,6 +239,16 @@ export default function App() {
     newOrder: Order,
     initialProgressMap?: ProcessProgressMap
   ) => {
+    const canEditOrder =
+      !currentUser ||
+      currentUser.role === 'ADMIN' ||
+      currentUser.permissions?.canEditOrder === true;
+
+    if (!canEditOrder) {
+      alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록 권한이 제한되어 있습니다.)');
+      return;
+    }
+
     setOrders((prev) => ({
       ...prev,
       [newOrder.id]: newOrder,
@@ -284,6 +294,16 @@ export default function App() {
   };
 
   const handleArchiveOrder = (orderId: string) => {
+    const canArchive =
+      !currentUser ||
+      currentUser.role === 'ADMIN' ||
+      currentUser.permissions?.canArchive === true;
+
+    if (!canArchive) {
+      alert('⚠️ 수주 보관함 이동 권한이 없습니다.\n(수주 보관 처리 및 관리는 관리자(ADMIN) 또는 영업/수주 담당자 권한이 필요합니다.)');
+      return;
+    }
+
     const nowStr = new Date().toLocaleDateString('ko-KR', {
       year: 'numeric',
       month: '2-digit',
@@ -574,6 +594,7 @@ export default function App() {
         archivedCount={(Object.values(orders) as Order[]).filter((o) => o.archived).length}
         scheduledTasks={scheduledTasks}
         operatorCount={approvedOperators.length}
+        currentUser={currentUser}
       />
 
       {/* Main Container */}
@@ -625,6 +646,7 @@ export default function App() {
               orders={orders}
               approvedOperators={approvedOperators}
               onCreateOrder={handleCreateOrder}
+              currentUser={currentUser}
             />
           )}
 

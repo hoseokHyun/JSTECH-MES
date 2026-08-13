@@ -53,11 +53,15 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
 }) => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-  // Permission check for editing order details
+  // Permission check for editing order details & archiving
   const canEditOrder =
     !currentUser ||
     currentUser.role === 'ADMIN' ||
     currentUser.permissions?.canEditOrder === true;
+  const canArchive =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canArchive === true;
   const activeOrders: Order[] = (Object.values(orders) as Order[]).filter((o) => !o.archived);
   
   // Calculate completion percentage for each order based on scheduledTasks
@@ -205,9 +209,19 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             </button>
             {onNavigateToOrderForm && (
               <button
-                onClick={onNavigateToOrderForm}
-                className="bg-[#0B3A82] hover:bg-[#00C4B4] text-white px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs ml-1"
-                title="신규 수주 등록 페이지로 이동"
+                onClick={() => {
+                  if (!canEditOrder) {
+                    alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록이 제한되어 있습니다. 관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+                    return;
+                  }
+                  onNavigateToOrderForm();
+                }}
+                className={`px-3.5 py-1 rounded-full font-black flex items-center gap-1.5 transition shadow-xs ml-1 ${
+                  canEditOrder
+                    ? 'bg-[#0B3A82] hover:bg-[#00C4B4] text-white cursor-pointer'
+                    : 'bg-slate-200 text-slate-500 border border-slate-300 opacity-70 cursor-not-allowed'
+                }`}
+                title={canEditOrder ? "신규 수주 등록 페이지로 이동" : "신규 수주 등록 권한 없음 (관리자/영업 전용)"}
               >
                 <Plus className="w-3.5 h-3.5 text-[#00C4B4]" />
                 <span>신규 수주 등록</span>
@@ -352,6 +366,10 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                           </button>
                           <button
                             onClick={() => {
+                              if (!canArchive) {
+                                alert('⚠️ 수주 보관함 이동 권한이 없습니다.\n(수주 보관 처리 및 관리는 관리자(ADMIN) 또는 영업/수주 담당자 권한이 필요합니다.)');
+                                return;
+                              }
                               if (isCompleted) {
                                 onArchiveOrder(ord.id);
                               } else {
@@ -361,8 +379,12 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                                 onArchiveOrder(ord.id);
                               }
                             }}
-                            className="bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5 cursor-pointer active:scale-95"
-                            title="완료 보관함으로 이동"
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5 ${
+                              canArchive
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer active:scale-95'
+                                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            }`}
+                            title={canArchive ? "완료 보관함으로 이동" : "수주 보관 권한 없음 (관리자/영업 전용)"}
                           >
                             <Archive className="w-3 h-3 text-amber-600" />
                             <span>보관함</span>
