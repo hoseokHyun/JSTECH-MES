@@ -66,8 +66,10 @@ export interface User {
   role: 'USER' | 'ADMIN';
   permissions?: UserPermissions;
   isApproved?: boolean;
+  isOnline?: boolean;
   createdAt?: string;
   loginAt?: string;
+  logoutAt?: string;
 }
 
 export interface ScheduledTaskItem {

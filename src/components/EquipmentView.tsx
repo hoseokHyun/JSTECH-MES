@@ -382,8 +382,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               const active = workerTasks.filter((i) => !i.isCompleted);
               const isSelf = currentUser?.name === w;
               const userRecord = usersList.find((u) => u.name === w);
-              // Online status: Approved field operators registered in system are online
-              const isOnline = isSelf || active.length > 0 || (userRecord ? userRecord.isApproved : true);
+              // Online status: True only if currently logged-in active user or marked online in DB
+              const isOnline = isSelf || Boolean(userRecord?.isOnline);
 
               return (
                 <div

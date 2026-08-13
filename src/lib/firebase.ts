@@ -288,6 +288,38 @@ export async function registerUserAccount(
   return userDoc;
 }
 
+export async function setUserOnlineStatus(userIdent: string | null | undefined, isOnline: boolean) {
+  if (!userIdent) return;
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    let targetDocId: string | null = null;
+    usersSnap.forEach((docSnap) => {
+      const data = docSnap.data() as User;
+      if (
+        docSnap.id === userIdent ||
+        data.uid === userIdent ||
+        (data.email && data.email.toLowerCase() === userIdent.toLowerCase()) ||
+        data.name === userIdent
+      ) {
+        targetDocId = docSnap.id;
+      }
+    });
+
+    if (targetDocId) {
+      await setDoc(
+        doc(db, 'users', targetDocId),
+        {
+          isOnline,
+          ...(isOnline ? { loginAt: new Date().toISOString() } : { logoutAt: new Date().toISOString() }),
+        },
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    console.warn('Failed to update online status:', err);
+  }
+}
+
 export async function loginUserAccount(email: string, pass: string): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   let matchedUser: User | null = null;
@@ -353,10 +385,22 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     throw new Error('PENDING_APPROVAL');
   }
 
+  // Mark user as online in Firestore
+  const ident = matchedUser.uid || matchedUser.email || matchedUser.name;
+  await setUserOnlineStatus(ident, true);
+  matchedUser.isOnline = true;
+  matchedUser.loginAt = new Date().toISOString();
+
   return matchedUser;
 }
 
-export async function logoutUserAccount() {
+export async function logoutUserAccount(currentUser?: User | null) {
+  if (currentUser) {
+    const ident = currentUser.uid || currentUser.email || currentUser.name;
+    await setUserOnlineStatus(ident, false);
+  } else if (auth.currentUser) {
+    await setUserOnlineStatus(auth.currentUser.uid, false);
+  }
   try {
     await signOut(auth);
   } catch (err) {

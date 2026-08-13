@@ -614,7 +614,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await logoutUserAccount();
+    await logoutUserAccount(currentUser);
     setCurrentUser(null);
     localStorage.removeItem(STORAGE_KEY_USER);
   };
