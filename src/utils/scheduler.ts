@@ -99,7 +99,24 @@ export function calculateSchedule(
           if (isDone) completedTasksCount++;
           totalTasksCount++;
 
-          const itemPointer = new Date(currentPointer);
+          // Resolve Execution Status
+          let taskStatus: import('../types').TaskExecutionStatus = 'READY';
+          if (isDone) {
+            taskStatus = 'COMPLETED';
+          } else if (pInfo.status === 'PAUSED') {
+            taskStatus = 'PAUSED';
+          } else if (pInfo.status === 'IN_PROGRESS' || (pInfo.actualStart && !pInfo.actualEnd)) {
+            taskStatus = 'IN_PROGRESS';
+          } else if (Date.now() > pEnd.getTime()) {
+            taskStatus = 'DELAYED';
+          } else if (Date.now() >= pStart.getTime()) {
+            taskStatus = 'PLANNED';
+          } else {
+            taskStatus = 'READY';
+          }
+
+          const plannedMins = Math.round(p.durationHours * 60);
+
           const itemId = itemGlobalCounter++;
           const itemData: ScheduledTaskItem = {
             id: itemId,
@@ -113,14 +130,26 @@ export function calculateSchedule(
             end: pEnd,
             category: p.category,
             duration: p.durationHours,
+            plannedMinutes: plannedMins,
             productNo: q,
             orderName: ord.name,
+            plannedStart: pStart,
+            plannedEnd: pEnd,
+            actualStart: pInfo.actualStart || null,
+            actualEnd: pInfo.actualEnd || (isDone ? pInfo.completedAt || null : null),
+            actualMinutes: pInfo.actualMinutes !== undefined ? pInfo.actualMinutes : null,
+            status: taskStatus,
             isCompleted: isDone,
             completedAt: pInfo.completedAt || null,
             worker: pInfo.worker || '',
             machine: resolveMachineName(pInfo.machine, p.assignedMachine, p.category, ord.mctMachine, pIdx),
             processIndex: pIdx,
             totalProcessesInOrder: baseProcesses.length,
+            pauseHistory: pInfo.pauseHistory || [],
+            pauseReason: pInfo.pauseReason,
+            delayMinutes: pInfo.delayMinutes,
+            delayReason: pInfo.delayReason,
+            memo: pInfo.memo,
           };
 
           items.push(itemData);
@@ -165,6 +194,24 @@ export function calculateSchedule(
           if (isDone) completedTasksCount++;
           totalTasksCount++;
 
+          // Resolve Execution Status
+          let taskStatus: import('../types').TaskExecutionStatus = 'READY';
+          if (isDone) {
+            taskStatus = 'COMPLETED';
+          } else if (pInfo.status === 'PAUSED') {
+            taskStatus = 'PAUSED';
+          } else if (pInfo.status === 'IN_PROGRESS' || (pInfo.actualStart && !pInfo.actualEnd)) {
+            taskStatus = 'IN_PROGRESS';
+          } else if (Date.now() > pEnd.getTime()) {
+            taskStatus = 'DELAYED';
+          } else if (Date.now() >= pStart.getTime()) {
+            taskStatus = 'PLANNED';
+          } else {
+            taskStatus = 'READY';
+          }
+
+          const plannedMins = Math.round(p.durationHours * 60);
+
           const itemId = itemGlobalCounter++;
           const itemData: ScheduledTaskItem = {
             id: itemId,
@@ -178,14 +225,26 @@ export function calculateSchedule(
             end: pEnd,
             category: p.category,
             duration: p.durationHours,
+            plannedMinutes: plannedMins,
             productNo: q,
             orderName: ord.name,
+            plannedStart: pStart,
+            plannedEnd: pEnd,
+            actualStart: pInfo.actualStart || null,
+            actualEnd: pInfo.actualEnd || (isDone ? pInfo.completedAt || null : null),
+            actualMinutes: pInfo.actualMinutes !== undefined ? pInfo.actualMinutes : null,
+            status: taskStatus,
             isCompleted: isDone,
             completedAt: pInfo.completedAt || null,
             worker: pInfo.worker || '',
             machine: resolveMachineName(pInfo.machine, p.assignedMachine, p.category, ord.mctMachine, pIdx),
             processIndex: pIdx,
             totalProcessesInOrder: baseProcesses.length,
+            pauseHistory: pInfo.pauseHistory || [],
+            pauseReason: pInfo.pauseReason,
+            delayMinutes: pInfo.delayMinutes,
+            delayReason: pInfo.delayReason,
+            memo: pInfo.memo,
           };
 
           items.push(itemData);

@@ -67,32 +67,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: '생산 종합 대시보드',
       sublabel: '설비 21대/실시간 현황',
       icon: LayoutDashboard,
-      badge: inProgressCount > 0 ? `${inProgressCount}건` : null,
+      badge: '대표 화면',
       badgeColor: 'bg-blue-600 text-white',
     },
     {
       id: 'order-form',
       label: '신규 수주 등록',
-      sublabel: '수주 스펙 입력 & 자동 BOP',
+      sublabel: '수주 스펙 & 수주/공정 통합관리',
       icon: FilePlus,
-      badge: '신규',
+      badge: '신규/관리',
       badgeColor: 'bg-emerald-600 text-white',
-    },
-    {
-      id: 'timeline',
-      label: '공정 타임라인',
-      sublabel: 'Gantt Chart & 작업 스케줄',
-      icon: Calendar,
-      badge: 'Gantt',
-      badgeColor: 'bg-indigo-600 text-white',
-    },
-    {
-      id: 'execution',
-      label: '생산 실행 (Floor MES)',
-      sublabel: '공정 완료/취소 터미널',
-      icon: PlaySquare,
-      badge: '완료/취소',
-      badgeColor: 'bg-[#00A396] text-white',
     },
     {
       id: 'routing',
@@ -101,6 +85,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: GitMerge,
       badge: '표준 공정',
       badgeColor: 'bg-slate-700 text-slate-300',
+    },
+    {
+      id: 'actual-analysis',
+      label: '실적 및 계획대비 분석',
+      sublabel: 'Plan vs. Actual 편차/지연 추적',
+      icon: Activity,
+      badge: '분석',
+      badgeColor: 'bg-indigo-600 text-white',
+    },
+    {
+      id: 'calendar',
+      label: '생산 캘린더',
+      sublabel: '일간/주간/월간 실시간 일정',
+      icon: Calendar,
+      badge: 'Calendar',
+      badgeColor: 'bg-sky-600 text-white',
+    },
+    {
+      id: 'timeline',
+      label: '공정 타임라인 (Gantt)',
+      sublabel: '장기 타임라인 차트',
+      icon: Layers,
+      badge: 'Gantt',
+      badgeColor: 'bg-slate-700 text-slate-200',
+    },
+    {
+      id: 'execution',
+      label: '현장 공정 실행 (Floor MES)',
+      sublabel: '시작/일시정지/완료 터미널',
+      icon: PlaySquare,
+      badge: '실시간',
+      badgeColor: 'bg-[#00A396] text-white',
     },
     {
       id: 'equipment',
@@ -112,18 +128,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'quality',
-      label: '품질/검사',
-      sublabel: 'CMM 3D 정밀 검사 & 불량 분석',
+      label: '품질/검사 (CMM)',
+      sublabel: '3D 정밀측정 및 성적서 관리',
       icon: CheckCircle2,
-      badge: null,
-      badgeColor: '',
+      badge: 'CMM',
+      badgeColor: 'bg-purple-600 text-white',
     },
     {
       id: 'archive',
-      label: '완료 보관함 (관리자)',
-      sublabel: '아카이브 & 이력',
+      label: '완료 수주 보관함',
+      sublabel: '완료 수주 아카이브 & 사양 복사',
       icon: Archive,
-      badge: archivedCount > 0 ? `${archivedCount}` : null,
+      badge: archivedCount > 0 ? `${archivedCount}건` : null,
       badgeColor: 'bg-amber-600 text-white',
     },
   ];
@@ -131,7 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={`bg-gradient-to-b from-[#F2F9F9] via-[#E8F5F5] to-[#F0F6F6] dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 dark:bg-slate-900 border-r border-[#D0E8E6] dark:border-slate-800 text-slate-800 dark:text-slate-100 flex flex-col transition-all duration-300 ${
-        collapsed ? 'w-16' : 'w-64'
+        collapsed ? 'w-16' : 'w-72'
       } shrink-0 hidden md:flex min-h-[calc(100vh-57px)] shadow-xs`}
     >
       {/* Sidebar Header */}
@@ -194,12 +210,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
               />
               {!collapsed && (
-                <div className="flex-1 text-left truncate">
-                  <div className={`leading-tight font-extrabold ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                <div className="flex-1 text-left min-w-0">
+                  <div className={`leading-tight font-extrabold whitespace-nowrap text-ellipsis overflow-hidden ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
                     {item.label}
                   </div>
                   <div
-                    className={`text-[10px] truncate ${
+                    className={`text-[10px] whitespace-nowrap text-ellipsis overflow-hidden ${
                       isActive ? 'text-cyan-50 font-medium' : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
@@ -209,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
               {!collapsed && item.badge && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${item.badgeColor}`}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${item.badgeColor}`}
                 >
                   {item.badge}
                 </span>

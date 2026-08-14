@@ -33,6 +33,8 @@ import {
 
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { ProductionCalendarView } from './components/ProductionCalendarView';
+import { ActualAnalysisView } from './components/ActualAnalysisView';
 import { ExecutiveSummary } from './components/ExecutiveSummary';
 import { OrderForm } from './components/OrderForm';
 import { GanttChart } from './components/GanttChart';
@@ -58,7 +60,7 @@ const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
 const STORAGE_KEY_USER = 'junsung_mes_user_v2';
 
 export default function App() {
-  // 1. Navigation Tab State
+  // 1. Navigation Tab State (Default: Production Executive Dashboard - 대표화면)
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // 2. Core Application Domain State with LocalStorage Persistence
@@ -531,6 +533,24 @@ export default function App() {
     saveProcessProgressToFirestore(processKey, updatedProgress);
   };
 
+  const handleUpdateProgress = (
+    processKey: string,
+    progress: import('./types').ProcessProgressItem
+  ) => {
+    setProcessProgressMap((prev) => {
+      const existing = prev[processKey] || {};
+      const updated: import('./types').ProcessProgressItem = {
+        ...existing,
+        ...progress,
+      };
+      saveProcessProgressToFirestore(processKey, updated);
+      return {
+        ...prev,
+        [processKey]: updated,
+      };
+    });
+  };
+
   const handleSaveNewProductType = (
     typeName: string,
     processes: { name: string; category: ProcessCategory; durationHours: number }[]
@@ -675,7 +695,32 @@ export default function App() {
 
         {/* Content View Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* TAB 1: EXECUTIVE DASHBOARD */}
+          {/* TAB: GOOGLE CALENDAR-STYLE PRODUCTION CALENDAR (PRIMARY / DEFAULT) */}
+          {activeTab === 'calendar' && (
+            <ProductionCalendarView
+              scheduledTasks={scheduledTasks}
+              orders={orders}
+              processProgressMap={processProgressMap}
+              onUpdateProgress={handleUpdateProgress}
+              currentUser={currentUser}
+              approvedOperators={approvedOperators}
+              onNavigateToOrderForm={() => setActiveTab('order-form')}
+            />
+          )}
+
+          {/* TAB: PLAN VS ACTUAL VARIANCE ANALYSIS */}
+          {activeTab === 'actual-analysis' && (
+            <ActualAnalysisView
+              scheduledTasks={scheduledTasks}
+              orders={orders}
+              processProgressMap={processProgressMap}
+              onUpdateProgress={handleUpdateProgress}
+              currentUser={currentUser}
+              approvedOperators={approvedOperators}
+            />
+          )}
+
+          {/* TAB: EXECUTIVE DASHBOARD */}
           {activeTab === 'dashboard' && (
             <>
               {/* Executive Summary Metrics & Orders List */}
@@ -705,13 +750,18 @@ export default function App() {
             </>
           )}
 
-          {/* TAB: NEW ORDER REGISTRATION */}
+          {/* TAB: NEW ORDER REGISTRATION & ORDER MASTER MANAGEMENT */}
           {activeTab === 'order-form' && (
             <OrderForm
               productTypes={productTypes}
               orders={orders}
               approvedOperators={approvedOperators}
               onCreateOrder={handleCreateOrder}
+              onUpdateOrder={handleUpdateOrder}
+              onDeleteOrder={handleDeleteOrder}
+              onArchiveOrder={handleArchiveOrder}
+              onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
+              scheduledTasks={scheduledTasks}
               currentUser={currentUser}
               processProgressMap={processProgressMap}
               pendingCopyOrder={pendingCopyOrder}
@@ -755,7 +805,7 @@ export default function App() {
             </>
           )}
 
-          {/* TAB 2: SHOP FLOOR EXECUTION TERMINAL */}
+          {/* TAB: SHOP FLOOR EXECUTION TERMINAL */}
           {(activeTab === 'floor' || activeTab === 'execution') && (
             <FloorExecutionView
               items={scheduledTasks}
@@ -764,10 +814,11 @@ export default function App() {
               approvedOperators={approvedOperators}
               onToggleComplete={handleToggleProcessComplete}
               onUpdateAssignee={handleUpdateAssignee}
+              onUpdateProgress={handleUpdateProgress}
             />
           )}
 
-          {/* TAB 3: PRODUCT ROUTING & BOP MASTER */}
+          {/* TAB: PRODUCT ROUTING & BOP MASTER */}
           {activeTab === 'routing' && (
             <ProductRoutingView
               productTypes={productTypes}
@@ -778,7 +829,7 @@ export default function App() {
             />
           )}
 
-          {/* TAB 4: EQUIPMENT & PERSONNEL OEE MONITOR */}
+          {/* TAB: EQUIPMENT & PERSONNEL OEE MONITOR */}
           {activeTab === 'equipment' && (
             <EquipmentView
               items={scheduledTasks}
@@ -790,7 +841,7 @@ export default function App() {
           {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
           {activeTab === 'quality' && <QualityInspectionView />}
 
-          {/* TAB 5: ARCHIVE MASTER VAULT */}
+          {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
           {activeTab === 'archive' && (
             <ArchiveView
               orders={orders}

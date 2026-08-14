@@ -1493,15 +1493,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   onArchiveOrder,
   onOpenArchiveModal,
 }) => {
-  if (!isOpen || !order) return null;
-
-  const [name, setName] = useState(order.name || '');
-  const [selectedTypeId, setSelectedTypeId] = useState(order.typeId || '');
-  const [qty, setQty] = useState(order.qty || 1);
-  const [startDate, setStartDate] = useState(order.startDate || '');
-  const [strategy, setStrategy] = useState<'SERIAL' | 'CONTINUOUS'>(order.strategy || 'CONTINUOUS');
-  const [status, setStatus] = useState<OrderStatus>(order.status || 'IN_PROGRESS');
-  const [memo, setMemo] = useState(order.memo || '');
+  const [name, setName] = useState(order?.name || '');
+  const [selectedTypeId, setSelectedTypeId] = useState(order?.typeId || '');
+  const [qty, setQty] = useState(order?.qty || 1);
+  const [startDate, setStartDate] = useState(order?.startDate || '');
+  const [strategy, setStrategy] = useState<'SERIAL' | 'CONTINUOUS'>(order?.strategy || 'CONTINUOUS');
+  const [status, setStatus] = useState<OrderStatus>(order?.status || 'IN_PROGRESS');
+  const [memo, setMemo] = useState(order?.memo || '');
   const [customProcesses, setCustomProcesses] = useState<ProcessStep[]>([]);
 
   useEffect(() => {
@@ -1521,7 +1519,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         setCustomProcesses(type ? type.processes.map((p) => ({ ...p })) : []);
       }
     }
-  }, [order, productTypes]);
+  }, [order, productTypes, isOpen]);
+
+  if (!isOpen || !order) return null;
 
   const handleTypeChange = (newTypeId: string) => {
     setSelectedTypeId(newTypeId);

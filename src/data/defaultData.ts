@@ -45,6 +45,16 @@ export const ALL_EQUIPMENT_LIST: string[] = [
 ];
 
 export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
+  "TYPE_CUSTOM": {
+    id: "TYPE_CUSTOM",
+    isReference: false,
+    name: "직접 입력 (커스텀 공정 설계)",
+    processes: [
+      { name: "1차 MCT 가공", category: "가공", durationHours: 4.0 },
+      { name: "정밀 평면 연마", category: "연마", durationHours: 3.0 },
+      { name: "CMM 3차원 정밀 측정 및 검사", category: "품질", durationHours: 1.0 }
+    ]
+  },
   "TYPE_SLIT_NOZZLE": {
     id: "TYPE_SLIT_NOZZLE",
     isReference: true,

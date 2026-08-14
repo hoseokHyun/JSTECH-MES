@@ -176,9 +176,18 @@ export function subscribeProcessProgress(
         const data = docSnap.data();
         progressMap[docSnap.id] = {
           isCompleted: data.isCompleted,
-          completedAt: data.completedAt,
+          completedAt: data.completedAt || null,
           worker: data.worker || '',
-          machine: data.machine || ''
+          machine: data.machine || '',
+          status: data.status,
+          actualStart: data.actualStart || null,
+          actualEnd: data.actualEnd || null,
+          actualMinutes: data.actualMinutes,
+          pauseHistory: data.pauseHistory || [],
+          pauseReason: data.pauseReason,
+          delayMinutes: data.delayMinutes,
+          delayReason: data.delayReason,
+          memo: data.memo,
         };
       });
       onUpdate(progressMap);
@@ -193,12 +202,7 @@ export function subscribeProcessProgress(
 // Update Single Process Progress in Firestore
 export async function saveProcessProgressToFirestore(
   processKey: string,
-  progress: {
-    isCompleted: boolean;
-    completedAt?: string;
-    worker?: string;
-    machine?: string;
-  }
+  progress: import('../types').ProcessProgressItem
 ) {
   try {
     const payload = cleanUndefined({
@@ -207,6 +211,15 @@ export async function saveProcessProgressToFirestore(
       completedAt: progress.completedAt || null,
       worker: progress.worker || '',
       machine: progress.machine || '',
+      status: progress.status,
+      actualStart: progress.actualStart || null,
+      actualEnd: progress.actualEnd || null,
+      actualMinutes: progress.actualMinutes,
+      pauseHistory: progress.pauseHistory || [],
+      pauseReason: progress.pauseReason,
+      delayMinutes: progress.delayMinutes,
+      delayReason: progress.delayReason,
+      memo: progress.memo,
     });
     await setDoc(doc(db, 'processProgress', processKey), payload, { merge: true });
   } catch (err) {

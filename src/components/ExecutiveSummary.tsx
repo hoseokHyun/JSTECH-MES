@@ -176,6 +176,61 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
         </div>
       </div>
 
+      {/* Live Running MES Operations Section */}
+      {scheduledTasks.some((t) => t.status === 'IN_PROGRESS' || t.status === 'PAUSED') && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-blue-500/10 rounded-2xl border border-amber-300 dark:border-amber-700/60 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-amber-500 animate-ping" />
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">
+                현재 실시간 가동 중인 공정 현황 (Live Operations Monitor)
+              </h2>
+            </div>
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-0.5 rounded-full border border-amber-300">
+              실시간 {scheduledTasks.filter((t) => t.status === 'IN_PROGRESS').length}개 라인 가동중
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {scheduledTasks
+              .filter((t) => t.status === 'IN_PROGRESS' || t.status === 'PAUSED')
+              .map((task) => (
+                <div
+                  key={task.processKey}
+                  className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700 shadow-2xs space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded">
+                      {task.orderId} #{task.productNo}호기
+                    </span>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        task.status === 'IN_PROGRESS'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                          : 'bg-orange-100 text-orange-900 border border-orange-300'
+                      }`}
+                    >
+                      {task.status === 'IN_PROGRESS' ? '가동중 (Running)' : `일시정지 (${task.pauseReason || '대기'})`}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                      {task.processIndex + 1}. {task.groupName}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 truncate">{task.orderName}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-700">
+                    <span>설비: {task.machine || '미지정'}</span>
+                    <span>담당자: {task.worker || '미지정'}</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Main Executive Order Status Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3">
         <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-100 pb-3">
