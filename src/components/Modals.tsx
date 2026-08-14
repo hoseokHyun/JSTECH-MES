@@ -1639,7 +1639,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     if (onArchiveOrder) {
       onArchiveOrder(order.id);
     } else if (onCompleteAllOrderProcesses) {
-      onCompleteAllOrderProcesses(order.id, true, customProcesses, Number(qty), true);
+      onCompleteAllOrderProcesses(order.id, true, customProcesses, Number(qty));
     }
     onClose();
     if (onOpenArchiveModal) {

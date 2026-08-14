@@ -3,21 +3,21 @@ import { Order, ProductType } from '../types';
 import { Archive, RotateCcw, Search, CheckCircle2, PackageCheck, Copy } from 'lucide-react';
 
 interface ArchiveViewProps {
-  orders: Record<string, Order>;
-  productTypes: Record<string, ProductType>;
+  orders?: Record<string, Order>;
+  productTypes?: Record<string, ProductType>;
   onRestoreOrder: (orderId: string) => void;
   onCopyOrderToNew?: (order: Order) => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({
-  orders,
-  productTypes,
+  orders = {},
+  productTypes = {},
   onRestoreOrder,
   onCopyOrderToNew,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const archivedList = (Object.values(orders) as Order[])
+  const archivedList = (Object.values(orders || {}) as Order[])
     .filter((o) => o.archived)
     .filter((o) => {
       if (!searchTerm.trim()) return true;

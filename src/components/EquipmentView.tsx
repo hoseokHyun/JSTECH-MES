@@ -16,8 +16,9 @@ import {
 } from 'lucide-react';
 
 interface EquipmentViewProps {
-  items: ScheduledTaskItem[];
-  orders: Record<string, Order>;
+  items?: ScheduledTaskItem[];
+  scheduledTasks?: ScheduledTaskItem[];
+  orders?: Record<string, Order>;
   approvedOperators?: string[];
   currentUser?: User | null;
   usersList?: User[];
@@ -25,13 +26,15 @@ interface EquipmentViewProps {
 
 export const EquipmentView: React.FC<EquipmentViewProps> = ({
   items,
-  orders,
+  scheduledTasks,
+  orders = {},
   approvedOperators = [],
   currentUser,
   usersList = []
 }) => {
+  const taskList = items || scheduledTasks || [];
   // Map Machines to allocated tasks
-  const getTasksForMachine = (mName: string) => items.filter((i) => i.machine === mName);
+  const getTasksForMachine = (mName: string) => taskList.filter((i) => i.machine === mName);
 
   return (
     <div className="space-y-4">

@@ -16,14 +16,20 @@ import {
 } from 'lucide-react';
 
 interface GanttChartProps {
-  items: ScheduledTaskItem[];
-  itemsMap: Map<number, ScheduledTaskItem>;
-  minStart: Date | null;
-  maxEnd: Date | null;
-  totalWorkingHours: number;
-  onSelectItem: (item: ScheduledTaskItem) => void;
-  selectedItemKey: string | null;
+  items?: ScheduledTaskItem[];
+  scheduledTasks?: ScheduledTaskItem[];
+  filteredTasks?: ScheduledTaskItem[];
+  itemsMap?: Map<number, ScheduledTaskItem>;
+  minStart?: Date | null;
+  maxEnd?: Date | null;
+  totalWorkingHours?: number;
+  onSelectItem?: (item: ScheduledTaskItem) => void;
+  onSelectTask?: (key: string) => void;
+  selectedItemKey?: string | null;
   orders?: Record<string, Order>;
+  filterOptions?: any;
+  setFilterOptions?: any;
+  onUpdateProgress?: any;
 }
 
 declare global {
@@ -41,14 +47,18 @@ declare global {
 
 export const GanttChart: React.FC<GanttChartProps> = ({
   items,
+  scheduledTasks,
+  filteredTasks,
   itemsMap,
   minStart,
   maxEnd,
   totalWorkingHours,
   onSelectItem,
+  onSelectTask,
   selectedItemKey,
   orders,
 }) => {
+  const taskList = items || filteredTasks || scheduledTasks || [];
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<any>(null);
 
@@ -65,13 +75,13 @@ export const GanttChart: React.FC<GanttChartProps> = ({
         }
       });
     }
-    items.forEach((item) => {
+    taskList.forEach((item) => {
       if (!map.has(item.orderId)) {
         map.set(item.orderId, { id: item.orderId, name: item.orderName });
       }
     });
     return Array.from(map.values());
-  }, [items, orders]);
+  }, [taskList, orders]);
 
   // Set default selected order if switching to SINGLE mode or if not set
   useEffect(() => {
@@ -83,10 +93,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({
   // Filter items based on viewMode and selectedOrderId
   const displayItems = useMemo(() => {
     if (viewMode === 'SINGLE' && selectedOrderId) {
-      return items.filter((item) => item.orderId === selectedOrderId);
+      return taskList.filter((item) => item.orderId === selectedOrderId);
     }
-    return items;
-  }, [items, viewMode, selectedOrderId]);
+    return taskList;
+  }, [taskList, viewMode, selectedOrderId]);
 
   // Calculate dynamic minStart / maxEnd and summary metrics for displayed tasks
   const { effectiveMinStart, effectiveMaxEnd, selectedOrderInfo } = useMemo(() => {

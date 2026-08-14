@@ -38,8 +38,8 @@ import {
 
 interface OrderFormProps {
   productTypes: Record<string, ProductType>;
-  orders: Record<string, Order>;
-  approvedOperators: string[];
+  orders?: Record<string, Order>;
+  approvedOperators?: string[];
   onCreateOrder: (newOrder: Order, initialProgressMap?: ProcessProgressMap) => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onDeleteOrder?: (orderId: string) => void;
@@ -55,6 +55,9 @@ interface OrderFormProps {
   processProgressMap?: ProcessProgressMap;
   pendingCopyOrder?: Order | null;
   onClearPendingCopyOrder?: () => void;
+  onOpenNewTypeModal?: () => void;
+  onOpenCopyTypeModal?: () => void;
+  onOrderCreatedSuccess?: () => void;
 }
 
 interface StepAssignment {
@@ -82,7 +85,7 @@ interface ConflictItem {
 
 export const OrderForm: React.FC<OrderFormProps> = ({
   productTypes,
-  orders,
+  orders = {},
   approvedOperators = [],
   onCreateOrder,
   onUpdateOrder,
@@ -94,6 +97,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   processProgressMap,
   pendingCopyOrder,
   onClearPendingCopyOrder,
+  onOpenNewTypeModal,
+  onOpenCopyTypeModal,
+  onOrderCreatedSuccess,
 }) => {
   const canEditOrder =
     !currentUser ||

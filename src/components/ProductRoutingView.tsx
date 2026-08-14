@@ -14,18 +14,19 @@ import {
 
 interface ProductRoutingViewProps {
   productTypes: Record<string, ProductType>;
-  currentUser: User | null;
+  currentUser?: User | null;
   onUpdateProductType: (updatedType: ProductType) => void;
-  onOpenNewTypeModal: () => void;
-  onOpenCopyTypeModal: () => void;
+  onSaveNewProductType?: (newType: ProductType) => void;
+  onOpenNewTypeModal?: () => void;
+  onOpenCopyTypeModal?: () => void;
 }
 
 export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
-  productTypes,
+  productTypes = {},
   currentUser,
   onUpdateProductType,
-  onOpenNewTypeModal,
-  onOpenCopyTypeModal,
+  onOpenNewTypeModal = () => {},
+  onOpenCopyTypeModal = () => {},
 }) => {
   const typeKeys = Object.keys(productTypes);
   const [activeTypeId, setActiveTypeId] = useState<string>(

@@ -32,9 +32,12 @@ import {
 } from 'lucide-react';
 
 interface FloorExecutionViewProps {
-  items: ScheduledTaskItem[];
+  items?: ScheduledTaskItem[];
+  scheduledTasks?: ScheduledTaskItem[];
+  orders?: Record<string, any>;
+  productTypes?: Record<string, any>;
   processProgressMap: ProcessProgressMap;
-  currentUser: User | null;
+  currentUser?: User | null;
   approvedOperators?: string[];
   onToggleComplete?: (taskKey: string, worker?: string, machine?: string) => void;
   onUpdateAssignee?: (taskKey: string, worker: string, machine: string) => void;
@@ -52,11 +55,13 @@ const PAUSE_REASONS: PauseReason[] = [
 
 export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   items,
+  scheduledTasks,
   processProgressMap,
   currentUser,
   approvedOperators = [],
   onUpdateProgress,
 }) => {
+  const taskList = items || scheduledTasks || [];
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -87,7 +92,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     currentUser?.name?.includes('대표');
 
   // Filter tasks
-  const filteredTasks = items.filter((task) => {
+  const filteredTasks = taskList.filter((task) => {
     const matchesSearch =
       task.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.orderName.toLowerCase().includes(searchQuery.toLowerCase()) ||

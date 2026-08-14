@@ -58,6 +58,7 @@ import { QualityInspectionView } from './components/QualityInspectionView';
 import { LoginScreen } from './components/LoginScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { InactivityWarningModal } from './components/InactivityWarningModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   ArchiveModal,
   LoginModal,
@@ -619,6 +620,24 @@ export default function App() {
     saveProductTypeToFirestore(newType);
   };
 
+  const handleCreateNewProductTypeFromModal = (
+    typeName: string,
+    processes: { name: string; category: ProcessCategory; durationHours: number }[]
+  ) => {
+    const newTypeId = `TYPE_${Date.now()}`;
+    const newType: ProductType = {
+      id: newTypeId,
+      name: typeName,
+      isReference: false,
+      processes: processes.map((p) => ({
+        name: p.name,
+        category: p.category,
+        durationHours: p.durationHours,
+      })),
+    };
+    handleSaveNewProductType(newType);
+  };
+
   const handleCopyProductType = (sourceTypeId: string, newTypeName: string, selectedIndexes: number[]) => {
     const source = productTypes[sourceTypeId];
     if (!source) return;
@@ -776,35 +795,37 @@ export default function App() {
 
         {/* Content View Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* TAB: GOOGLE CALENDAR-STYLE PRODUCTION CALENDAR (PRIMARY / DEFAULT) */}
-          {activeTab === 'calendar' && (
-            <ProductionCalendarView
-              scheduledTasks={scheduledTasks}
-              orders={orders}
-              processProgressMap={processProgressMap}
-              onUpdateProgress={handleUpdateProgress}
-              currentUser={currentUser}
-              approvedOperators={approvedOperators}
-              onNavigateToOrderForm={() => setActiveTab('order-form')}
-            />
-          )}
+          <ErrorBoundary
+            fallbackTitle="선택하신 화면을 불러오는 중 오류가 발생했습니다."
+            onReset={() => setActiveTab('dashboard')}
+          >
+            {/* TAB: GOOGLE CALENDAR-STYLE PRODUCTION CALENDAR (PRIMARY / DEFAULT) */}
+            {activeTab === 'calendar' && (
+              <ProductionCalendarView
+                scheduledTasks={scheduledTasks}
+                orders={orders}
+                processProgressMap={processProgressMap}
+                onUpdateProgress={handleUpdateProgress}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
+                onNavigateToOrderForm={() => setActiveTab('order-form')}
+              />
+            )}
 
-          {/* TAB: PLAN VS ACTUAL VARIANCE ANALYSIS */}
-          {activeTab === 'actual-analysis' && (
-            <ActualAnalysisView
-              scheduledTasks={scheduledTasks}
-              orders={orders}
-              processProgressMap={processProgressMap}
-              onUpdateProgress={handleUpdateProgress}
-              currentUser={currentUser}
-              approvedOperators={approvedOperators}
-            />
-          )}
+            {/* TAB: PLAN VS ACTUAL VARIANCE ANALYSIS */}
+            {activeTab === 'actual-analysis' && (
+              <ActualAnalysisView
+                scheduledTasks={scheduledTasks}
+                orders={orders}
+                processProgressMap={processProgressMap}
+                onUpdateProgress={handleUpdateProgress}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
+              />
+            )}
 
-          {/* TAB: EXECUTIVE DASHBOARD */}
-          {activeTab === 'dashboard' && (
-            <>
-              {/* Executive Summary Metrics & Orders List */}
+            {/* TAB: EXECUTIVE DASHBOARD */}
+            {activeTab === 'dashboard' && (
               <ExecutiveSummary
                 orders={orders}
                 productTypes={productTypes}
@@ -821,100 +842,114 @@ export default function App() {
                 onNavigateToOrderForm={() => setActiveTab('order-form')}
                 currentUser={currentUser}
               />
-            </>
-          )}
+            )}
 
-          {/* TAB: NEW ORDER CREATION */}
-          {activeTab === 'order-form' && (
-            <OrderForm
-              productTypes={productTypes}
-              onCreateOrder={handleCreateOrder}
-              onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
-              onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
-              onOrderCreatedSuccess={() => setActiveTab('order-master')}
-              pendingCopyOrder={pendingCopyOrder}
-              onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
-              approvedOperators={approvedOperators}
-            />
-          )}
+            {/* TAB: NEW ORDER CREATION */}
+            {activeTab === 'order-form' && (
+              <OrderForm
+                productTypes={productTypes}
+                orders={orders}
+                currentUser={currentUser}
+                scheduledTasks={scheduledTasks}
+                processProgressMap={processProgressMap}
+                onCreateOrder={handleCreateOrder}
+                onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
+                onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
+                onOrderCreatedSuccess={() => setActiveTab('order-master')}
+                pendingCopyOrder={pendingCopyOrder}
+                onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
+                approvedOperators={approvedOperators}
+              />
+            )}
 
-          {/* TAB: ORDER MASTER TABLE & ROUTING SPEC EDITOR */}
-          {activeTab === 'order-master' && (
-            <OrderMasterManagementView
-              orders={orders}
-              productTypes={productTypes}
-              processProgressMap={processProgressMap}
-              scheduledTasks={scheduledTasks}
-              onUpdateOrder={handleUpdateOrder}
-              onDeleteOrder={handleDeleteOrder}
-              onArchiveOrder={handleArchiveOrder}
-              onRestoreOrder={handleRestoreOrder}
-              onCompleteAllProcesses={handleCompleteAllOrderProcesses}
-              onNavigateToOrderForm={() => setActiveTab('order-form')}
-              onCopyOrderToNew={handleCopyOrderToNew}
-              currentUser={currentUser}
-              approvedOperators={approvedOperators}
-            />
-          )}
+            {/* TAB: ORDER MASTER TABLE & ROUTING SPEC EDITOR */}
+            {activeTab === 'order-master' && (
+              <OrderMasterManagementView
+                orders={orders}
+                productTypes={productTypes}
+                processProgressMap={processProgressMap}
+                scheduledTasks={scheduledTasks}
+                onUpdateOrder={handleUpdateOrder}
+                onDeleteOrder={handleDeleteOrder}
+                onArchiveOrder={handleArchiveOrder}
+                onRestoreOrder={handleRestoreOrder}
+                onCompleteAllProcesses={handleCompleteAllOrderProcesses}
+                onNavigateToOrderForm={() => setActiveTab('order-form')}
+                onCopyOrderToNew={handleCopyOrderToNew}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
+              />
+            )}
 
-          {/* TAB: GANTT CHART TIMELINE */}
-          {activeTab === 'timeline' && (
-            <GanttChart
-              scheduledTasks={scheduledTasks}
-              filteredTasks={filteredScheduledTasks}
-              orders={orders}
-              minStart={minStart}
-              maxEnd={maxEnd}
-              filterOptions={filterOptions}
-              setFilterOptions={setFilterOptions}
-              onSelectTask={(key) => setSelectedTaskKey(key)}
-              onUpdateProgress={handleUpdateProgress}
-            />
-          )}
+            {/* TAB: GANTT CHART TIMELINE */}
+            {activeTab === 'timeline' && (
+              <GanttChart
+                items={scheduledTasks}
+                scheduledTasks={scheduledTasks}
+                filteredTasks={filteredScheduledTasks}
+                orders={orders}
+                minStart={minStart}
+                maxEnd={maxEnd}
+                filterOptions={filterOptions}
+                setFilterOptions={setFilterOptions}
+                onSelectItem={(item) => setSelectedTaskKey(item.processKey)}
+                onSelectTask={(key) => setSelectedTaskKey(key)}
+                selectedItemKey={selectedTaskKey}
+                onUpdateProgress={handleUpdateProgress}
+              />
+            )}
 
-          {/* TAB: FLOOR MES TERMINAL */}
-          {activeTab === 'execution' && (
-            <FloorExecutionView
-              scheduledTasks={scheduledTasks}
-              orders={orders}
-              productTypes={productTypes}
-              processProgressMap={processProgressMap}
-              onUpdateProgress={handleUpdateProgress}
-              currentUser={currentUser}
-              approvedOperators={approvedOperators}
-            />
-          )}
+            {/* TAB: FLOOR MES TERMINAL */}
+            {activeTab === 'execution' && (
+              <FloorExecutionView
+                items={scheduledTasks}
+                scheduledTasks={scheduledTasks}
+                orders={orders}
+                productTypes={productTypes}
+                processProgressMap={processProgressMap}
+                onUpdateProgress={handleUpdateProgress}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
+              />
+            )}
 
-          {/* TAB: PRODUCT ROUTING MASTER */}
-          {activeTab === 'routing' && (
-            <ProductRoutingView
-              productTypes={productTypes}
-              onSaveNewProductType={handleSaveNewProductType}
-              onUpdateProductType={handleUpdateProductType}
-            />
-          )}
+            {/* TAB: PRODUCT ROUTING MASTER */}
+            {activeTab === 'routing' && (
+              <ProductRoutingView
+                productTypes={productTypes}
+                currentUser={currentUser}
+                onSaveNewProductType={handleSaveNewProductType}
+                onUpdateProductType={handleUpdateProductType}
+                onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
+                onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
+              />
+            )}
 
-          {/* TAB: EQUIPMENT & PERSONNEL OEE MONITOR */}
-          {activeTab === 'equipment' && (
-            <EquipmentView
-              items={scheduledTasks}
-              orders={orders}
-              approvedOperators={approvedOperators}
-            />
-          )}
+            {/* TAB: EQUIPMENT & PERSONNEL OEE MONITOR */}
+            {activeTab === 'equipment' && (
+              <EquipmentView
+                items={scheduledTasks}
+                scheduledTasks={scheduledTasks}
+                orders={orders}
+                approvedOperators={approvedOperators}
+                currentUser={currentUser}
+                usersList={usersList}
+              />
+            )}
 
-          {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
-          {activeTab === 'quality' && <QualityInspectionView />}
+            {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
+            {activeTab === 'quality' && <QualityInspectionView />}
 
-          {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
-          {activeTab === 'archive' && (
-            <ArchiveView
-              orders={orders}
-              productTypes={productTypes}
-              onRestoreOrder={handleRestoreOrder}
-              onCopyOrderToNew={handleCopyOrderToNew}
-            />
-          )}
+            {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
+            {activeTab === 'archive' && (
+              <ArchiveView
+                orders={orders}
+                productTypes={productTypes}
+                onRestoreOrder={handleRestoreOrder}
+                onCopyOrderToNew={handleCopyOrderToNew}
+              />
+            )}
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -953,7 +988,7 @@ export default function App() {
       <NewTypeModal
         isOpen={isNewTypeModalOpen}
         onClose={() => setIsNewTypeModalOpen(false)}
-        onSaveType={handleSaveNewProductType}
+        onSaveType={handleCreateNewProductTypeFromModal}
       />
 
       <CopyTypeModal

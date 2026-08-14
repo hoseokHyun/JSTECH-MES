@@ -24,37 +24,52 @@ import {
 } from 'lucide-react';
 
 interface OrderMasterManagementViewProps {
-  orders: Record<string, Order>;
-  productTypes: Record<string, ProductType>;
+  orders?: Record<string, Order>;
+  productTypes?: Record<string, ProductType>;
   scheduledTasks?: ScheduledTaskItem[];
   currentUser?: User | null;
+  approvedOperators?: string[];
   processProgressMap?: ProcessProgressMap;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onDeleteOrder?: (orderId: string) => void;
   onArchiveOrder?: (orderId: string) => void;
+  onRestoreOrder?: (orderId: string) => void;
   onCompleteAllOrderProcesses?: (
     orderId: string,
     forceComplete: boolean,
     overrideProcesses?: ProcessStep[],
     overrideQty?: number
   ) => void;
+  onCompleteAllProcesses?: (
+    orderId: string,
+    forceComplete: boolean,
+    overrideProcesses?: ProcessStep[],
+    overrideQty?: number
+  ) => void;
   onNavigateToNewOrder?: () => void;
+  onNavigateToOrderForm?: () => void;
   onCopyOrderToNew?: (order: Order) => void;
 }
 
 export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps> = ({
-  orders,
-  productTypes,
+  orders = {},
+  productTypes = {},
   scheduledTasks = [],
   currentUser,
+  approvedOperators = [],
   processProgressMap = {},
   onUpdateOrder,
   onDeleteOrder,
   onArchiveOrder,
+  onRestoreOrder,
   onCompleteAllOrderProcesses,
+  onCompleteAllProcesses,
   onNavigateToNewOrder,
+  onNavigateToOrderForm,
   onCopyOrderToNew,
 }) => {
+  const completeAllFn = onCompleteAllOrderProcesses || onCompleteAllProcesses;
+  const navigateToOrderFn = onNavigateToNewOrder || onNavigateToOrderForm;
   const canEditOrder =
     !currentUser ||
     currentUser.role === 'ADMIN' ||
@@ -162,9 +177,9 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
 
         {/* Action Button Strip */}
         <div className="flex items-center gap-2">
-          {onNavigateToNewOrder && (
+          {navigateToOrderFn && (
             <button
-              onClick={onNavigateToNewOrder}
+              onClick={navigateToOrderFn}
               className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
