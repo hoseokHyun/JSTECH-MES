@@ -14,7 +14,6 @@ import {
   CMM_MACHINES
 } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
-import { EditOrderModal } from './Modals';
 import {
   ShoppingCart,
   Plus,
@@ -34,9 +33,7 @@ import {
   ArrowUp,
   ArrowDown,
   Trash2,
-  Pencil,
-  AlertTriangle,
-  Sliders
+  AlertTriangle
 } from 'lucide-react';
 
 interface OrderFormProps {
@@ -146,11 +143,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     order: Order;
     initialProgressMap: ProcessProgressMap;
   } | null>(null);
-
-  // Order Master Table State
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [orderTableSearch, setOrderTableSearch] = useState('');
-  const [orderTableFilter, setOrderTableFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'>('ALL');
 
   // Compute busy machines and workers from active tasks
   const { busyMachinesMap, busyWorkersMap } = useMemo(() => {
@@ -614,40 +606,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     );
   };
 
-  // Filtered Orders for the Master Table in this view
-  const allOrdersList = useMemo(() => {
-    return (Object.values(orders) as Order[]).sort((a, b) => {
-      return (b.startDate || '').localeCompare(a.startDate || '');
-    });
-  }, [orders]);
-
-  const filteredOrders = useMemo(() => {
-    return allOrdersList.filter((ord) => {
-      if (orderTableFilter === 'ACTIVE' && (ord.archived || ord.status === 'COMPLETED')) return false;
-      if (orderTableFilter === 'COMPLETED' && (ord.status !== 'COMPLETED' || ord.archived)) return false;
-      if (orderTableFilter === 'ARCHIVED' && !ord.archived) return false;
-
-      if (!orderTableSearch.trim()) return true;
-      const term = orderTableSearch.toLowerCase();
-      const type = productTypes[ord.typeId];
-      return (
-        ord.name.toLowerCase().includes(term) ||
-        ord.id.toLowerCase().includes(term) ||
-        (type && type.name.toLowerCase().includes(term)) ||
-        (ord.memo && ord.memo.toLowerCase().includes(term))
-      );
-    });
-  }, [allOrdersList, orderTableFilter, orderTableSearch, productTypes]);
-
-  // Order Progress Calculator for the table
-  const getOrderProgressInfo = (orderId: string) => {
-    const tasks = scheduledTasks.filter((t) => t.orderId === orderId);
-    const completed = tasks.filter((t) => t.isCompleted).length;
-    const total = tasks.length;
-    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { completed, total, pct };
-  };
-
   return (
     <div className="space-y-6">
       {/* ------------------------------------------------------------- */}
@@ -1042,295 +1000,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* 2. ORDER MASTER TABLE: LIST, EDIT & ARCHIVE (수주 목록 한 눈에 확인/수정/보관) */}
-      {/* ------------------------------------------------------------- */}
-      <div className="bg-white rounded-2xl shadow-md border border-slate-200 p-5 space-y-4">
-        <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
-              <Sliders className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-extrabold text-slate-900">
-                  등록된 수주 목록 및 수정/보관 관리 (Order Master Management)
-                </h2>
-                <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-blue-200">
-                  총 {allOrdersList.length}건 수주
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                등록된 수주 목록을 한눈에 확인하고, 수주 스펙 및 공정 라우팅 수정, 완료 보관함 이동, 사양 복사를 원클릭으로 관리할 수 있습니다.
-              </p>
-            </div>
-          </div>
-
-          {/* Filter and Search */}
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {/* Status Filter Buttons */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setOrderTableFilter('ALL')}
-                className={`px-3 py-1 rounded-lg transition ${
-                  orderTableFilter === 'ALL'
-                    ? 'bg-white text-slate-900 shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                전체 ({allOrdersList.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderTableFilter('ACTIVE')}
-                className={`px-3 py-1 rounded-lg transition ${
-                  orderTableFilter === 'ACTIVE'
-                    ? 'bg-white text-blue-700 shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                진행중 ({allOrdersList.filter((o) => !o.archived && o.status !== 'COMPLETED').length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderTableFilter('COMPLETED')}
-                className={`px-3 py-1 rounded-lg transition ${
-                  orderTableFilter === 'COMPLETED'
-                    ? 'bg-white text-emerald-700 shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                공정완료 ({allOrdersList.filter((o) => o.status === 'COMPLETED' && !o.archived).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderTableFilter('ARCHIVED')}
-                className={`px-3 py-1 rounded-lg transition ${
-                  orderTableFilter === 'ARCHIVED'
-                    ? 'bg-white text-amber-800 shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                보관함 ({allOrdersList.filter((o) => o.archived).length})
-              </button>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative flex-1 sm:w-56">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="수주명 또는 ID 검색..."
-                value={orderTableSearch}
-                onChange={(e) => setOrderTableSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 font-medium"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Master Table */}
-        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-          <table className="w-full text-left text-xs min-w-[840px]">
-            <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
-              <tr>
-                <th className="p-3 min-w-[200px]">수주번호 / 프로젝트명</th>
-                <th className="p-3 min-w-[150px]">제품 타입 (BOP)</th>
-                <th className="p-3 text-center w-20">수량</th>
-                <th className="p-3 text-center min-w-[130px]">착수 일시</th>
-                <th className="p-3 text-center min-w-[130px]">공정 진행률</th>
-                <th className="p-3 text-center w-24">상태</th>
-                <th className="p-3 text-center min-w-[210px]">수주 및 공정 관리 액션</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 font-semibold">
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
-                    검색 조건에 일치하는 수주 건이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((ord: Order) => {
-                  const type = productTypes[ord.typeId];
-                  const typeName = type ? type.name : ord.typeId === 'TYPE_CUSTOM' ? '직접 설계 (커스텀)' : '-';
-                  const processCount = ord.customProcesses?.length || type?.processes?.length || 0;
-                  const prog = getOrderProgressInfo(ord.id);
-                  const isCompleted = ord.status === 'COMPLETED' || prog.pct === 100;
-
-                  return (
-                    <tr key={ord.id} className="hover:bg-slate-50/80 transition">
-                      {/* Order Name & ID */}
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-900 text-xs">
-                            {ord.name}
-                          </span>
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold border border-slate-200">
-                            {ord.id}
-                          </span>
-                        </div>
-                        {ord.memo && (
-                          <p className="text-[11px] text-slate-500 mt-0.5 truncate max-w-xs font-normal">
-                            📝 {ord.memo}
-                          </p>
-                        )}
-                      </td>
-
-                      {/* Product Type */}
-                      <td className="p-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-800">
-                            {typeName}
-                          </span>
-                          <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200 shrink-0">
-                            {processCount}단계
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Quantity */}
-                      <td className="p-3 text-center font-black text-slate-800">
-                        {ord.qty}개
-                      </td>
-
-                      {/* Start Date */}
-                      <td className="p-3 text-center font-mono font-bold text-slate-700">
-                        {ord.startDate ? ord.startDate.replace('T', ' ') : '-'}
-                      </td>
-
-                      {/* Progress Bar */}
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-16 bg-slate-200 rounded-full h-2 overflow-hidden">
-                            <div
-                              className={`h-2 rounded-full transition-all ${
-                                prog.pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'
-                              }`}
-                              style={{ width: `${prog.pct}%` }}
-                            />
-                          </div>
-                          <span className="font-mono font-extrabold text-[11px] text-slate-800">
-                            {prog.pct}%
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                          ({prog.completed}/{prog.total} 완료)
-                        </div>
-                      </td>
-
-                      {/* Status Badge */}
-                      <td className="p-3 text-center">
-                        {ord.archived ? (
-                          <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded text-[10px] font-black">
-                            📦 보관됨
-                          </span>
-                        ) : isCompleted ? (
-                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-black">
-                            ✅ 완료
-                          </span>
-                        ) : (
-                          <span className="bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-black">
-                            🔄 진행중
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Action Buttons */}
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1 flex-wrap">
-                          {/* Edit Button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!canEditOrder) {
-                                alert('⚠️ 수주 정보 수정 권한이 없습니다.');
-                                return;
-                              }
-                              setEditingOrder(ord);
-                            }}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
-                              canEditOrder
-                                ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 cursor-pointer active:scale-95'
-                                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-                            }`}
-                            title="수주 기본정보 및 공정 라우팅 단계 수정"
-                          >
-                            <Pencil className="w-3 h-3 text-blue-600" />
-                            <span>수정/공정편집</span>
-                          </button>
-
-                          {/* Copy Specs to Form Button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              applyCopyFromOrder(ord);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
-                            title="이 수주의 공정 구성 및 설비/담당자를 상단 등록 폼으로 복사합니다."
-                          >
-                            <Copy className="w-3 h-3 text-slate-600" />
-                            <span>사양복사</span>
-                          </button>
-
-                          {/* Archive Button */}
-                          {!ord.archived && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!canArchive) {
-                                  alert('⚠️ 보관함 이동 권한이 없습니다.');
-                                  return;
-                                }
-                                if (onArchiveOrder) {
-                                  onArchiveOrder(ord.id);
-                                }
-                              }}
-                              className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
-                                canArchive
-                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 cursor-pointer active:scale-95'
-                                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-                              }`}
-                              title="완료 보관함으로 이동"
-                            >
-                              <Archive className="w-3 h-3 text-amber-600" />
-                              <span>보관</span>
-                            </button>
-                          )}
-
-                          {/* Delete Button */}
-                          {onDeleteOrder && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!canArchive) {
-                                  alert('⚠️ 삭제 권한이 없습니다.');
-                                  return;
-                                }
-                                onDeleteOrder(ord.id);
-                              }}
-                              className={`p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer ${
-                                !canArchive ? 'opacity-40 cursor-not-allowed' : ''
-                              }`}
-                              title="수주 삭제"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------- */}
-      {/* 3. MODAL: RESOURCE CONFLICT CONFIRMATION (설비/담당자 실시간 중복 경고 모달) */}
+      {/* 2. MODAL: RESOURCE CONFLICT CONFIRMATION (설비/담당자 실시간 중복 경고 모달) */}
       {/* ------------------------------------------------------------- */}
       {pendingConflicts && pendingConflicts.length > 0 && pendingSubmitPayload && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -1618,23 +1288,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             </div>
           </div>
         </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
-      {/* 5. EDIT ORDER MODAL (수주 및 공정 라우팅 수정) */}
-      {/* ------------------------------------------------------------- */}
-      {editingOrder && (
-        <EditOrderModal
-          isOpen={!!editingOrder}
-          onClose={() => setEditingOrder(null)}
-          order={editingOrder}
-          productTypes={productTypes}
-          onUpdateOrder={onUpdateOrder || (() => {})}
-          onDeleteOrder={onDeleteOrder || (() => {})}
-          onCompleteAllOrderProcesses={onCompleteAllOrderProcesses}
-          onArchiveOrder={onArchiveOrder}
-          onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
-        />
       )}
     </div>
   );

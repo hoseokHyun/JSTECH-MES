@@ -14,6 +14,7 @@ import {
   Layers,
   Sparkles,
   FilePlus,
+  FileText,
   Calendar
 } from 'lucide-react';
 import { ScheduledTaskItem, User } from '../types';
@@ -73,10 +74,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'order-form',
       label: '신규 수주 등록',
-      sublabel: '수주 스펙 & 수주/공정 통합관리',
+      sublabel: '수주 스펙 및 공정 지정',
       icon: FilePlus,
-      badge: '신규/관리',
+      badge: '신규등록',
       badgeColor: 'bg-emerald-600 text-white',
+    },
+    {
+      id: 'order-master',
+      label: '수주관리',
+      sublabel: '수주 현황, 사양 수정 & 보관',
+      icon: FileText,
+      badge: 'Order Master',
+      badgeColor: 'bg-indigo-600 text-white',
     },
     {
       id: 'routing',

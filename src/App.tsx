@@ -37,6 +37,7 @@ import { ProductionCalendarView } from './components/ProductionCalendarView';
 import { ActualAnalysisView } from './components/ActualAnalysisView';
 import { ExecutiveSummary } from './components/ExecutiveSummary';
 import { OrderForm } from './components/OrderForm';
+import { OrderMasterManagementView } from './components/OrderMasterManagementView';
 import { GanttChart } from './components/GanttChart';
 import { ProcessDetailModal } from './components/ProcessDetailModal';
 import { FloorExecutionView } from './components/FloorExecutionView';
@@ -750,7 +751,7 @@ export default function App() {
             </>
           )}
 
-          {/* TAB: NEW ORDER REGISTRATION & ORDER MASTER MANAGEMENT */}
+          {/* TAB: NEW ORDER REGISTRATION */}
           {activeTab === 'order-form' && (
             <OrderForm
               productTypes={productTypes}
@@ -766,6 +767,23 @@ export default function App() {
               processProgressMap={processProgressMap}
               pendingCopyOrder={pendingCopyOrder}
               onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
+            />
+          )}
+
+          {/* TAB: ORDER MASTER MANAGEMENT (등록된 수주 목록 및 수정/보관 관리) */}
+          {(activeTab === 'order-master' || activeTab === 'order-list') && (
+            <OrderMasterManagementView
+              orders={orders}
+              productTypes={productTypes}
+              scheduledTasks={scheduledTasks}
+              currentUser={currentUser}
+              processProgressMap={processProgressMap}
+              onUpdateOrder={handleUpdateOrder}
+              onDeleteOrder={handleDeleteOrder}
+              onArchiveOrder={handleArchiveOrder}
+              onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
+              onNavigateToNewOrder={() => setActiveTab('order-form')}
+              onCopyOrderToNew={handleCopyOrderToNew}
             />
           )}
 
