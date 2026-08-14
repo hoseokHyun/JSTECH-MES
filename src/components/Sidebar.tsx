@@ -15,7 +15,10 @@ import {
   Sparkles,
   FilePlus,
   FileText,
-  Calendar
+  Calendar,
+  LogOut,
+  User as UserIcon,
+  Shield
 } from 'lucide-react';
 import { ScheduledTaskItem, User } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
@@ -29,6 +32,7 @@ interface SidebarProps {
   scheduledTasks?: ScheduledTaskItem[];
   operatorCount?: number;
   currentUser?: User | null;
+  onLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -40,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   scheduledTasks = [],
   operatorCount = 20,
   currentUser,
+  onLogout,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -277,6 +282,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {activeMachinesCount > 0 ? `${activeMachinesCount}대 가동중` : '전체 대기중'}
             </span>
           </div>
+        </div>
+      )}
+
+      {/* User Account & Direct Logout */}
+      {currentUser && (
+        <div className="p-2.5 border-t border-[#D0E8E6] dark:border-slate-800 bg-white/95 dark:bg-slate-900/95">
+          {!collapsed ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-[#00C4B4]/15 border border-[#00C4B4]/30 flex items-center justify-center text-[#00A396] dark:text-[#00C4B4] shrink-0 font-bold text-xs">
+                  {currentUser.role === 'ADMIN' ? <Shield className="w-4 h-4 text-amber-500" /> : <UserIcon className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 dark:text-white truncate">
+                    {currentUser.name}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span>{currentUser.role === 'ADMIN' ? '관리자' : '현장담당자'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition shrink-0 cursor-pointer"
+                  title="로그아웃 (세션 종료)"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ) : (
+            onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full flex items-center justify-center p-2 text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                title="로그아웃"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )
+          )}
         </div>
       )}
     </aside>

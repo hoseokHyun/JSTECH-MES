@@ -139,8 +139,8 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 onClick={onLogout}
-                className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white ml-1 text-[11px] underline flex items-center gap-0.5 font-semibold shrink-0 cursor-pointer"
-                title="로그아웃"
+                className="bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition ml-1.5 shadow-2xs cursor-pointer active:scale-95"
+                title="안전하게 로그아웃하고 세션을 종료합니다"
               >
                 <LogOut className="w-3 h-3" />
                 <span>로그아웃</span>

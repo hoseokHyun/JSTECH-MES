@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Order,
   OrderStatus,
@@ -30,6 +30,16 @@ import {
   logoutUserAccount,
   setUserOnlineStatus
 } from './lib/firebase';
+import {
+  AuthSession,
+  getStoredAuthSession,
+  createAuthSession,
+  clearAllAuthSessions,
+  updateSessionActivity,
+  extendSession,
+  INACTIVITY_TIMEOUT_MS,
+  INACTIVITY_WARNING_COUNTDOWN_SECONDS
+} from './utils/authSession';
 
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -47,6 +57,7 @@ import { ArchiveView } from './components/ArchiveView';
 import { QualityInspectionView } from './components/QualityInspectionView';
 import { LoginScreen } from './components/LoginScreen';
 import { SettingsModal } from './components/SettingsModal';
+import { InactivityWarningModal } from './components/InactivityWarningModal';
 import {
   ArchiveModal,
   LoginModal,
@@ -58,7 +69,6 @@ import {
 const STORAGE_KEY_ORDERS = 'junsung_mes_orders_v2';
 const STORAGE_KEY_TYPES = 'junsung_mes_types_v2';
 const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
-const STORAGE_KEY_USER = 'junsung_mes_user_v2';
 
 export default function App() {
   // 1. Navigation Tab State (Default: Production Executive Dashboard - 대표화면)
@@ -92,15 +102,16 @@ export default function App() {
     }
   });
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_USER);
-      if (!saved || saved === 'null' || saved === 'undefined') return null;
-      return JSON.parse(saved);
-    } catch {
-      return null;
-    }
+  // Authentication & Secure Session Management (Default Remember Me is OFF)
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
+    return getStoredAuthSession();
   });
+  const currentUser: User | null = authSession ? authSession.user : null;
+
+  // Inactivity Warning & Auto-Logout State
+  const [isWarningOpen, setIsWarningOpen] = useState<boolean>(false);
+  const [warningSeconds, setWarningSeconds] = useState<number>(INACTIVITY_WARNING_COUNTDOWN_SECONDS);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   const [usersList, setUsersList] = useState<User[]>([]);
 
@@ -134,6 +145,122 @@ export default function App() {
       setUserOnlineStatus(ident, true);
     }
   }, [currentUser]);
+
+  // Real-time account status & permission revocation sync
+  useEffect(() => {
+    if (!authSession || !currentUser || usersList.length === 0) return;
+
+    const dbUser = usersList.find(
+      (u) =>
+        (u.uid && currentUser.uid && u.uid === currentUser.uid) ||
+        (u.email && currentUser.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+    );
+
+    if (dbUser) {
+      if (dbUser.isApproved === false) {
+        handleLogout('관리자에 의해 계정 사용이 비활성화되었습니다. 관리자에게 문의하세요.');
+        return;
+      }
+
+      // Check if role or permissions changed dynamically by admin
+      if (
+        dbUser.role !== currentUser.role ||
+        JSON.stringify(dbUser.permissions) !== JSON.stringify(currentUser.permissions)
+      ) {
+        const updatedUser: User = {
+          ...currentUser,
+          role: dbUser.role,
+          permissions: dbUser.permissions,
+        };
+        const updatedSession: AuthSession = {
+          ...authSession,
+          user: updatedUser,
+        };
+        setAuthSession(updatedSession);
+      }
+    }
+  }, [usersList, authSession, currentUser]);
+
+  // Inactivity DOM Event Tracking (throttled to once every 15 seconds)
+  useEffect(() => {
+    if (!authSession) return;
+
+    let lastActivityTime = Date.now();
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityTime > 15000) {
+        lastActivityTime = now;
+        updateSessionActivity();
+      }
+    };
+
+    const events = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach((ev) => window.addEventListener(ev, handleUserActivity, { passive: true }));
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, handleUserActivity));
+    };
+  }, [authSession]);
+
+  // Inactivity & Session Expiration Interval (Checks every 1 second)
+  useEffect(() => {
+    if (!authSession) {
+      setIsWarningOpen(false);
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const stored = getStoredAuthSession();
+      if (!stored) {
+        handleLogout('세션이 만료되어 안전하게 자동 로그아웃되었습니다.');
+        return;
+      }
+
+      const now = Date.now();
+
+      // 1. Check Hard Expiration (8 hours or 7 days)
+      if (now > stored.expiresAt) {
+        handleLogout('세션 유효시간(8시간)이 만료되어 자동 로그아웃되었습니다.');
+        return;
+      }
+
+      // 2. Check 30-minute Inactivity Timeout
+      const idleTime = now - stored.lastActiveAt;
+      if (idleTime >= INACTIVITY_TIMEOUT_MS) {
+        if (!isWarningOpen) {
+          setIsWarningOpen(true);
+          setWarningSeconds(INACTIVITY_WARNING_COUNTDOWN_SECONDS);
+        } else {
+          setWarningSeconds((prev) => {
+            if (prev <= 1) {
+              handleLogout('30분간 활동이 없어 보안을 위해 자동 로그아웃되었습니다.');
+              return 0;
+            }
+            return prev - 1;
+          });
+        }
+      } else {
+        if (isWarningOpen) {
+          setIsWarningOpen(false);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [authSession, isWarningOpen]);
+
+  // Back/Forward Navigation Security: prevent history cache from bypassing login
+  useEffect(() => {
+    const handlePopState = () => {
+      const stored = getStoredAuthSession();
+      if (!stored) {
+        setAuthSession(null);
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Initial Theme Initialization
   useEffect(() => {
@@ -183,7 +310,7 @@ export default function App() {
     selectedWorker: 'ALL',
   });
 
-  // Save to LocalStorage
+  // Save persistent application data to LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
@@ -207,18 +334,6 @@ export default function App() {
       console.error('Failed to save progress map', e);
     }
   }, [processProgressMap]);
-
-  useEffect(() => {
-    try {
-      if (currentUser) {
-        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem(STORAGE_KEY_USER);
-      }
-    } catch (e) {
-      console.error('Failed to save user', e);
-    }
-  }, [currentUser]);
 
   // 5. Recalculate Master Schedule
   const { scheduledTasks, taskMap, minStart, maxEnd, totalWorkingHours } = useMemo(() => {
@@ -449,10 +564,9 @@ export default function App() {
 
       const updatedOrder: Order = {
         ...ord,
-        ...(overrideProcesses ? { customProcesses: overrideProcesses } : {}),
-        ...(overrideQty ? { qty: overrideQty } : {}),
         status: forceComplete ? 'COMPLETED' : 'IN_PROGRESS',
-        archived: overrideArchived !== undefined ? overrideArchived : (ord.archived || false),
+        completedAt: forceComplete ? (ord.completedAt || nowStr) : null,
+        archived: overrideArchived !== undefined ? overrideArchived : ord.archived,
       };
       saveOrderToFirestore(updatedOrder);
 
@@ -463,88 +577,38 @@ export default function App() {
     });
   };
 
-  const handleToggleProcessComplete = (
-    processKey: string,
-    workerOverride?: string,
-    machineOverride?: string
-  ) => {
-    const existing = processProgressMap[processKey] || {
-      isCompleted: false,
-      worker: '',
-      machine: '',
-    };
-    const nowCompleted = !existing.isCompleted;
-    const newProgress = {
-      isCompleted: nowCompleted,
-      completedAt: nowCompleted
-        ? new Date().toLocaleDateString('ko-KR', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : undefined,
-      worker: workerOverride !== undefined ? workerOverride : existing.worker,
-      machine: machineOverride !== undefined ? machineOverride : existing.machine,
-    };
+  const handleUpdateProgress = (processKey: string, updates: Partial<ProcessProgressMap[string]>) => {
+    const canExecuteMES =
+      !currentUser ||
+      currentUser.role === 'ADMIN' ||
+      currentUser.permissions?.canExecuteMES === true;
 
-    setProcessProgressMap((prev) => ({
-      ...prev,
-      [processKey]: newProgress,
-    }));
-    saveProcessProgressToFirestore(processKey, newProgress);
-
-    // Sync order status if cancelling a completed order's process
-    const matchingOrderId = Object.keys(orders).find((id) => processKey.startsWith(`${id}_`));
-    if (matchingOrderId) {
-      const targetOrder = orders[matchingOrderId];
-      if (targetOrder) {
-        if (!nowCompleted && (targetOrder.status === 'COMPLETED' || targetOrder.archived)) {
-          const updatedOrder: Order = {
-            ...targetOrder,
-            status: 'IN_PROGRESS',
-            archived: false,
-          };
-          setOrders((prev) => ({
-            ...prev,
-            [matchingOrderId]: updatedOrder,
-          }));
-          saveOrderToFirestore(updatedOrder);
-        }
-      }
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
     }
-  };
 
-  const handleUpdateAssignee = (
-    processKey: string,
-    worker: string,
-    machine: string
-  ) => {
-    const existing = processProgressMap[processKey] || { isCompleted: false };
-    const updatedProgress = {
-      ...existing,
-      worker,
-      machine,
-    };
-
-    setProcessProgressMap((prev) => ({
-      ...prev,
-      [processKey]: updatedProgress,
-    }));
-    saveProcessProgressToFirestore(processKey, updatedProgress);
-  };
-
-  const handleUpdateProgress = (
-    processKey: string,
-    progress: import('./types').ProcessProgressItem
-  ) => {
     setProcessProgressMap((prev) => {
       const existing = prev[processKey] || {};
-      const updated: import('./types').ProcessProgressItem = {
-        ...existing,
-        ...progress,
-      };
+      const updated = { ...existing, ...updates };
+
+      if (updates.isCompleted !== undefined) {
+        if (updates.isCompleted) {
+          updated.completedAt =
+            updates.completedAt ||
+            new Date().toLocaleDateString('ko-KR', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+        } else {
+          updated.completedAt = undefined;
+        }
+      }
+
       saveProcessProgressToFirestore(processKey, updated);
+
       return {
         ...prev,
         [processKey]: updated,
@@ -552,30 +616,15 @@ export default function App() {
     });
   };
 
-  const handleSaveNewProductType = (
-    typeName: string,
-    processes: { name: string; category: ProcessCategory; durationHours: number }[]
-  ) => {
-    const newTypeId = `TYPE_CUSTOM_${Date.now()}`;
-    const newType: ProductType = {
-      id: newTypeId,
-      name: typeName,
-      isReference: false,
-      processes,
-    };
-
+  const handleSaveNewProductType = (newType: ProductType) => {
     setProductTypes((prev) => ({
       ...prev,
-      [newTypeId]: newType,
+      [newType.id]: newType,
     }));
     saveProductTypeToFirestore(newType);
   };
 
-  const handleCopyProductType = (
-    sourceTypeId: string,
-    newTypeName: string,
-    selectedIndexes: number[]
-  ) => {
+  const handleCopyProductType = (sourceTypeId: string, newTypeName: string, selectedIndexes: number[]) => {
     const source = productTypes[sourceTypeId];
     if (!source) return;
 
@@ -649,20 +698,55 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    await logoutUserAccount(currentUser);
-    setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEY_USER);
+  // Login Success Handler
+  const handleLoginSuccess = (user: User, rememberMe: boolean = false) => {
+    const session = createAuthSession(user, rememberMe);
+    setAuthSession(session);
+    setSessionNotice(null);
+    setIsWarningOpen(false);
+  };
+
+  // Logout Handler with complete session purge and state clear
+  const handleLogout = async (reasonNotice?: string) => {
+    const userIdent = currentUser?.uid || currentUser?.email || currentUser?.name;
+    setIsWarningOpen(false);
+    clearAllAuthSessions();
+    setAuthSession(null);
+
+    if (reasonNotice) {
+      setSessionNotice(reasonNotice);
+    }
+
+    try {
+      if (userIdent) {
+        await setUserOnlineStatus(userIdent, false);
+      }
+      await logoutUserAccount(currentUser);
+    } catch (err) {
+      console.warn('Logout cleanup error:', err);
+    }
+  };
+
+  // Extend Session Handler (from Inactivity warning modal)
+  const handleExtendSession = () => {
+    extendSession();
+    setIsWarningOpen(false);
+    setWarningSeconds(INACTIVITY_WARNING_COUNTDOWN_SECONDS);
+    if (authSession) {
+      setAuthSession({
+        ...authSession,
+        lastActiveAt: Date.now(),
+        expiresAt: Date.now() + (authSession.rememberMe ? 7 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000),
+      });
+    }
   };
 
   // Enforce Login before accessing the Dashboard and Scheduler
   if (!currentUser) {
     return (
       <LoginScreen
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
-        }}
+        onLoginSuccess={handleLoginSuccess}
+        sessionNotice={sessionNotice}
       />
     );
   }
@@ -679,6 +763,7 @@ export default function App() {
         scheduledTasks={scheduledTasks}
         operatorCount={approvedOperators.length}
         currentUser={currentUser}
+        onLogout={() => handleLogout()}
       />
 
       {/* Main Container */}
@@ -691,7 +776,7 @@ export default function App() {
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
           onOpenUserApprovalModal={() => setIsUserApprovalModalOpen(true)}
           onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-          onLogout={handleLogout}
+          onLogout={() => handleLogout()}
         />
 
         {/* Content View Area */}
@@ -728,122 +813,85 @@ export default function App() {
               <ExecutiveSummary
                 orders={orders}
                 productTypes={productTypes}
+                processProgressMap={processProgressMap}
                 scheduledTasks={scheduledTasks}
-                filterOptions={filterOptions}
-                setFilterOptions={setFilterOptions}
-                onDeleteOrder={handleDeleteOrder}
+                onSelectTask={(key) => setSelectedTaskKey(key)}
                 onArchiveOrder={handleArchiveOrder}
-                onUpdateOrder={handleUpdateOrder}
-                onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
+                onDeleteOrder={handleDeleteOrder}
+                onCompleteAllProcesses={handleCompleteAllOrderProcesses}
                 onNavigateToOrderForm={() => setActiveTab('order-form')}
-                onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
                 currentUser={currentUser}
-              />
-
-              {/* MCT Machine & Worker Monitoring Status Board */}
-              <EquipmentView
-                items={scheduledTasks}
-                orders={orders}
-                approvedOperators={approvedOperators}
-                currentUser={currentUser}
-                usersList={usersList}
               />
             </>
           )}
 
-          {/* TAB: NEW ORDER REGISTRATION */}
+          {/* TAB: NEW ORDER CREATION */}
           {activeTab === 'order-form' && (
             <OrderForm
               productTypes={productTypes}
-              orders={orders}
-              approvedOperators={approvedOperators}
               onCreateOrder={handleCreateOrder}
-              onUpdateOrder={handleUpdateOrder}
-              onDeleteOrder={handleDeleteOrder}
-              onArchiveOrder={handleArchiveOrder}
-              onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
-              scheduledTasks={scheduledTasks}
-              currentUser={currentUser}
-              processProgressMap={processProgressMap}
+              onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
+              onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
+              onOrderCreatedSuccess={() => setActiveTab('order-master')}
               pendingCopyOrder={pendingCopyOrder}
               onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
+              approvedOperators={approvedOperators}
             />
           )}
 
-          {/* TAB: ORDER MASTER MANAGEMENT (등록된 수주 목록 및 수정/보관 관리) */}
-          {(activeTab === 'order-master' || activeTab === 'order-list') && (
+          {/* TAB: ORDER MASTER TABLE & ROUTING SPEC EDITOR */}
+          {activeTab === 'order-master' && (
             <OrderMasterManagementView
               orders={orders}
               productTypes={productTypes}
-              scheduledTasks={scheduledTasks}
-              currentUser={currentUser}
               processProgressMap={processProgressMap}
+              scheduledTasks={scheduledTasks}
               onUpdateOrder={handleUpdateOrder}
               onDeleteOrder={handleDeleteOrder}
               onArchiveOrder={handleArchiveOrder}
-              onCompleteAllOrderProcesses={handleCompleteAllOrderProcesses}
-              onNavigateToNewOrder={() => setActiveTab('order-form')}
+              onRestoreOrder={handleRestoreOrder}
+              onCompleteAllProcesses={handleCompleteAllOrderProcesses}
+              onNavigateToOrderForm={() => setActiveTab('order-form')}
               onCopyOrderToNew={handleCopyOrderToNew}
+              currentUser={currentUser}
+              approvedOperators={approvedOperators}
             />
           )}
 
-          {/* TAB: PROCESS TIMELINE GANTT CHART */}
+          {/* TAB: GANTT CHART TIMELINE */}
           {activeTab === 'timeline' && (
-            <>
-              <GanttChart
-                items={filteredScheduledTasks}
-                itemsMap={taskMap}
-                minStart={minStart}
-                maxEnd={maxEnd}
-                totalWorkingHours={totalWorkingHours}
-                onSelectItem={(item) => setSelectedTaskKey(item.processKey)}
-                selectedItemKey={selectedTaskKey}
-                orders={orders}
-              />
-
-              {/* Sticky Process Control Modal for Selected Task */}
-              {selectedTaskItem && (
-                <ProcessDetailModal
-                  selectedItem={selectedTaskItem}
-                  currentUser={currentUser}
-                  approvedOperators={approvedOperators}
-                  onClose={() => setSelectedTaskKey(null)}
-                  onUpdateAssignee={(worker, machine) =>
-                    handleUpdateAssignee(selectedTaskItem.processKey, worker, machine)
-                  }
-                  onToggleComplete={() =>
-                    handleToggleProcessComplete(
-                      selectedTaskItem.processKey,
-                      selectedTaskItem.worker,
-                      selectedTaskItem.machine
-                    )
-                  }
-                />
-              )}
-            </>
-          )}
-
-          {/* TAB: SHOP FLOOR EXECUTION TERMINAL */}
-          {(activeTab === 'floor' || activeTab === 'execution') && (
-            <FloorExecutionView
-              items={scheduledTasks}
-              processProgressMap={processProgressMap}
-              currentUser={currentUser}
-              approvedOperators={approvedOperators}
-              onToggleComplete={handleToggleProcessComplete}
-              onUpdateAssignee={handleUpdateAssignee}
+            <GanttChart
+              scheduledTasks={scheduledTasks}
+              filteredTasks={filteredScheduledTasks}
+              orders={orders}
+              minStart={minStart}
+              maxEnd={maxEnd}
+              filterOptions={filterOptions}
+              setFilterOptions={setFilterOptions}
+              onSelectTask={(key) => setSelectedTaskKey(key)}
               onUpdateProgress={handleUpdateProgress}
             />
           )}
 
-          {/* TAB: PRODUCT ROUTING & BOP MASTER */}
+          {/* TAB: FLOOR MES TERMINAL */}
+          {activeTab === 'execution' && (
+            <FloorExecutionView
+              scheduledTasks={scheduledTasks}
+              orders={orders}
+              productTypes={productTypes}
+              processProgressMap={processProgressMap}
+              onUpdateProgress={handleUpdateProgress}
+              currentUser={currentUser}
+              approvedOperators={approvedOperators}
+            />
+          )}
+
+          {/* TAB: PRODUCT ROUTING MASTER */}
           {activeTab === 'routing' && (
             <ProductRoutingView
               productTypes={productTypes}
-              currentUser={currentUser}
+              onSaveNewProductType={handleSaveNewProductType}
               onUpdateProductType={handleUpdateProductType}
-              onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
-              onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
             />
           )}
 
@@ -871,6 +919,14 @@ export default function App() {
         </div>
       </div>
 
+      {/* Global Inactivity Warning Modal */}
+      <InactivityWarningModal
+        isOpen={isWarningOpen}
+        remainingSeconds={warningSeconds}
+        onExtendSession={handleExtendSession}
+        onLogout={() => handleLogout()}
+      />
+
       {/* Global Modals */}
       <ArchiveModal
         isOpen={isArchiveModalOpen}
@@ -885,8 +941,7 @@ export default function App() {
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
         onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+          handleLoginSuccess(user, false);
         }}
       />
 
