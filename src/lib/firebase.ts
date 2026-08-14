@@ -366,16 +366,20 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     });
   }
 
-  // If super admin email or no user found for first login attempt
-  const isSuperAdmin = normalizedEmail === 'noworriesmate01@gmail.com';
+  // If super admin email or default admin or no user found for first login attempt
+  const isSuperAdmin =
+    normalizedEmail === 'noworriesmate01@gmail.com' ||
+    normalizedEmail === 'admin@jstech.co.kr' ||
+    normalizedEmail === 'admin@jun-sung.co.kr';
+
   if (!matchedUser) {
     if (isSuperAdmin) {
-      const uid = `super_admin_noworriesmate01`;
+      const uid = `admin_${normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
       matchedUser = {
         uid,
         email: normalizedEmail,
         password: pass,
-        name: '대표 관리자',
+        name: normalizedEmail.includes('noworries') ? '대표 관리자' : '시스템 관리자',
         role: 'ADMIN',
         isApproved: true,
         createdAt: new Date().toISOString(),
@@ -389,7 +393,29 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
       };
       await setDoc(doc(db, 'users', uid), matchedUser);
     } else {
-      throw new Error('INVALID_CREDENTIALS');
+      const usersSnap = await getDocs(collection(db, 'users'));
+      if (usersSnap.empty) {
+        const uid = `user_init_${Date.now()}`;
+        matchedUser = {
+          uid,
+          email: normalizedEmail,
+          password: pass,
+          name: '시스템 관리자',
+          role: 'ADMIN',
+          isApproved: true,
+          createdAt: new Date().toISOString(),
+          permissions: {
+            canEditOrder: true,
+            canExecuteMES: true,
+            canManageUsers: true,
+            canEditMaster: true,
+            canArchive: true,
+          },
+        };
+        await setDoc(doc(db, 'users', uid), matchedUser);
+      } else {
+        throw new Error('INVALID_CREDENTIALS');
+      }
     }
   }
 

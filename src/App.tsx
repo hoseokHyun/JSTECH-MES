@@ -191,6 +191,7 @@ export default function App() {
       if (now - lastActivityTime > 15000) {
         lastActivityTime = now;
         updateSessionActivity();
+        setAuthSession((prev) => (prev ? { ...prev, lastActiveAt: now } : null));
       }
     };
 
@@ -210,22 +211,16 @@ export default function App() {
     }
 
     const intervalId = setInterval(() => {
-      const stored = getStoredAuthSession();
-      if (!stored) {
-        handleLogout('세션이 만료되어 안전하게 자동 로그아웃되었습니다.');
-        return;
-      }
-
       const now = Date.now();
 
       // 1. Check Hard Expiration (8 hours or 7 days)
-      if (now > stored.expiresAt) {
-        handleLogout('세션 유효시간(8시간)이 만료되어 자동 로그아웃되었습니다.');
+      if (now > authSession.expiresAt) {
+        handleLogout('세션 유효시간이 만료되어 자동 로그아웃되었습니다.');
         return;
       }
 
       // 2. Check 30-minute Inactivity Timeout
-      const idleTime = now - stored.lastActiveAt;
+      const idleTime = now - authSession.lastActiveAt;
       if (idleTime >= INACTIVITY_TIMEOUT_MS) {
         if (!isWarningOpen) {
           setIsWarningOpen(true);
@@ -253,14 +248,14 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       const stored = getStoredAuthSession();
-      if (!stored) {
+      if (!stored && !authSession) {
         setAuthSession(null);
         window.history.replaceState(null, '', window.location.pathname);
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [authSession]);
 
   // Initial Theme Initialization
   useEffect(() => {
@@ -815,9 +810,13 @@ export default function App() {
                 productTypes={productTypes}
                 processProgressMap={processProgressMap}
                 scheduledTasks={scheduledTasks}
+                filterOptions={filterOptions}
+                setFilterOptions={setFilterOptions}
                 onSelectTask={(key) => setSelectedTaskKey(key)}
+                onUpdateOrder={handleUpdateOrder}
                 onArchiveOrder={handleArchiveOrder}
                 onDeleteOrder={handleDeleteOrder}
+                onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
                 onCompleteAllProcesses={handleCompleteAllOrderProcesses}
                 onNavigateToOrderForm={() => setActiveTab('order-form')}
                 currentUser={currentUser}

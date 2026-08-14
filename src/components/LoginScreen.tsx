@@ -146,36 +146,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
     }
   };
 
-  const handleQuickDemoLogin = (role: 'ADMIN' | 'USER' | 'VIEWER') => {
-    const roleNames: Record<string, string> = {
-      ADMIN: '관리자 (데모)',
-      USER: '작업자 A1 (데모)',
-      VIEWER: '조회 전용 (데모)'
-    };
-    const roleEmails: Record<string, string> = {
-      ADMIN: 'admin@jstech.co.kr',
-      USER: 'worker1@jstech.co.kr',
-      VIEWER: 'viewer@jstech.co.kr'
-    };
-
-    const demoUser: User = {
-      uid: `demo_${role.toLowerCase()}`,
-      name: roleNames[role] || '사용자 (데모)',
-      role: role === 'VIEWER' ? 'USER' : role,
-      email: roleEmails[role] || 'demo@jstech.co.kr',
-      isApproved: true,
-      loginAt: new Date().toISOString(),
-      permissions: {
-        canEditOrder: role === 'ADMIN',
-        canExecuteMES: role === 'ADMIN' || role === 'USER',
-        canManageUsers: role === 'ADMIN',
-        canEditMaster: role === 'ADMIN',
-        canArchive: role === 'ADMIN',
-      }
-    };
-    onLoginSuccess(demoUser, rememberMe);
-  };
-
   return (
     <div className="min-h-screen w-full bg-slate-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(0,196,180,0.15),rgba(255,255,255,0))] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-100 font-sans relative overflow-hidden select-none">
       {/* Background Grid Pattern */}
@@ -369,32 +339,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
                 </>
               )}
             </button>
-
-            {/* Quick Demo Logins */}
-            <div className="pt-3 border-t border-slate-800/80 space-y-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold">
-                <span>⚡ 빠른 테스트 접속</span>
-                <span className="text-[10px] text-slate-500 font-normal">권한별 테스트 모드</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin('ADMIN')}
-                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                >
-                  <Shield className="w-3.5 h-3.5 text-amber-400" />
-                  <span>관리자 (ADMIN)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin('USER')}
-                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-[#00C4B4]" />
-                  <span>현장담당자 (USER)</span>
-                </button>
-              </div>
-            </div>
           </form>
         )}
 

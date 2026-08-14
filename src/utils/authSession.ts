@@ -97,12 +97,30 @@ export function createAuthSession(user: User, rememberMe: boolean = false): Auth
   try {
     if (rememberMe) {
       // Persistent session in localStorage (max 7 days)
-      localStorage.setItem(STORAGE_KEY_SESSION_PERSISTENT, JSON.stringify(session));
-      sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT);
+      try {
+        localStorage.setItem(STORAGE_KEY_SESSION_PERSISTENT, JSON.stringify(session));
+      } catch {}
+      try {
+        sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT);
+      } catch {}
     } else {
       // Standard session in sessionStorage (wiped on browser close or reboot)
-      sessionStorage.setItem(STORAGE_KEY_SESSION_TRANSIENT, JSON.stringify(session));
-      localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT);
+      let savedInSession = false;
+      try {
+        sessionStorage.setItem(STORAGE_KEY_SESSION_TRANSIENT, JSON.stringify(session));
+        savedInSession = true;
+      } catch {}
+
+      // If sessionStorage is unavailable in restricted iframe sandbox, fallback to localStorage transient key
+      if (!savedInSession) {
+        try {
+          localStorage.setItem(STORAGE_KEY_SESSION_TRANSIENT, JSON.stringify(session));
+        } catch {}
+      }
+
+      try {
+        localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT);
+      } catch {}
     }
   } catch (e) {
     console.error('Failed to store auth session:', e);
@@ -122,17 +140,29 @@ export function getStoredAuthSession(): AuthSession | null {
 
   // 1. Check transient session in sessionStorage first (when rememberMe is OFF)
   try {
-    const rawTransient = sessionStorage.getItem(STORAGE_KEY_SESSION_TRANSIENT);
+    let rawTransient: string | null = null;
+    try {
+      rawTransient = sessionStorage.getItem(STORAGE_KEY_SESSION_TRANSIENT);
+    } catch {}
+
+    // Fallback if sessionStorage was restricted
+    if (!rawTransient) {
+      try {
+        rawTransient = localStorage.getItem(STORAGE_KEY_SESSION_TRANSIENT);
+      } catch {}
+    }
+
     if (rawTransient) {
       const session = JSON.parse(rawTransient) as AuthSession;
       if (isValidSession(session, now)) {
         return session;
       } else {
-        sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT);
+        try { sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT); } catch {}
+        try { localStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT); } catch {}
       }
     }
   } catch (e) {
-    sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT);
+    try { sessionStorage.removeItem(STORAGE_KEY_SESSION_TRANSIENT); } catch {}
   }
 
   // 2. Check persistent session in localStorage (ONLY valid if rememberMe was true and not expired)
@@ -143,11 +173,11 @@ export function getStoredAuthSession(): AuthSession | null {
       if (session.rememberMe && isValidSession(session, now)) {
         return session;
       } else {
-        localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT);
+        try { localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT); } catch {}
       }
     }
   } catch (e) {
-    localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT);
+    try { localStorage.removeItem(STORAGE_KEY_SESSION_PERSISTENT); } catch {}
   }
 
   return null;

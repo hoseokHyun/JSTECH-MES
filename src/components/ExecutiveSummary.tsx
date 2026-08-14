@@ -21,37 +21,59 @@ interface ExecutiveSummaryProps {
   orders: Record<string, Order>;
   productTypes: Record<string, ProductType>;
   scheduledTasks: ScheduledTaskItem[];
-  filterOptions: FilterOptions;
-  setFilterOptions: React.Dispatch<React.SetStateAction<FilterOptions>>;
+  filterOptions?: FilterOptions;
+  setFilterOptions?: React.Dispatch<React.SetStateAction<FilterOptions>>;
   onDeleteOrder: (orderId: string) => void;
   onArchiveOrder: (orderId: string) => void;
-  onUpdateOrder: (updatedOrder: Order) => void;
+  onUpdateOrder?: (updatedOrder: Order) => void;
   onOpenArchiveModal?: () => void;
   onNavigateToOrderForm?: () => void;
+  onSelectTask?: (key: string) => void;
   onCompleteAllOrderProcesses?: (
     orderId: string,
     forceComplete: boolean,
     overrideProcesses?: ProcessStep[],
     overrideQty?: number
   ) => void;
+  onCompleteAllProcesses?: (
+    orderId: string,
+    forceComplete: boolean,
+    overrideProcesses?: ProcessStep[],
+    overrideQty?: number
+  ) => void;
   currentUser?: User | null;
+  processProgressMap?: any;
 }
 
 export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   orders,
   productTypes,
   scheduledTasks,
-  filterOptions,
-  setFilterOptions,
+  filterOptions: propFilterOptions,
+  setFilterOptions: propSetFilterOptions,
   onDeleteOrder,
   onArchiveOrder,
   onUpdateOrder,
   onOpenArchiveModal,
   onNavigateToOrderForm,
+  onSelectTask,
   onCompleteAllOrderProcesses,
+  onCompleteAllProcesses,
   currentUser,
 }) => {
+  const completeAllFn = onCompleteAllOrderProcesses || onCompleteAllProcesses;
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Local fallback filter options if not provided via props
+  const [localFilterOptions, setLocalFilterOptions] = useState<FilterOptions>({
+    category: 'ALL',
+    completionStatus: 'ALL',
+    searchQuery: '',
+    selectedWorker: 'ALL',
+  });
+
+  const filterOptions = propFilterOptions || localFilterOptions;
+  const setFilterOptions = propSetFilterOptions || setLocalFilterOptions;
 
   // Permission check for editing order details & archiving
   const canEditOrder =
@@ -84,6 +106,39 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   const inProgressList: Order[] = activeOrders.filter((o) => (orderProgressMap[o.id]?.pct || 0) < 100);
   const completedList: Order[] = activeOrders.filter((o) => (orderProgressMap[o.id]?.pct || 0) === 100);
   const archivedList: Order[] = (Object.values(orders) as Order[]).filter((o) => o.archived);
+
+  // Filtered orders for table display
+  const displayedOrders = activeOrders.filter((ord) => {
+    const prog = orderProgressMap[ord.id] || { completed: 0, total: 0, pct: 0 };
+    const isCompleted = prog.pct === 100;
+
+    // Status filter
+    if (filterOptions.completionStatus === 'PENDING' && isCompleted) return false;
+    if (filterOptions.completionStatus === 'COMPLETED' && !isCompleted) return false;
+
+    // Category filter
+    if (filterOptions.category && filterOptions.category !== 'ALL') {
+      const type = productTypes[ord.typeId];
+      const processes = (ord.customProcesses && ord.customProcesses.length > 0)
+        ? ord.customProcesses
+        : (type ? type.processes : []);
+      const hasCategory = processes.some((p) => p.category === filterOptions.category);
+      if (!hasCategory) return false;
+    }
+
+    // Search query filter
+    if (filterOptions.searchQuery && filterOptions.searchQuery.trim()) {
+      const q = filterOptions.searchQuery.trim().toLowerCase();
+      const type = productTypes[ord.typeId];
+      const typeName = type ? type.name.toLowerCase() : '';
+      const orderName = ord.name.toLowerCase();
+      const orderId = ord.id.toLowerCase();
+      const matched = orderName.includes(q) || orderId.includes(q) || typeName.includes(q);
+      if (!matched) return false;
+    }
+
+    return true;
+  });
 
   return (
     <section className="w-full space-y-4">
@@ -346,14 +401,16 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {activeOrders.length === 0 ? (
+              {displayedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-6 text-center text-slate-400 font-semibold">
-                    등록된 수주 건이 없습니다. '신규 수주 등록'에서 수주를 새로 등록해 주세요.
+                    {activeOrders.length === 0
+                      ? "등록된 수주 건이 없습니다. '신규 수주 등록'에서 수주를 새로 등록해 주세요."
+                      : '검색 조건에 일치하는 수주 건이 없습니다.'}
                   </td>
                 </tr>
               ) : (
-                activeOrders.map((ord: Order) => {
+                displayedOrders.map((ord: Order) => {
                   const type = productTypes[ord.typeId];
                   const typeName = type ? type.name : '-';
                   const prog = orderProgressMap[ord.id] || { completed: 0, total: 0, pct: 0 };
@@ -385,8 +442,8 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                       <td className="p-2.5 text-center">
                         <button
                           onClick={() => {
-                            if (onCompleteAllOrderProcesses) {
-                              onCompleteAllOrderProcesses(ord.id, !isCompleted);
+                            if (completeAllFn) {
+                              completeAllFn(ord.id, !isCompleted);
                             }
                           }}
                           className={`px-2 py-0.5 rounded text-[10px] font-black transition cursor-pointer hover:opacity-80 active:scale-95 ${
@@ -428,8 +485,8 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                               if (isCompleted) {
                                 onArchiveOrder(ord.id);
                               } else {
-                                if (onCompleteAllOrderProcesses) {
-                                  onCompleteAllOrderProcesses(ord.id, true);
+                                if (completeAllFn) {
+                                  completeAllFn(ord.id, true);
                                 }
                                 onArchiveOrder(ord.id);
                               }
