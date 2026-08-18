@@ -146,6 +146,15 @@ export async function saveProductTypeToFirestore(productType: ProductType) {
   }
 }
 
+// Delete ProductType from Firestore
+export async function deleteProductTypeFromFirestore(typeId: string) {
+  try {
+    await deleteDoc(doc(db, 'productTypes', typeId));
+  } catch (err) {
+    console.error('Error deleting product type from Firestore:', err);
+  }
+}
+
 // 3. Subscribe to ProcessProgress in Firestore
 export function subscribeProcessProgress(
   onUpdate: (progressMap: ProcessProgressMap) => void,

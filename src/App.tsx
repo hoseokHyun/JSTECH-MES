@@ -23,6 +23,7 @@ import {
   deleteOrderFromFirestore,
   subscribeProductTypes,
   saveProductTypeToFirestore,
+  deleteProductTypeFromFirestore,
   subscribeProcessProgress,
   saveProcessProgressToFirestore,
   subscribeUsersList,
@@ -624,10 +625,19 @@ export default function App() {
     typeName: string,
     processes: { name: string; category: ProcessCategory; durationHours: number }[]
   ) => {
+    const trimmed = typeName.trim();
+    const isDuplicate = Object.values(productTypes).some(
+      (t) => t.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert('이미 존재하는 마스터 이름입니다. 다른 이름을 입력해주세요.');
+      return;
+    }
+
     const newTypeId = `TYPE_${Date.now()}`;
     const newType: ProductType = {
       id: newTypeId,
-      name: typeName,
+      name: trimmed,
       isReference: false,
       processes: processes.map((p) => ({
         name: p.name,
@@ -642,6 +652,15 @@ export default function App() {
     const source = productTypes[sourceTypeId];
     if (!source) return;
 
+    const trimmed = newTypeName.trim();
+    const isDuplicate = Object.values(productTypes).some(
+      (t) => t.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert('이미 존재하는 마스터 이름입니다. 다른 이름을 입력해주세요.');
+      return;
+    }
+
     const filteredProcesses = source.processes.filter((_, idx) =>
       selectedIndexes.includes(idx)
     );
@@ -649,7 +668,7 @@ export default function App() {
     const newTypeId = `TYPE_COPY_${Date.now()}`;
     const newType: ProductType = {
       id: newTypeId,
-      name: newTypeName,
+      name: trimmed,
       isReference: false,
       processes: filteredProcesses,
     };
@@ -667,6 +686,15 @@ export default function App() {
       [updatedType.id]: updatedType,
     }));
     saveProductTypeToFirestore(updatedType);
+  };
+
+  const handleDeleteProductType = (typeId: string) => {
+    setProductTypes((prev) => {
+      const next = { ...prev };
+      delete next[typeId];
+      return next;
+    });
+    deleteProductTypeFromFirestore(typeId);
   };
 
   const handleResetData = async () => {
@@ -917,9 +945,11 @@ export default function App() {
             {activeTab === 'routing' && (
               <ProductRoutingView
                 productTypes={productTypes}
+                orders={orders}
                 currentUser={currentUser}
                 onSaveNewProductType={handleSaveNewProductType}
                 onUpdateProductType={handleUpdateProductType}
+                onDeleteProductType={handleDeleteProductType}
                 onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
                 onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
               />
