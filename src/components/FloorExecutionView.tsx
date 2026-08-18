@@ -72,6 +72,11 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   const [selectedTaskForModal, setSelectedTaskForModal] = useState<ScheduledTaskItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const currentTaskForModal = React.useMemo(() => {
+    if (!selectedTaskForModal) return null;
+    return taskList.find((t) => t.processKey === selectedTaskForModal.processKey) || selectedTaskForModal;
+  }, [taskList, selectedTaskForModal]);
+
   // Pause Prompt State
   const [pausePromptTask, setPausePromptTask] = useState<ScheduledTaskItem | null>(null);
   const [selectedPauseReason, setSelectedPauseReason] = useState<PauseReason>('설비 고장');
@@ -559,14 +564,19 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       )}
 
       {/* Modal */}
-      <CalendarTaskDetailModal
-        task={selectedTaskForModal}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onUpdateProgress={onUpdateProgress}
-        currentUser={currentUser}
-        approvedOperators={approvedOperators}
-      />
+      {isModalOpen && currentTaskForModal && (
+        <CalendarTaskDetailModal
+          task={currentTaskForModal}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedTaskForModal(null);
+          }}
+          onUpdateProgress={onUpdateProgress}
+          currentUser={currentUser}
+          approvedOperators={approvedOperators}
+        />
+      )}
     </div>
   );
 };

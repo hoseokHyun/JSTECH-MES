@@ -53,6 +53,11 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   const [selectedTask, setSelectedTask] = useState<ScheduledTaskItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  const currentSelectedTask = useMemo(() => {
+    if (!selectedTask) return null;
+    return scheduledTasks.find((t) => t.processKey === selectedTask.processKey) || selectedTask;
+  }, [scheduledTasks, selectedTask]);
+
   // Format Date Helper
   const formatDateTime = (dateVal: Date | string | null | undefined): string => {
     if (!dateVal) return '-';
@@ -589,14 +594,19 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
       </div>
 
       {/* Modal */}
-      <CalendarTaskDetailModal
-        task={selectedTask}
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        onUpdateProgress={onUpdateProgress}
-        currentUser={currentUser}
-        approvedOperators={approvedOperators}
-      />
+      {isDetailModalOpen && currentSelectedTask && (
+        <CalendarTaskDetailModal
+          task={currentSelectedTask}
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedTask(null);
+          }}
+          onUpdateProgress={onUpdateProgress}
+          currentUser={currentUser}
+          approvedOperators={approvedOperators}
+        />
+      )}
     </div>
   );
 };

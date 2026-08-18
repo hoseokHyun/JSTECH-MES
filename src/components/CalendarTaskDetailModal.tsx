@@ -20,7 +20,9 @@ import {
   TrendingDown,
   TrendingUp,
   Save,
-  Check
+  Check,
+  Zap,
+  Info
 } from 'lucide-react';
 
 interface CalendarTaskDetailModalProps {
@@ -59,6 +61,26 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   const [elapsedMinutes, setElapsedMinutes] = useState<number>(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Optimistic local override for instantaneous UI transition
+  const [localTaskOverride, setLocalTaskOverride] = useState<Partial<ScheduledTaskItem> | null>(null);
+
+  // Prominent Toast Notification state
+  const [toastNotification, setToastNotification] = useState<{
+    type: 'success' | 'warning' | 'info';
+    title: string;
+    detail?: string;
+  } | null>(null);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (toastNotification) {
+      const timer = setTimeout(() => {
+        setToastNotification(null);
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [toastNotification]);
+
   // Sync state when task changes or modal opens
   useEffect(() => {
     if (task) {
@@ -69,32 +91,46 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
       setIsPausePromptOpen(false);
       setSelectedPauseReason('설비 고장');
       setCustomPauseReason('');
+      setLocalTaskOverride(null);
     }
-  }, [task, isOpen]);
+  }, [task?.processKey, isOpen]);
+
+  // Active task item merging optimistic local overrides
+  const activeTask: ScheduledTaskItem | null = task
+    ? {
+        ...task,
+        ...(localTaskOverride || {}),
+        worker: selectedWorker || (localTaskOverride?.worker ?? task.worker),
+        machine: selectedMachine || (localTaskOverride?.machine ?? task.machine),
+      }
+    : null;
 
   // Live timer for currently IN_PROGRESS task
   useEffect(() => {
-    if (!task) return;
-    if (task.status === 'IN_PROGRESS' && task.actualStart) {
+    if (!activeTask) return;
+    if (activeTask.status === 'IN_PROGRESS' && activeTask.actualStart) {
       const calcElapsed = () => {
-        const start = new Date(task.actualStart!).getTime();
+        const start = new Date(activeTask.actualStart!).getTime();
         const now = Date.now();
         const totalRaw = Math.max(0, Math.floor((now - start) / 60000));
-        
+
         // Subtract completed pause durations
-        const pauseTotal = (task.pauseHistory || []).reduce((acc, p) => acc + (p.durationMinutes || 0), 0);
+        const pauseTotal = (activeTask.pauseHistory || []).reduce(
+          (acc, p) => acc + (p.durationMinutes || 0),
+          0
+        );
         setElapsedMinutes(Math.max(0, totalRaw - pauseTotal));
       };
 
       calcElapsed();
-      const interval = setInterval(calcElapsed, 10000);
+      const interval = setInterval(calcElapsed, 1000);
       return () => clearInterval(interval);
-    } else if (task.actualMinutes !== null && task.actualMinutes !== undefined) {
-      setElapsedMinutes(task.actualMinutes);
+    } else if (activeTask.actualMinutes !== null && activeTask.actualMinutes !== undefined) {
+      setElapsedMinutes(activeTask.actualMinutes);
     }
-  }, [task]);
+  }, [activeTask?.status, activeTask?.actualStart, activeTask?.actualMinutes, activeTask?.pauseHistory]);
 
-  if (!isOpen || !task) return null;
+  if (!isOpen || !task || !activeTask) return null;
 
   // Format Date Helper
   const formatDateTime = (dateVal: Date | string | null | undefined): string => {
@@ -109,46 +145,46 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const getStatusBadge = () => {
-    switch (task.status) {
+    switch (activeTask.status) {
       case 'IN_PROGRESS':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 animate-pulse">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
             진행중 ({elapsedMinutes}분)
           </span>
         );
       case 'PAUSED':
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-orange-100 text-orange-900 border border-orange-300">
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-orange-100 text-orange-900 border border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-700">
             <Pause className="w-3.5 h-3.5" />
-            일시정지: {task.pauseReason || '작업 대기'}
+            일시정지: {activeTask.pauseReason || '작업 대기'}
           </span>
         );
       case 'COMPLETED':
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            완료 ({task.actualMinutes || task.plannedMinutes}분)
+            완료 ({activeTask.actualMinutes || activeTask.plannedMinutes}분)
           </span>
         );
       case 'DELAYED':
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-900 border border-rose-300">
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700">
             <AlertTriangle className="w-3.5 h-3.5" />
             지연 예상
           </span>
         );
       case 'PLANNED':
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-900 border border-blue-300">
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700">
             <Clock className="w-3.5 h-3.5" />
             계획됨
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-            대기/예정
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+            대기/미착수
           </span>
         );
     }
@@ -158,15 +194,41 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   const handleStartTask = () => {
     const nowIso = new Date().toISOString();
     const workerName = selectedWorker || currentUser?.name || '현장담당자';
+    const effectiveMachine = selectedMachine || task.machine;
+
+    // 1. Optimistic instantaneous UI state update (0ms UI latency)
+    setLocalTaskOverride({
+      status: 'IN_PROGRESS',
+      actualStart: nowIso,
+      worker: workerName,
+      machine: effectiveMachine,
+      isCompleted: false,
+      completedAt: null,
+    });
+
+    // 2. Real-time store & backend synchronization
     onUpdateProgress(task.processKey, {
       status: 'IN_PROGRESS',
       actualStart: nowIso,
       worker: workerName,
-      machine: selectedMachine || task.machine,
+      machine: effectiveMachine,
       isCompleted: false,
       completedAt: null,
       memo,
-      delayReason
+      delayReason,
+    });
+
+    // 3. Clear, unambiguous feedback (Toast)
+    const timeFormatted = new Date(nowIso).toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    setToastNotification({
+      type: 'success',
+      title: '작업이 성공적으로 시작되었습니다.',
+      detail: `실제 시작 시간(${timeFormatted})이 기록되었으며, 실시간 '진행중' 상태로 전환되었습니다.`,
     });
   };
 
@@ -176,30 +238,46 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
   const confirmPause = () => {
     const nowIso = new Date().toISOString();
-    const reasonText = selectedPauseReason === '기타' ? customPauseReason || '기타 사유' : selectedPauseReason;
-    const currentHistory: PauseLog[] = [...(task.pauseHistory || [])];
+    const reasonText =
+      selectedPauseReason === '기타' ? customPauseReason || '기타 사유' : selectedPauseReason;
+    const currentHistory: PauseLog[] = [...(activeTask.pauseHistory || [])];
     currentHistory.push({
       pausedAt: nowIso,
-      reason: reasonText
+      reason: reasonText,
+    });
+
+    setLocalTaskOverride({
+      status: 'PAUSED',
+      pauseReason: reasonText,
+      pauseHistory: currentHistory,
+      worker: selectedWorker || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
     });
 
     onUpdateProgress(task.processKey, {
       status: 'PAUSED',
       pauseReason: reasonText,
       pauseHistory: currentHistory,
-      worker: selectedWorker || task.worker,
-      machine: selectedMachine || task.machine,
+      worker: selectedWorker || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
       memo,
-      delayReason
+      delayReason,
     });
+
     setIsPausePromptOpen(false);
+
+    setToastNotification({
+      type: 'warning',
+      title: '작업이 일시정지되었습니다.',
+      detail: `사유: ${reasonText} (일시정지 중 실제 작업시간 카운트가 중지됩니다.)`,
+    });
   };
 
   const handleResumeTask = () => {
     const now = new Date();
     const nowIso = now.toISOString();
-    const currentHistory: PauseLog[] = [...(task.pauseHistory || [])];
-    
+    const currentHistory: PauseLog[] = [...(activeTask.pauseHistory || [])];
+
     // Update the last active pause log
     if (currentHistory.length > 0) {
       const last = currentHistory[currentHistory.length - 1];
@@ -211,25 +289,41 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
       }
     }
 
+    setLocalTaskOverride({
+      status: 'IN_PROGRESS',
+      pauseHistory: currentHistory,
+      pauseReason: '',
+      worker: selectedWorker || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
+    });
+
     onUpdateProgress(task.processKey, {
       status: 'IN_PROGRESS',
       pauseHistory: currentHistory,
       pauseReason: '',
-      worker: selectedWorker || task.worker,
-      machine: selectedMachine || task.machine,
+      worker: selectedWorker || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
       memo,
-      delayReason
+      delayReason,
+    });
+
+    setToastNotification({
+      type: 'success',
+      title: '작업이 성공적으로 재개되었습니다.',
+      detail: '실제 작업시간 카운트가 다시 시작되었습니다.',
     });
   };
 
   const handleCompleteTask = () => {
     const now = new Date();
     const nowIso = now.toISOString();
-    const start = task.actualStart ? new Date(task.actualStart).getTime() : task.plannedStart.getTime();
+    const start = activeTask.actualStart
+      ? new Date(activeTask.actualStart).getTime()
+      : activeTask.plannedStart.getTime();
     const rawMinutes = Math.max(1, Math.round((now.getTime() - start) / 60000));
-    
+
     // Deduct pause times
-    const currentHistory: PauseLog[] = [...(task.pauseHistory || [])];
+    const currentHistory: PauseLog[] = [...(activeTask.pauseHistory || [])];
     if (currentHistory.length > 0) {
       const last = currentHistory[currentHistory.length - 1];
       if (!last.resumedAt) {
@@ -241,8 +335,21 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
     const totalPauseMins = currentHistory.reduce((acc, p) => acc + (p.durationMinutes || 0), 0);
     const finalActualMins = Math.max(1, rawMinutes - totalPauseMins);
-    const plannedMins = task.plannedMinutes;
+    const plannedMins = activeTask.plannedMinutes;
     const diff = finalActualMins - plannedMins;
+
+    setLocalTaskOverride({
+      status: 'COMPLETED',
+      isCompleted: true,
+      completedAt: nowIso,
+      actualEnd: nowIso,
+      actualMinutes: finalActualMins,
+      pauseHistory: currentHistory,
+      delayMinutes: diff > 0 ? diff : 0,
+      delayReason: diff > 0 ? delayReason || '공정 난이도 및 치수보정' : '',
+      worker: selectedWorker || currentUser?.name || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
+    });
 
     onUpdateProgress(task.processKey, {
       status: 'COMPLETED',
@@ -253,14 +360,37 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
       pauseHistory: currentHistory,
       delayMinutes: diff > 0 ? diff : 0,
       delayReason: diff > 0 ? delayReason || '공정 난이도 및 치수보정' : '',
-      worker: selectedWorker || currentUser?.name || task.worker,
-      machine: selectedMachine || task.machine,
-      memo
+      worker: selectedWorker || currentUser?.name || activeTask.worker,
+      machine: selectedMachine || activeTask.machine,
+      memo,
+    });
+
+    setToastNotification({
+      type: 'success',
+      title: '공정 작업이 완료 처리되었습니다.',
+      detail: `총 실제 작업시간: ${finalActualMins}분 (계획 ${plannedMins}분 대비 ${
+        diff > 0 ? `+${diff}분 초과` : diff < 0 ? `${Math.abs(diff)}분 단축` : '정확히 일치'
+      })`,
     });
   };
 
   const handleResetOrCancel = () => {
-    if (window.confirm('이 공정의 실적을 초기화하고 대기 상태로 되돌리시겠습니까?')) {
+    if (window.confirm('이 공정의 실적을 초기화하고 대기(미착수) 상태로 되돌리시겠습니까?')) {
+      setLocalTaskOverride({
+        status: 'READY',
+        isCompleted: false,
+        completedAt: null,
+        actualStart: null,
+        actualEnd: null,
+        actualMinutes: undefined,
+        pauseHistory: [],
+        pauseReason: '',
+        delayMinutes: 0,
+        delayReason: '',
+        worker: selectedWorker,
+        machine: selectedMachine,
+      });
+
       onUpdateProgress(task.processKey, {
         status: 'READY',
         isCompleted: false,
@@ -274,7 +404,13 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
         delayReason: '',
         worker: selectedWorker,
         machine: selectedMachine,
-        memo
+        memo,
+      });
+
+      setToastNotification({
+        type: 'info',
+        title: '공정이 대기 상태로 초기화되었습니다.',
+        detail: '실제 실적 데이터가 초기화되었습니다.',
       });
     }
   };
@@ -284,21 +420,74 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
       worker: selectedWorker,
       machine: selectedMachine,
       memo,
-      delayReason
+      delayReason,
     });
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2000);
+
+    setToastNotification({
+      type: 'success',
+      title: '설비 및 작업자 정보가 저장되었습니다.',
+    });
   };
 
   // Variance calculation
-  const plannedMins = task.plannedMinutes;
-  const currentActualMins = task.actualMinutes !== null && task.actualMinutes !== undefined ? task.actualMinutes : elapsedMinutes;
+  const plannedMins = activeTask.plannedMinutes;
+  const currentActualMins =
+    activeTask.actualMinutes !== null && activeTask.actualMinutes !== undefined
+      ? activeTask.actualMinutes
+      : elapsedMinutes;
   const varianceMins = currentActualMins > 0 ? currentActualMins - plannedMins : 0;
-  const totalPauseTime = (task.pauseHistory || []).reduce((acc, p) => acc + (p.durationMinutes || 0), 0);
+  const totalPauseTime = (activeTask.pauseHistory || []).reduce(
+    (acc, p) => acc + (p.durationMinutes || 0),
+    0
+  );
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div
+      id="calendar-task-detail-modal"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+    >
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150 relative">
+        {/* Prominent Toast Notification Banner */}
+        {toastNotification && (
+          <div
+            id="task-modal-toast"
+            className={`px-4 py-3 border-b flex items-start justify-between gap-3 animate-in slide-in-from-top-2 duration-200 transition-all ${
+              toastNotification.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/80 dark:border-emerald-800 dark:text-emerald-200'
+                : toastNotification.type === 'warning'
+                ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/80 dark:border-amber-800 dark:text-amber-200'
+                : 'bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/80 dark:border-blue-800 dark:text-blue-200'
+            }`}
+          >
+            <div className="flex items-start gap-2.5">
+              {toastNotification.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              ) : toastNotification.type === 'warning' ? (
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              ) : (
+                <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <p className="text-xs font-black leading-snug">{toastNotification.title}</p>
+                {toastNotification.detail && (
+                  <p className="text-[11px] opacity-90 mt-0.5 font-medium">
+                    {toastNotification.detail}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setToastNotification(null)}
+              className="p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-current transition cursor-pointer"
+              title="알림 닫기"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -308,15 +497,15 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-mono font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                  {task.orderId} #{task.productNo}호기
+                  {activeTask.orderId} #{activeTask.productNo}호기
                 </span>
                 <span className="text-xs text-slate-500 font-bold">
-                  공정 #{task.processIndex + 1}/{task.totalProcessesInOrder}
+                  공정 #{activeTask.processIndex + 1}/{activeTask.totalProcessesInOrder}
                 </span>
                 {getStatusBadge()}
               </div>
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-1">
-                {task.groupName}
+                {activeTask.groupName}
               </h2>
             </div>
           </div>
@@ -324,6 +513,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+            title="모달 닫기"
           >
             <X className="w-5 h-5" />
           </button>
@@ -331,17 +521,40 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {/* Real-time Running Status Banner */}
+          {activeTask.status === 'IN_PROGRESS' && (
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border border-amber-300 dark:border-amber-700/70 rounded-xl p-3 flex items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                </span>
+                <div>
+                  <p className="text-xs font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <span>현재 실시간 작업 '진행중 (Running)'</span>
+                    <span className="text-[11px] font-mono font-normal bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.5 rounded text-amber-800 dark:text-amber-300">
+                      실시간 가동시간: {elapsedMinutes}분 경과
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    시작 시각: {formatDateTime(activeTask.actualStart)} | 작업이 완료되면 하단 [작업 완료]를 누르거나 확인 후 창을 닫으실 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Order Info */}
           <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-slate-500" />
               <span className="text-slate-500">수주 프로젝트:</span>
-              <strong className="text-slate-800 dark:text-slate-200">{task.orderName}</strong>
+              <strong className="text-slate-800 dark:text-slate-200">{activeTask.orderName}</strong>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-slate-500">카테고리:</span>
               <span className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold">
-                {task.category}
+                {activeTask.category}
               </span>
             </div>
           </div>
@@ -353,7 +566,9 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                 <Timer className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>생산 계획 (Plan) vs 실제 실적 (Actual) 정밀 비교</span>
               </h3>
-              <span className="text-[11px] text-slate-500">※ 계획 데이터는 보존되며 실적과 분리 관리됩니다.</span>
+              <span className="text-[11px] text-slate-500">
+                ※ 계획 데이터는 보존되며 실적과 분리 관리됩니다.
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900">
@@ -365,20 +580,20 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                     계획 (Production Plan)
                   </span>
                   <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
-                    {plannedMins}분 ({task.duration}시간)
+                    {plannedMins}분 ({activeTask.duration}시간)
                   </span>
                 </div>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-500">계획 시작:</span>
                     <strong className="font-mono text-slate-800 dark:text-slate-200">
-                      {formatDateTime(task.plannedStart)}
+                      {formatDateTime(activeTask.plannedStart)}
                     </strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">계획 종료:</span>
                     <strong className="font-mono text-slate-800 dark:text-slate-200">
-                      {formatDateTime(task.plannedEnd)}
+                      {formatDateTime(activeTask.plannedEnd)}
                     </strong>
                   </div>
                   <div className="flex justify-between">
@@ -389,37 +604,71 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
               </div>
 
               {/* Actual Box */}
-              <div className="p-4 space-y-2.5 bg-emerald-50/20 dark:bg-emerald-950/10">
+              <div
+                className={`p-4 space-y-2.5 transition-colors ${
+                  activeTask.status === 'IN_PROGRESS'
+                    ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                    : 'bg-emerald-50/20 dark:bg-emerald-950/10'
+                }`}
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                  <span
+                    className={`text-xs font-black flex items-center gap-1 ${
+                      activeTask.status === 'IN_PROGRESS'
+                        ? 'text-amber-700 dark:text-amber-400'
+                        : 'text-emerald-700 dark:text-emerald-400'
+                    }`}
+                  >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     실제 실적 (Production Actual)
                   </span>
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
-                    {task.status === 'IN_PROGRESS'
+                  <span
+                    className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                      activeTask.status === 'IN_PROGRESS'
+                        ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 animate-pulse'
+                        : activeTask.actualMinutes !== null && activeTask.actualMinutes !== undefined
+                        ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {activeTask.status === 'IN_PROGRESS'
                       ? `진행중 (${elapsedMinutes}분)`
-                      : task.actualMinutes !== null
-                      ? `${task.actualMinutes}분`
+                      : activeTask.actualMinutes !== null && activeTask.actualMinutes !== undefined
+                      ? `${activeTask.actualMinutes}분`
                       : '미착수'}
                   </span>
                 </div>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-500">실제 시작:</span>
-                    <strong className="font-mono text-slate-800 dark:text-slate-200">
-                      {formatDateTime(task.actualStart)}
+                    <strong
+                      className={`font-mono ${
+                        activeTask.actualStart
+                          ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+                          : 'text-slate-800 dark:text-slate-200'
+                      }`}
+                    >
+                      {formatDateTime(activeTask.actualStart)}
                     </strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">실제 종료:</span>
                     <strong className="font-mono text-slate-800 dark:text-slate-200">
-                      {formatDateTime(task.actualEnd)}
+                      {formatDateTime(activeTask.actualEnd)}
                     </strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">실제 작업시간:</span>
                     <strong className="text-slate-800 dark:text-slate-200">
-                      {currentActualMins > 0 ? `${currentActualMins}분` : '-'}
+                      {activeTask.status === 'IN_PROGRESS' ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">
+                          {elapsedMinutes}분 (실시간 측정중)
+                        </span>
+                      ) : currentActualMins > 0 ? (
+                        `${currentActualMins}분`
+                      ) : (
+                        '-'
+                      )}
                       {totalPauseTime > 0 && (
                         <span className="text-orange-600 dark:text-orange-400 text-[11px] ml-1">
                           (일시정지 {totalPauseTime}분 제외)
@@ -442,12 +691,14 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                   {varianceMins > 0 ? (
                     <span className="inline-flex items-center gap-1 font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-800">
                       <TrendingUp className="w-3.5 h-3.5" />
-                      +{varianceMins}분 지연 발생 ({Math.round((varianceMins / plannedMins) * 100)}% 초과)
+                      +{varianceMins}분 지연 발생 ({Math.round((varianceMins / plannedMins) * 100)}%
+                      초과)
                     </span>
                   ) : varianceMins < 0 ? (
                     <span className="inline-flex items-center gap-1 font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
                       <TrendingDown className="w-3.5 h-3.5" />
-                      {Math.abs(varianceMins)}분 단축 완료 ({Math.round((Math.abs(varianceMins) / plannedMins) * 100)}% 효율 달성)
+                      {Math.abs(varianceMins)}분 단축 완료 (
+                      {Math.round((Math.abs(varianceMins) / plannedMins) * 100)}% 효율 달성)
                     </span>
                   ) : (
                     <span className="font-bold text-blue-600 dark:text-blue-400">
@@ -504,16 +755,16 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
           </div>
 
           {/* Pause History List */}
-          {task.pauseHistory && task.pauseHistory.length > 0 && (
+          {activeTask.pauseHistory && activeTask.pauseHistory.length > 0 && (
             <div className="border border-orange-200 dark:border-orange-900/60 rounded-xl p-3 bg-orange-50/40 dark:bg-orange-950/20 space-y-2">
               <div className="flex items-center justify-between text-xs font-black text-orange-900 dark:text-orange-300">
                 <span className="flex items-center gap-1">
                   <History className="w-3.5 h-3.5" />
-                  일시정지 이력 ({task.pauseHistory.length}회, 총 {totalPauseTime}분)
+                  일시정지 이력 ({activeTask.pauseHistory.length}회, 총 {totalPauseTime}분)
                 </span>
               </div>
               <div className="space-y-1 text-[11px]">
-                {task.pauseHistory.map((p, idx) => (
+                {activeTask.pauseHistory.map((p, idx) => (
                   <div
                     key={idx}
                     className="flex items-center justify-between bg-white dark:bg-slate-800 p-1.5 rounded border border-orange-100 dark:border-orange-900 text-slate-700 dark:text-slate-300"
@@ -522,7 +773,8 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                       #{idx + 1} {p.reason}
                     </span>
                     <span className="font-mono text-slate-500">
-                      {formatDateTime(p.pausedAt)} ~ {p.resumedAt ? formatDateTime(p.resumedAt) : '진행중'} ({p.durationMinutes || '?'}분)
+                      {formatDateTime(p.pausedAt)} ~ {p.resumedAt ? formatDateTime(p.resumedAt) : '진행중'} (
+                      {p.durationMinutes || '?'}분)
                     </span>
                   </div>
                 ))}
@@ -531,7 +783,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
           )}
 
           {/* Delay Reason Input */}
-          {(varianceMins > 0 || task.status === 'DELAYED') && (
+          {(varianceMins > 0 || activeTask.status === 'DELAYED') && (
             <div>
               <label className="block text-xs font-extrabold text-rose-700 dark:text-rose-400 mb-1 flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
@@ -566,6 +818,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/90 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
+              id="btn-save-assignments"
               onClick={handleSaveAssignments}
               className="px-3 py-2 text-xs font-bold bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition flex items-center gap-1 cursor-pointer"
             >
@@ -573,8 +826,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
               <span>{saveSuccess ? '저장됨' : '설비/작업자 저장'}</span>
             </button>
 
-            {(task.status === 'IN_PROGRESS' || task.status === 'COMPLETED' || task.status === 'PAUSED') && (
+            {(activeTask.status === 'IN_PROGRESS' ||
+              activeTask.status === 'COMPLETED' ||
+              activeTask.status === 'PAUSED') && (
               <button
+                id="btn-reset-task"
                 onClick={handleResetOrCancel}
                 className="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition flex items-center gap-1 cursor-pointer"
               >
@@ -586,17 +842,30 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
           <div className="flex items-center gap-2">
             {/* Primary Action Buttons depending on status */}
-            {task.status === 'READY' || task.status === 'PLANNED' || task.status === 'DELAYED' ? (
-              <button
-                onClick={handleStartTask}
-                className="px-5 py-2 text-xs font-black bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer active:scale-95"
-              >
-                <Play className="w-4 h-4 fill-white" />
-                <span>[ 작업 시작 ]</span>
-              </button>
-            ) : task.status === 'IN_PROGRESS' ? (
+            {activeTask.status === 'READY' ||
+            activeTask.status === 'PLANNED' ||
+            activeTask.status === 'DELAYED' ? (
               <>
                 <button
+                  id="btn-start-task"
+                  onClick={handleStartTask}
+                  className="px-5 py-2.5 text-xs font-black bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>[ 작업 시작 ]</span>
+                </button>
+                <button
+                  id="btn-close-modal-secondary"
+                  onClick={onClose}
+                  className="px-3.5 py-2.5 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
+                >
+                  닫기
+                </button>
+              </>
+            ) : activeTask.status === 'IN_PROGRESS' ? (
+              <>
+                <button
+                  id="btn-pause-task"
                   onClick={handlePauseTask}
                   className="px-4 py-2 text-xs font-black bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
                 >
@@ -604,16 +873,25 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                   <span>[ 일시정지 ]</span>
                 </button>
                 <button
+                  id="btn-complete-task"
                   onClick={handleCompleteTask}
                   className="px-5 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>[ 작업 완료 ]</span>
                 </button>
+                <button
+                  id="btn-close-modal-running"
+                  onClick={onClose}
+                  className="px-3.5 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
+                >
+                  닫기
+                </button>
               </>
-            ) : task.status === 'PAUSED' ? (
+            ) : activeTask.status === 'PAUSED' ? (
               <>
                 <button
+                  id="btn-resume-task"
                   onClick={handleResumeTask}
                   className="px-5 py-2 text-xs font-black bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
                 >
@@ -621,15 +899,24 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                   <span>[ 작업 재개 ]</span>
                 </button>
                 <button
+                  id="btn-complete-task-paused"
                   onClick={handleCompleteTask}
                   className="px-4 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>[ 작업 완료 ]</span>
                 </button>
+                <button
+                  id="btn-close-modal-paused"
+                  onClick={onClose}
+                  className="px-3.5 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
+                >
+                  닫기
+                </button>
               </>
             ) : (
               <button
+                id="btn-close-modal-completed"
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
               >
@@ -642,7 +929,10 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
       {/* Pause Reason Prompt Modal */}
       {isPausePromptOpen && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+        <div
+          id="pause-reason-modal"
+          className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-60 flex items-center justify-center p-4"
+        >
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 max-w-sm w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-orange-600">
               <Pause className="w-5 h-5" />

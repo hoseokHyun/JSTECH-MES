@@ -868,6 +868,8 @@ export default function App() {
                 onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
                 onCompleteAllProcesses={handleCompleteAllOrderProcesses}
                 onNavigateToOrderForm={() => setActiveTab('order-form')}
+                onUpdateProgress={handleUpdateProgress}
+                approvedOperators={approvedOperators}
                 currentUser={currentUser}
               />
             )}
