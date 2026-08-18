@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -18,15 +18,56 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  TrendingDown,
   FileSpreadsheet,
   Layers,
   Sparkles,
-  Info
+  Info,
+  ShieldCheck,
+  BarChart3,
+  Check,
+  X,
+  FileText,
+  Activity,
+  Cpu,
+  Thermometer,
+  Droplets,
+  Award,
+  PackageCheck,
+  Ban,
+  FileCheck2,
+  RefreshCw,
+  Maximize2,
+  Boxes,
+  Truck,
+  FileCheck
 } from 'lucide-react';
+import { Order, ScheduledTaskItem, User } from '../types';
+import { SlotDieCertificateView } from './SlotDieCertificateView';
+import { IqcDetailModal } from './IqcDetailModal';
+
+// ============================================================================
+// 1. DATA INTERFACES
+// ============================================================================
+
+export interface MeasurementPoint {
+  no: number;
+  code: string;
+  item: string;
+  nominal: number;
+  actual: number;
+  tolerance: string;
+  deviation: string;
+  unit: string;
+  status: 'OK' | 'NG';
+  pos3D: { x: number; y: number; z: number }; // 3D coordinate for viewer mapping
+}
 
 export interface InspectionItem {
   id: string;
+  orderId?: string;
   productName: string;
+  customer: string;
   line: string;
   lotNo: string;
   inspectTime: string;
@@ -35,1097 +76,2257 @@ export interface InspectionItem {
   inspector: string;
   result: 'PASS' | 'FAIL' | 'REINSPECT';
   defectType?: string;
-  measurements: {
-    no: number;
-    item: string;
-    nominal: number;
-    actual: number;
-    tolerance: string;
-    deviation: string;
-    status: 'OK' | 'NG';
-  }[];
-  actionHistory?: {
-    defectOccurred: {
-      id: string;
-      type: string;
-      time: string;
-    };
-    causeAnalysis: {
-      reason: string;
-      jigId: string;
-      details: string;
-      time: string;
-    };
-    correctiveAction: {
-      action: string;
-      jigChange: string;
-      details: string;
-      time: string;
-    };
-    reinspection: {
-      id: string;
-      time: string;
-      result: string;
-    };
-    finalVerdict: {
-      result: string;
-      time: string;
-    };
+  lipWidthMm: number; // Slot Die Width e.g. 1200mm
+  measurements: MeasurementPoint[];
+  capa: {
+    step: number; // 1 to 5
+    defectOccurred: { id: string; type: string; time: string; desc: string };
+    causeAnalysis: { reason: string; toolOrJig: string; details: string; time: string };
+    correctiveAction: { action: string; changeDetails: string; time: string };
+    reinspection: { id: string; time: string; result: string };
+    finalVerdict: { result: string; time: string; approver: string };
   };
 }
 
-const DEFAULT_INSPECTION_LIST: InspectionItem[] = [
+export interface CmmMachineInfo {
+  id: string;
+  name: string;
+  model: string;
+  status: 'RUNNING' | 'IDLE' | 'CALIBRATING';
+  currentTask: string;
+  utilization: number;
+  temp: number;
+  humidity: number;
+  calibratedAt: string;
+}
+
+export interface SpcDataPoint {
+  batch: string;
+  date: string;
+  value: number; // measured deviation in um
+  ucl: number;
+  cl: number;
+  lcl: number;
+  sampleCount: number;
+  isOutlier: boolean;
+}
+
+export interface ShippingProjectItem {
+  id: string;
+  orderId: string;
+  orderName: string;
+  customer: string;
+  productSpec: string;
+  lotNo: string;
+  cmmStatus: 'PASS' | 'FAIL' | 'IN_PROGRESS';
+  roughnessStatus: 'PASS' | 'FAIL' | 'PENDING';
+  roughnessValue: string; // e.g. Ra 0.016㎛
+  coatingStatus: 'PASS' | 'FAIL' | 'PENDING';
+  coatingValue: string; // e.g. Hard Chrome 15.2㎛
+  cleaningStatus: 'PASS' | 'FAIL' | 'PENDING';
+  shippingStatus: 'APPROVED' | 'PENDING' | 'REJECTED';
+  coaNo: string;
+  issueDate: string;
+  material: string;
+  hardness: string;
+  inspector: string;
+  qaManager: string;
+  checklist: {
+    cmmPointScan: boolean;
+    roughnessInterferometer: boolean;
+    boltInterference: boolean;
+    ultrasonicCleaning: boolean;
+    cleanroomPackaging: boolean;
+  };
+}
+
+// ============================================================================
+// 2. MOCK DATA FOR ULTRA-PRECISION SLOT DIE QUALITY SYSTEM
+// ============================================================================
+
+const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
   {
-    id: 'INS-250521-001',
-    productName: '하우징 커버',
-    line: 'LINE 1',
-    lotNo: 'LOT-250519-001',
-    inspectTime: '2025-05-21 10:28',
-    cmmDevice: 'CMM-01',
-    programName: 'HOUSING_COVER_V2',
-    inspector: '김준성',
+    id: 'CMM-260521-001',
+    orderId: 'ORD-2026-0811-001',
+    productName: '2차전지 양극재 코팅용 슬롯다이 상부 바디 (Upper Die Body 1200L)',
+    customer: '삼성SDI 천안사업장',
+    line: 'LINE 1 (클린룸 #1)',
+    lotNo: 'LOT-260519-SDI01',
+    inspectTime: '2026-08-18 10:28',
+    cmmDevice: 'CMM-01 (Zeiss Prismo)',
+    programName: 'SLOT_DIE_1200_UPPER_V4',
+    inspector: '김준성 책임연구원',
     result: 'FAIL',
-    defectType: '치수 불량',
+    defectType: '립 간격(Lip Gap) 단차 불량',
+    lipWidthMm: 1200,
     measurements: [
-      { no: 1, item: 'Ø26 H7', nominal: 26.00, actual: 26.018, deviation: '+0.018', tolerance: '±0.021', status: 'OK' },
-      { no: 2, item: 'Ø15 H7', nominal: 15.00, actual: 15.032, deviation: '+0.032', tolerance: '±0.018', status: 'NG' },
-      { no: 3, item: '평면도', nominal: 80.00, actual: 79.972, deviation: '-0.028', tolerance: '±0.050', status: 'OK' },
-      { no: 4, item: '위치도', nominal: 45.00, actual: 45.065, deviation: '+0.065', tolerance: '±0.050', status: 'NG' },
-      { no: 5, item: '외경 R', nominal: 30.00, actual: 29.985, deviation: '-0.015', tolerance: '±0.050', status: 'OK' },
-      { no: 6, item: '홀 깊이', nominal: 12.00, actual: 12.021, deviation: '+0.021', tolerance: '±0.020', status: 'NG' }
+      { no: 1, code: 'P1', item: '립 중앙 토출 갭 (Center Gap)', nominal: 50.00, actual: 50.12, deviation: '+0.12', tolerance: '±0.80', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 15, z: 0 } },
+      { no: 2, code: 'P2', item: '립 좌측 엔드 갭 (Left Lip Gap)', nominal: 50.00, actual: 51.45, deviation: '+1.45', tolerance: '±0.80', unit: '㎛', status: 'NG', pos3D: { x: -80, y: 15, z: 0 } },
+      { no: 3, code: 'P3', item: '립 우측 엔드 갭 (Right Lip Gap)', nominal: 50.00, actual: 50.32, deviation: '+0.32', tolerance: '±0.80', unit: '㎛', status: 'OK', pos3D: { x: 80, y: 15, z: 0 } },
+      { no: 4, code: 'P4', item: '경면부 진직도/평면도 (Flatness)', nominal: 0.00, actual: 0.85, deviation: '+0.85', tolerance: '≤ 1.00', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 20 } },
+      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole H7)', nominal: 45.00, actual: 45.028, deviation: '+0.028', tolerance: '±0.015', unit: 'mm', status: 'NG', pos3D: { x: -40, y: -20, z: 10 } },
+      { no: 6, code: 'P6', item: '매니폴드 유로 깊이 (Manifold Deep)', nominal: 18.50, actual: 18.504, deviation: '+0.004', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 40, y: -10, z: -10 } },
+      { no: 7, code: 'P7', item: '조절볼트 시트 단차 (Adjustment Seat)', nominal: 12.00, actual: 12.008, deviation: '+0.008', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 0, y: -30, z: 0 } },
+      { no: 8, code: 'P8', item: '경면부 표면 조도 (Mirror Roughness)', nominal: 0.020, actual: 0.016, deviation: '-0.004', tolerance: '≤ 0.020', unit: '㎛ Ra', status: 'OK', pos3D: { x: 0, y: 10, z: -20 } }
     ],
-    actionHistory: {
-      defectOccurred: { id: 'INS-250521-001', type: '치수 불량 (Ø15 H7)', time: '2025-05-21 10:28' },
-      causeAnalysis: { reason: '지그 마모 확인', jigId: 'JIG-015', details: '마모량 0.03mm 초과', time: '2025-05-21 11:00' },
-      correctiveAction: { action: '지그 교체', jigChange: 'JIG-015 → JIG-015A', details: '설비 보정 실행', time: '2025-05-21 11:20' },
-      reinspection: { id: 'INS-250521-001-R1', time: '2025-05-21 12:10', result: '합격' },
-      finalVerdict: { result: '합격 (OK)', time: '2025-05-21 12:10' }
+    capa: {
+      step: 3,
+      defectOccurred: {
+        id: 'CAPA-260818-01',
+        type: '립 좌측 간격 편차 +1.45㎛ 초과 (기준: ±0.80㎛)',
+        time: '2026-08-18 10:35',
+        desc: '슬롯다이 좌측 엔드 부위 연마 가공 후 클램핑 잔류응력 이완으로 미세 휨 발생'
+      },
+      causeAnalysis: {
+        reason: '초정밀 3M 연마기 #2 픽스처 볼트 체결 토크 불균일 (좌측 14N·m vs 우측 10N·m)',
+        toolOrJig: 'JIG-SLOT-1200-L3',
+        details: '좌측 지그 마모로 인한 체결 하중 편차 0.0018mm 형성',
+        time: '2026-08-18 11:10'
+      },
+      correctiveAction: {
+        action: '지그 정밀 래핑 교정 및 디지털 토크렌치 10.0N·m 전볼트 동등 체결 규정 적용',
+        changeDetails: '정밀 래핑 지그 교체 (JIG-SLOT-1200-L3A) 및 마이크로 랩 피니싱 0.8㎛ 재가공',
+        time: '2026-08-18 11:45'
+      },
+      reinspection: {
+        id: 'CMM-260521-001-R1',
+        time: '2026-08-18 13:20 (예정)',
+        result: '재검사 대기중'
+      },
+      finalVerdict: {
+        result: '시정조치 진행중 (CAPA 3단계)',
+        time: '-',
+        approver: '품질보증팀장 이준혁'
+      }
     }
   },
   {
-    id: 'INS-250521-002',
-    productName: '베이스 플레이트',
-    line: 'LINE 2',
-    lotNo: 'LOT-250519-002',
-    inspectTime: '2025-05-21 10:17',
-    cmmDevice: 'CMM-02',
-    programName: 'BASE_PLATE_V1',
-    inspector: '이영희',
+    id: 'CMM-260521-002',
+    orderId: 'ORD-2026-0811-002',
+    productName: '디스플레이 OCA 광학 코팅용 슬롯다이 하부 바디 (Lower Body 1600L)',
+    customer: 'LG디스플레이 파주공장',
+    line: 'LINE 2 (클린룸 #2)',
+    lotNo: 'LOT-260519-LGD02',
+    inspectTime: '2026-08-18 09:45',
+    cmmDevice: 'CMM-02 (Mitutoyo Crysta)',
+    programName: 'SLOT_DIE_1600_LOWER_V2',
+    inspector: '이영희 선임연구원',
     result: 'PASS',
+    lipWidthMm: 1600,
     measurements: [
-      { no: 1, item: 'Ø26 H7', nominal: 26.00, actual: 26.005, deviation: '+0.005', tolerance: '±0.021', status: 'OK' },
-      { no: 2, item: 'Ø15 H7', nominal: 15.00, actual: 15.008, deviation: '+0.008', tolerance: '±0.018', status: 'OK' },
-      { no: 3, item: '평면도', nominal: 80.00, actual: 80.010, deviation: '+0.010', tolerance: '±0.050', status: 'OK' },
-      { no: 4, item: '위치도', nominal: 45.00, actual: 45.012, deviation: '+0.012', tolerance: '±0.050', status: 'OK' },
-      { no: 5, item: '외경 R', nominal: 30.00, actual: 30.002, deviation: '+0.002', tolerance: '±0.050', status: 'OK' },
-      { no: 6, item: '홀 깊이', nominal: 12.00, actual: 12.005, deviation: '+0.005', tolerance: '±0.020', status: 'OK' }
-    ]
-  },
-  {
-    id: 'INS-250521-003',
-    productName: '기어 케이스',
-    line: 'LINE 1',
-    lotNo: 'LOT-250519-003',
-    inspectTime: '2025-05-21 10:12',
-    cmmDevice: 'CMM-01',
-    programName: 'GEAR_CASE_PRO',
-    inspector: '박철수',
-    result: 'FAIL',
-    defectType: '형상 불량',
-    measurements: [
-      { no: 1, item: 'Ø26 H7', nominal: 26.00, actual: 26.010, deviation: '+0.010', tolerance: '±0.021', status: 'OK' },
-      { no: 2, item: 'Ø15 H7', nominal: 15.00, actual: 15.012, deviation: '+0.012', tolerance: '±0.018', status: 'OK' },
-      { no: 3, item: '평면도', nominal: 80.00, actual: 80.082, deviation: '+0.082', tolerance: '±0.050', status: 'NG' },
-      { no: 4, item: '위치도', nominal: 45.00, actual: 45.020, deviation: '+0.020', tolerance: '±0.050', status: 'OK' },
-      { no: 5, item: '외경 R', nominal: 30.00, actual: 29.920, deviation: '-0.080', tolerance: '±0.050', status: 'NG' },
-      { no: 6, item: '홀 깊이', nominal: 12.00, actual: 12.010, deviation: '+0.010', tolerance: '±0.020', status: 'OK' }
+      { no: 1, code: 'P1', item: '립 중앙 토출 갭 (Center Gap)', nominal: 35.00, actual: 35.10, deviation: '+0.10', tolerance: '±0.60', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 15, z: 0 } },
+      { no: 2, code: 'P2', item: '립 좌측 엔드 갭 (Left Lip Gap)', nominal: 35.00, actual: 35.18, deviation: '+0.18', tolerance: '±0.60', unit: '㎛', status: 'OK', pos3D: { x: -80, y: 15, z: 0 } },
+      { no: 3, code: 'P3', item: '립 우측 엔드 갭 (Right Lip Gap)', nominal: 35.00, actual: 34.92, deviation: '-0.08', tolerance: '±0.60', unit: '㎛', status: 'OK', pos3D: { x: 80, y: 15, z: 0 } },
+      { no: 4, code: 'P4', item: '경면부 진직도/평면도 (Flatness)', nominal: 0.00, actual: 0.52, deviation: '+0.52', tolerance: '≤ 0.80', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 20 } },
+      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole H7)', nominal: 45.00, actual: 45.004, deviation: '+0.004', tolerance: '±0.015', unit: 'mm', status: 'OK', pos3D: { x: -40, y: -20, z: 10 } },
+      { no: 6, code: 'P6', item: '매니폴드 유로 깊이 (Manifold Deep)', nominal: 22.00, actual: 22.003, deviation: '+0.003', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 40, y: -10, z: -10 } },
+      { no: 7, code: 'P7', item: '경면부 표면 조도 (Mirror Roughness)', nominal: 0.020, actual: 0.014, deviation: '-0.006', tolerance: '≤ 0.020', unit: '㎛ Ra', status: 'OK', pos3D: { x: 0, y: 10, z: -20 } }
     ],
-    actionHistory: {
-      defectOccurred: { id: 'INS-250521-003', type: '형상 불량 (평면도)', time: '2025-05-21 10:12' },
-      causeAnalysis: { reason: '클램프 고정 변형', jigId: 'JIG-088', details: '가공 중 클램핑 과도한 휨', time: '2025-05-21 10:40' },
-      correctiveAction: { action: '클램핑 압력 조절', jigChange: '압력 5.5bar -> 3.2bar', details: '평면 가공 재진행', time: '2025-05-21 11:15' },
-      reinspection: { id: 'INS-250521-003-R1', time: '2025-05-21 11:45', result: '합격' },
-      finalVerdict: { result: '합격 (OK)', time: '2025-05-21 11:45' }
+    capa: {
+      step: 5,
+      defectOccurred: { id: '-', type: '특이사항 없음', time: '-', desc: '-' },
+      causeAnalysis: { reason: '-', toolOrJig: '-', details: '-', time: '-' },
+      correctiveAction: { action: '-', changeDetails: '-', time: '-' },
+      reinspection: { id: '-', time: '-', result: '-' },
+      finalVerdict: { result: '전항목 규격 내 합격 (PASS)', time: '2026-08-18 10:10', approver: '품질보증팀장 이준혁' }
     }
   },
   {
-    id: 'INS-250521-004',
-    productName: '샤프트',
-    line: 'LINE 3',
-    lotNo: 'LOT-250519-004',
-    inspectTime: '2025-05-21 09:58',
-    cmmDevice: 'CMM-03',
-    programName: 'SHAFT_PRECISION',
-    inspector: '최민지',
-    result: 'PASS',
+    id: 'CMM-260521-003',
+    orderId: 'ORD-2026-0811-003',
+    productName: '수소연료전지 분리막 코터 슬롯노즐 심 플레이트 (Shim Plate 0.05T)',
+    customer: '현대모비스 의왕연구소',
+    line: 'LINE 3 (클린룸 #1)',
+    lotNo: 'LOT-260519-HM03',
+    inspectTime: '2026-08-18 09:12',
+    cmmDevice: 'CMM-03 (덕인 Horizon)',
+    programName: 'SHIM_PLATE_HYDROGEN_V1',
+    inspector: '박철수 주임연구원',
+    result: 'REINSPECT',
+    defectType: '두께 평행도 미세 편차',
+    lipWidthMm: 800,
     measurements: [
-      { no: 1, item: '외경 D1', nominal: 40.00, actual: 40.004, deviation: '+0.004', tolerance: '±0.015', status: 'OK' },
-      { no: 2, item: '진동도', nominal: 0.00, actual: 0.005, deviation: '+0.005', tolerance: '±0.010', status: 'OK' }
-    ]
+      { no: 1, code: 'P1', item: '심 두께 중앙 (Shim Thickness C)', nominal: 50.00, actual: 50.25, deviation: '+0.25', tolerance: '±0.50', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 0 } },
+      { no: 2, code: 'P2', item: '심 두께 좌측 (Shim Thickness L)', nominal: 50.00, actual: 50.62, deviation: '+0.62', tolerance: '±0.50', unit: '㎛', status: 'NG', pos3D: { x: -60, y: 0, z: 0 } },
+      { no: 3, code: 'P3', item: '심 두께 우측 (Shim Thickness R)', nominal: 50.00, actual: 50.18, deviation: '+0.18', tolerance: '±0.50', unit: '㎛', status: 'OK', pos3D: { x: 60, y: 0, z: 0 } },
+      { no: 4, code: 'P4', item: '에지 버(Burr) 높이', nominal: 0.00, actual: 0.35, deviation: '+0.35', tolerance: '≤ 0.50', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 15, z: 0 } }
+    ],
+    capa: {
+      step: 4,
+      defectOccurred: { id: 'CAPA-260818-03', type: '심 좌측 두께 편차 +0.62㎛', time: '2026-08-18 09:15', desc: '초박판 와이어 커팅 후 잔여 버 및 미세 단차' },
+      causeAnalysis: { reason: '초음파 세척 불충분으로 미세 슬러지 잔존', toolOrJig: 'CLEAN-US-03', details: '세척액 탈포 미흡', time: '2026-08-18 09:40' },
+      correctiveAction: { action: '3단계 메가소닉 정밀 세척 및 30분 핫에어 건조', changeDetails: '진공 탈포 세척기 적용', time: '2026-08-18 10:20' },
+      reinspection: { id: 'CMM-260521-003-R1', time: '2026-08-18 11:00', result: '재검사 진행중 (CMM-03)' },
+      finalVerdict: { result: '재검사 판정 대기', time: '-', approver: '품질보증팀장 이준혁' }
+    }
   },
   {
-    id: 'INS-250521-005',
-    productName: '브라켓',
-    line: 'LINE 2',
-    lotNo: 'LOT-250519-005',
-    inspectTime: '2025-05-21 09:42',
-    cmmDevice: 'CMM-02',
-    programName: 'BRACKET_CHECK',
-    inspector: '김준성',
-    result: 'FAIL',
-    defectType: '치수 불량',
-    measurements: [
-      { no: 1, item: '홀 간격', nominal: 100.00, actual: 100.095, deviation: '+0.095', tolerance: '±0.030', status: 'NG' }
-    ]
-  },
-  {
-    id: 'INS-250521-006',
-    productName: '하우징 커버',
-    line: 'LINE 1',
-    lotNo: 'LOT-250519-006',
-    inspectTime: '2025-05-21 09:30',
-    cmmDevice: 'CMM-01',
-    programName: 'HOUSING_COVER_V2',
-    inspector: '이영희',
+    id: 'CMM-260521-004',
+    orderId: 'ORD-2026-0811-004',
+    productName: '반도체 패키징용 초정밀 디스펜서 슬릿 노즐 바디',
+    customer: 'SK하이닉스 이천캠퍼스',
+    line: 'LINE 1 (클린룸 #1)',
+    lotNo: 'LOT-260519-SK04',
+    inspectTime: '2026-08-18 08:50',
+    cmmDevice: 'CMM-01 (Zeiss Prismo)',
+    programName: 'SEMI_NOZZLE_PREC_V5',
+    inspector: '최민지 선임연구원',
     result: 'PASS',
+    lipWidthMm: 600,
     measurements: [
-      { no: 1, item: 'Ø26 H7', nominal: 26.00, actual: 26.002, deviation: '+0.002', tolerance: '±0.021', status: 'OK' }
-    ]
-  },
-  {
-    id: 'INS-250521-007',
-    productName: '베이스 플레이트',
-    line: 'LINE 2',
-    lotNo: 'LOT-250519-007',
-    inspectTime: '2025-05-21 09:15',
-    cmmDevice: 'CMM-02',
-    programName: 'BASE_PLATE_V1',
-    inspector: '박철수',
-    result: 'PASS',
-    measurements: [
-      { no: 1, item: '평면도', nominal: 80.00, actual: 80.008, deviation: '+0.008', tolerance: '±0.050', status: 'OK' }
-    ]
+      { no: 1, code: 'P1', item: '노즐 토출구 갭 (Orifice Gap)', nominal: 20.00, actual: 20.08, deviation: '+0.08', tolerance: '±0.40', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 15, z: 0 } },
+      { no: 2, code: 'P2', item: '초미세 평면도 (Surface Flatness)', nominal: 0.00, actual: 0.38, deviation: '+0.38', tolerance: '≤ 0.50', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 15 } }
+    ],
+    capa: {
+      step: 5,
+      defectOccurred: { id: '-', type: '특이사항 없음', time: '-', desc: '-' },
+      causeAnalysis: { reason: '-', toolOrJig: '-', details: '-', time: '-' },
+      correctiveAction: { action: '-', changeDetails: '-', time: '-' },
+      reinspection: { id: '-', time: '-', result: '-' },
+      finalVerdict: { result: '전항목 규격 내 합격 (PASS)', time: '2026-08-18 09:10', approver: '품질보증팀장 이준혁' }
+    }
   }
 ];
 
-export const QualityInspectionView: React.FC = () => {
-  const [selectedInspection, setSelectedInspection] = useState<InspectionItem>(DEFAULT_INSPECTION_LIST[0]);
-  const [viewTab, setViewTab] = useState<'MEASURE' | 'TOLERANCE'>('MEASURE');
-  const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
-  const [searchLine, setSearchLine] = useState<string>('ALL');
-  const [searchProduct, setSearchProduct] = useState<string>('ALL');
-  const [searchResult, setSearchResult] = useState<string>('ALL');
-  const [searchDefect, setSearchDefect] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [rotationAngle, setRotationAngle] = useState<number>(0);
+const CMM_MACHINES_STATUS: CmmMachineInfo[] = [
+  {
+    id: 'CMM-01',
+    name: 'CMM #1 (Zeiss Prismo Ultra)',
+    model: 'Zeiss Ultra High Precision (0.5+L/500㎛)',
+    status: 'RUNNING',
+    currentTask: '2차전지 양극재 슬롯다이 상부 바디 립 전수 검사',
+    utilization: 96.8,
+    temp: 20.02,
+    humidity: 45.1,
+    calibratedAt: '2026-08-01 (KOLAS 공인)'
+  },
+  {
+    id: 'CMM-02',
+    name: 'CMM #2 (Mitutoyo Crysta-Apex V)',
+    model: 'Mitutoyo CNC 3D CMM (1.7+3L/1000㎛)',
+    status: 'RUNNING',
+    currentTask: '1600L 와이드 슬롯다이 하부 바디 매니폴드 스캔',
+    utilization: 93.5,
+    temp: 19.98,
+    humidity: 44.8,
+    calibratedAt: '2026-07-28 (KOLAS 공인)'
+  },
+  {
+    id: 'CMM-03',
+    name: 'CMM #3 (덕인 Horizon Plus 1500)',
+    model: 'DUKIN High Precision Multi-Probe (1.5+L/400㎛)',
+    status: 'RUNNING',
+    currentTask: '수소연료전지 심 플레이트 3단계 재검사',
+    utilization: 95.0,
+    temp: 20.01,
+    humidity: 45.4,
+    calibratedAt: '2026-08-05 (KOLAS 공인)'
+  },
+  {
+    id: 'CMM-04',
+    name: 'CMM #4 (Zeiss Accura Multi)',
+    model: 'Zeiss Optical & Contact Hybrid Scanner',
+    status: 'CALIBRATING',
+    currentTask: '레이저 비접촉 광학 간섭 프로파일 센서 보정',
+    utilization: 88.4,
+    temp: 20.00,
+    humidity: 45.0,
+    calibratedAt: '2026-08-18 (실시간 자동 보정)'
+  }
+];
 
-  // Filter Inspection List
-  const filteredList = DEFAULT_INSPECTION_LIST.filter((item) => {
-    if (searchLine !== 'ALL' && item.line !== searchLine) return false;
-    if (searchProduct !== 'ALL' && item.productName !== searchProduct) return false;
-    if (searchResult !== 'ALL' && item.result !== searchResult) return false;
-    if (searchDefect !== 'ALL' && item.defectType !== searchDefect) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchId = item.id.toLowerCase().includes(q);
-      const matchProduct = item.productName.toLowerCase().includes(q);
-      const matchLot = item.lotNo.toLowerCase().includes(q);
-      if (!matchId && !matchProduct && !matchLot) return false;
+const SPC_TREND_DATA: Record<string, SpcDataPoint[]> = {
+  LIP_FLATNESS: [
+    { batch: 'B-0812-1', date: '08/12', value: 0.42, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0812-2', date: '08/12', value: 0.58, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0813-1', date: '08/13', value: 0.35, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0813-2', date: '08/13', value: 0.48, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0814-1', date: '08/14', value: 0.65, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0814-2', date: '08/14', value: 0.72, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0815-1', date: '08/15', value: 0.88, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0815-2', date: '08/15', value: 0.95, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0816-1', date: '08/16', value: 1.15, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0816-2', date: '08/16', value: 1.45, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: true },
+    { batch: 'B-0817-1', date: '08/17', value: 0.62, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0817-2', date: '08/17', value: 0.54, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0818-1', date: '08/18', value: 0.48, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
+    { batch: 'B-0818-2', date: '08/18', value: 0.40, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false }
+  ],
+  H7_TOLERANCE: [
+    { batch: 'B-0812-1', date: '08/12', value: 4.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
+    { batch: 'B-0813-1', date: '08/13', value: 5.5, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
+    { batch: 'B-0814-1', date: '08/14', value: 3.8, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
+    { batch: 'B-0815-1', date: '08/15', value: 6.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
+    { batch: 'B-0816-1', date: '08/16', value: 16.8, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: true },
+    { batch: 'B-0817-1', date: '08/17', value: 4.5, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
+    { batch: 'B-0818-1', date: '08/18', value: 3.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false }
+  ]
+};
+
+const PARETO_DEFECTS = [
+  { type: '립 토출구 간격 편차', count: 38, percent: 42.2, cumPercent: 42.2, color: '#f43f5e' },
+  { type: '경면부 진직도/평면도 초과', count: 24, percent: 26.7, cumPercent: 68.9, color: '#fb923c' },
+  { type: '볼트 체결 홀 H7 공차 불량', count: 14, percent: 15.6, cumPercent: 84.5, color: '#facc15' },
+  { type: '경면부 표면 조도 미달 (Ra>0.02)', count: 9, percent: 10.0, cumPercent: 94.5, color: '#38bdf8' },
+  { type: '열처리 후 잔류응력 휨', count: 5, percent: 5.5, cumPercent: 100.0, color: '#a855f7' }
+];
+
+const MACHINE_PRECISION_LIST = [
+  { machine: '5축 초정밀 MCT 5호기 #1', avgDeviation: '0.42㎛', cp: 1.84, cpk: 1.72, passRate: 99.8, count: 148 },
+  { machine: '5축 초정밀 MCT 5호기 #2', avgDeviation: '0.51㎛', cp: 1.75, cpk: 1.63, passRate: 99.4, count: 152 },
+  { machine: '초정밀 3M 연마기 #1 (경면용)', avgDeviation: '0.28㎛', cp: 2.05, cpk: 1.96, passRate: 100.0, count: 96 },
+  { machine: '초정밀 3M 연마기 #2 (립전용)', avgDeviation: '0.68㎛', cp: 1.48, cpk: 1.34, passRate: 97.2, count: 110 },
+  { machine: 'MCT 6.5호기 #3 (유로가공)', avgDeviation: '1.12㎛', cp: 1.62, cpk: 1.50, passRate: 98.9, count: 88 }
+];
+
+const TOP_DEFECT_CAUSES = [
+  { rank: 1, cause: '슬롯다이 지그 체결 볼트 토크 불균일', count: 34, percent: 37.8, action: '디지털 토크렌치 의무화 및 실시간 체결 로그 기록' },
+  { rank: 2, cause: '3M 정밀 연마 래핑 플레이트 마모', count: 22, percent: 24.4, action: '24시간 주기 광학 간섭 평면도 교정 실시' },
+  { rank: 3, cause: 'SUS420J2 소재 열처리 잔류응력 이완', count: 16, percent: 17.8, action: '3차 서브제로(-196℃) 심냉 열처리 시간 12h 연장' },
+  { rank: 4, cause: '가공 절삭유 온도 미세 편차 (±1.5℃)', count: 11, percent: 12.2, action: '절삭유 쿨러 고정밀 인버터 PID 제어(±0.2℃) 교체' },
+  { rank: 5, cause: '엔드밀 공구 미세 치핑 및 마모', count: 7, percent: 7.8, action: '공구 수명 한도 80% 시점 선제적 자동 교체 시스템 적용' }
+];
+
+const SHIPPING_PROJECTS: ShippingProjectItem[] = [
+  {
+    id: 'SHP-2026-001',
+    orderId: 'ORD-2026-0811-001',
+    orderName: '2차전지 양극재 코팅용 고점도 슬롯다이 세트 (1200L)',
+    customer: '삼성SDI 천안사업장 차세대배터리라인',
+    productSpec: 'Slot Die Set 1200L (Upper + Lower Body + Shim 50㎛)',
+    lotNo: 'LOT-260519-SDI01',
+    cmmStatus: 'PASS',
+    roughnessStatus: 'PASS',
+    roughnessValue: 'Ra 0.016㎛',
+    coatingStatus: 'PASS',
+    coatingValue: 'Hard Chrome 15.2㎛',
+    cleaningStatus: 'PASS',
+    shippingStatus: 'APPROVED',
+    coaNo: 'COA-2026-0818-0091',
+    issueDate: '2026-08-18',
+    material: 'SUS420J2 (진공열처리 HRC 54±2)',
+    hardness: 'HRC 54.5',
+    inspector: '김준성 책임연구원 (KOLAS 공인)',
+    qaManager: '이준혁 품질보증총괄이사',
+    checklist: {
+      cmmPointScan: true,
+      roughnessInterferometer: true,
+      boltInterference: true,
+      ultrasonicCleaning: true,
+      cleanroomPackaging: true
     }
-    return true;
+  },
+  {
+    id: 'SHP-2026-002',
+    orderId: 'ORD-2026-0811-002',
+    orderName: '디스플레이 광학 코팅용 슬롯다이 하부 바디 (1600L)',
+    customer: 'LG디스플레이 파주공장 OLED 생산라인',
+    productSpec: 'Wide Slot Die Lower Body 1600L (Mirror Finished)',
+    lotNo: 'LOT-260519-LGD02',
+    cmmStatus: 'PASS',
+    roughnessStatus: 'PASS',
+    roughnessValue: 'Ra 0.014㎛',
+    coatingStatus: 'PASS',
+    coatingValue: 'DLC Coating 2.5㎛',
+    cleaningStatus: 'PASS',
+    shippingStatus: 'PENDING',
+    coaNo: 'COA-2026-0818-0092',
+    issueDate: '2026-08-18',
+    material: 'SUS420J2 (HRC 55±1)',
+    hardness: 'HRC 55.2',
+    inspector: '이영희 선임연구원',
+    qaManager: '이준혁 품질보증총괄이사',
+    checklist: {
+      cmmPointScan: true,
+      roughnessInterferometer: true,
+      boltInterference: true,
+      ultrasonicCleaning: true,
+      cleanroomPackaging: false
+    }
+  },
+  {
+    id: 'SHP-2026-003',
+    orderId: 'ORD-2026-0811-003',
+    orderName: '수소연료전지 전해질막 초정밀 심 플레이트 (800L)',
+    customer: '현대모비스 의왕연구소 수소연료전지팀',
+    productSpec: 'Precision Shim Plate 800L (Thickness 0.050mm ±0.5㎛)',
+    lotNo: 'LOT-260519-HM03',
+    cmmStatus: 'FAIL',
+    roughnessStatus: 'PASS',
+    roughnessValue: 'Ra 0.019㎛',
+    coatingStatus: 'PASS',
+    coatingValue: '무전해 니켈도금 5.0㎛',
+    cleaningStatus: 'PENDING',
+    shippingStatus: 'REJECTED',
+    coaNo: 'COA-2026-0818-0093',
+    issueDate: '2026-08-18',
+    material: 'SUS304-CSP 1/2H',
+    hardness: 'HV 380',
+    inspector: '박철수 주임연구원',
+    qaManager: '이준혁 품질보증총괄이사',
+    checklist: {
+      cmmPointScan: false,
+      roughnessInterferometer: true,
+      boltInterference: false,
+      ultrasonicCleaning: false,
+      cleanroomPackaging: false
+    }
+  }
+];
+
+// ============================================================================
+// 3. MAIN COMPONENT
+// ============================================================================
+
+interface QualityInspectionViewProps {
+  orders?: Record<string, Order>;
+  scheduledTasks?: ScheduledTaskItem[];
+  currentUser?: User | null;
+  approvedOperators?: string[];
+}
+
+export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
+  orders,
+  scheduledTasks,
+  currentUser,
+}) => {
+  // Quality Stage Hierarchy: IQC -> IPQC -> OQC
+  const [qualityStage, setQualityStage] = useState<'IQC' | 'IPQC' | 'OQC'>('OQC');
+
+  // Navigation Tabs: IQC, IPQC 2 tabs, OQC 2 tabs (including Slot Die Certificate)
+  const [activeTab, setActiveTab] = useState<
+    'TAB_IQC' | 'TAB1_IPQC_CMM' | 'TAB2_SPC_ANALYSIS' | 'TAB_SLOT_DIE_COA' | 'TAB3_SHIPPING_COA'
+  >('TAB_SLOT_DIE_COA');
+
+  // TAB 1 State
+  const [inspections, setInspections] = useState<InspectionItem[]>(DEFAULT_INSPECTION_DATA);
+  const [selectedInspection, setSelectedInspection] = useState<InspectionItem>(DEFAULT_INSPECTION_DATA[0]);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+  const [searchLine, setSearchLine] = useState<string>('ALL');
+  const [searchResult, setSearchResult] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // IQC Detail Modal State
+  const [isIqcModalOpen, setIsIqcModalOpen] = useState<boolean>(false);
+  const [selectedIqcLotId, setSelectedIqcLotId] = useState<string | undefined>(undefined);
+
+  // 3D Viewer Interactive OrbitControls (Mouse drag & Wheel zoom)
+  const [rotX, setRotX] = useState<number>(20);
+  const [rotY, setRotY] = useState<number>(-35);
+  const [zoom, setZoom] = useState<number>(1);
+  const [isWireframe, setIsWireframe] = useState<boolean>(false);
+  const [is3DDragging, setIs3DDragging] = useState<boolean>(false);
+
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number; rotX: number; rotY: number }>({
+    x: 0,
+    y: 0,
+    rotX: 20,
+    rotY: -35
   });
 
-  const handlePrintReport = () => {
+  const handle3DMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    isDraggingRef.current = true;
+    setIs3DDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      rotX,
+      rotY
+    };
+  };
+
+  const handle3DMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    const deltaX = e.clientX - dragStartRef.current.x;
+    const deltaY = e.clientY - dragStartRef.current.y;
+    setRotY(dragStartRef.current.rotY + deltaX * 0.6);
+    setRotX(Math.max(-80, Math.min(80, dragStartRef.current.rotX - deltaY * 0.6)));
+  };
+
+  const handle3DMouseUp = () => {
+    isDraggingRef.current = false;
+    setIs3DDragging(false);
+  };
+
+  const handle3DTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1) {
+      isDraggingRef.current = true;
+      setIs3DDragging(true);
+      dragStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        rotX,
+        rotY
+      };
+    }
+  };
+
+  const handle3DTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || e.touches.length !== 1) return;
+    const deltaX = e.touches[0].clientX - dragStartRef.current.x;
+    const deltaY = e.touches[0].clientY - dragStartRef.current.y;
+    setRotY(dragStartRef.current.rotY + deltaX * 0.6);
+    setRotX(Math.max(-80, Math.min(80, dragStartRef.current.rotX - deltaY * 0.6)));
+  };
+
+  const handle3DTouchEnd = () => {
+    isDraggingRef.current = false;
+    setIs3DDragging(false);
+  };
+
+  const handle3DWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setZoom((prev) => Math.max(0.5, Math.min(2.5, prev - e.deltaY * 0.0015)));
+  };
+
+  const reset3DView = () => {
+    setRotX(20);
+    setRotY(-35);
+    setZoom(1);
+    showToast('info', '3D 뷰어가 기본 시점으로 초기화되었습니다.');
+  };
+
+  // TAB 2 SPC State
+  const [spcMetric, setSpcMetric] = useState<'LIP_FLATNESS' | 'H7_TOLERANCE'>('LIP_FLATNESS');
+
+  // TAB 3 Shipping & COA State
+  const [shippingProjects, setShippingProjects] = useState<ShippingProjectItem[]>(SHIPPING_PROJECTS);
+  const [selectedShipping, setSelectedShipping] = useState<ShippingProjectItem>(SHIPPING_PROJECTS[0]);
+
+  // Toast Notification
+  const [toast, setToast] = useState<{ type: 'success' | 'warning' | 'info'; message: string; subMessage?: string } | null>(null);
+
+  const showToast = (type: 'success' | 'warning' | 'info', message: string, subMessage?: string) => {
+    setToast({ type, message, subMessage });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
+  // Filtered Inspection List for Tab 1
+  const filteredInspections = useMemo(() => {
+    return inspections.filter((item) => {
+      if (searchLine !== 'ALL' && !item.line.includes(searchLine)) return false;
+      if (searchResult !== 'ALL' && item.result !== searchResult) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchId = item.id.toLowerCase().includes(q);
+        const matchName = item.productName.toLowerCase().includes(q);
+        const matchCustomer = item.customer.toLowerCase().includes(q);
+        const matchLot = item.lotNo.toLowerCase().includes(q);
+        if (!matchId && !matchName && !matchCustomer && !matchLot) return false;
+      }
+      return true;
+    });
+  }, [inspections, searchLine, searchResult, searchQuery]);
+
+  // Action: Print COA
+  const handlePrintCOA = () => {
     window.print();
+    showToast('info', '🖨️ 인쇄 다이얼로그가 호출되었습니다.', `${selectedShipping.coaNo} 성적서 출력 모드 준비 완료`);
+  };
+
+  // Action: Approve Shipping
+  const handleApproveShipping = () => {
+    setShippingProjects((prev) =>
+      prev.map((item) =>
+        item.id === selectedShipping.id
+          ? { ...item, shippingStatus: 'APPROVED', checklist: { ...item.checklist, cleanroomPackaging: true } }
+          : item
+      )
+    );
+    setSelectedShipping((prev) => ({
+      ...prev,
+      shippingStatus: 'APPROVED',
+      checklist: { ...prev.checklist, cleanroomPackaging: true }
+    }));
+    showToast('success', '📦 출하 검수가 최종 승인되었습니다.', `수주 [${selectedShipping.orderName}]의 출하 승인서(COA)가 공식 발급되었습니다.`);
+  };
+
+  // Action: Reject Shipping
+  const handleRejectShipping = () => {
+    setShippingProjects((prev) =>
+      prev.map((item) =>
+        item.id === selectedShipping.id ? { ...item, shippingStatus: 'REJECTED' } : item
+      )
+    );
+    setSelectedShipping((prev) => ({ ...prev, shippingStatus: 'REJECTED' }));
+    showToast('warning', '🚨 품질 부적합으로 출하가 보류/반려되었습니다.', `수주 [${selectedShipping.orderName}]가 긴급 재가공/재검사 큐로 이동되었습니다.`);
   };
 
   return (
-    <div className="space-y-4 pb-10">
+    <div id="quality-cmm-dashboard" className="space-y-4 pb-12 select-none">
       {/* ==================================================================== */}
-      {/* 1. TOP KPI STATS (6 Cards)                                          */}
+      {/* 0. FLOATING TOAST NOTIFICATION                                       */}
       {/* ==================================================================== */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Card 1: 금일 검사 건수 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+      {toast && (
+        <div
+          id="quality-toast-banner"
+          className={`fixed top-5 right-5 z-50 max-w-md p-4 rounded-2xl shadow-2xl border flex items-start gap-3 animate-in slide-in-from-top-4 duration-300 ${
+            toast.type === 'success'
+              ? 'bg-emerald-900/95 text-emerald-50 border-emerald-500 shadow-emerald-950/40'
+              : toast.type === 'warning'
+              ? 'bg-rose-900/95 text-rose-50 border-rose-500 shadow-rose-950/40'
+              : 'bg-slate-900/95 text-slate-50 border-blue-500 shadow-slate-950/40'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          ) : toast.type === 'warning' ? (
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          ) : (
+            <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1 text-xs">
+            <p className="font-black text-sm">{toast.message}</p>
+            {toast.subMessage && <p className="opacity-85 mt-0.5">{toast.subMessage}</p>}
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="text-white/60 hover:text-white p-1 rounded-lg transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* 1. TOP COMMON KPI CARDS (6 CARDS)                                   */}
+      {/* ==================================================================== */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* KPI 1: 금일 검사 건수 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">금일 검사 건수</span>
-            <div className="p-1.5 rounded-lg bg-teal-50 text-teal-600 border border-teal-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">금일 검사 건수</span>
+            <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
               <FileSpreadsheet className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-slate-900 tracking-tight">1,256 <span className="text-xs font-bold text-slate-500">건</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▲ 120</span>
+            <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              1,480 <span className="text-xs font-bold text-slate-500">건</span>
+            </div>
+            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
+              <span>▲ 145건</span>
               <span className="text-slate-400 font-normal">(전일 대비)</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: 합격률 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        {/* KPI 2: 합격률 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">합격률</span>
-            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">합격률 (Yield)</span>
+            <div className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-slate-900 tracking-tight">98.7 <span className="text-xs font-bold text-slate-500">%</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▲ 0.8%</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+              99.4 <span className="text-xs font-bold text-slate-500">%</span>
+            </div>
+            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
+              <span>▲ 0.6%</span>
+              <span className="text-slate-400 font-normal">(목표: 99.0%)</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: 불량 건수 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        {/* KPI 3: 불량 건수 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">불량 건수</span>
-            <div className="p-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">불량 건수</span>
+            <div className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-rose-600 tracking-tight">16 <span className="text-xs font-bold text-slate-500">건</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▼ 5</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+              8 <span className="text-xs font-bold text-slate-500">건</span>
+            </div>
+            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
+              <span>▼ 3건 감소</span>
+              <span className="text-slate-400 font-normal">(개선세)</span>
             </div>
           </div>
         </div>
 
-        {/* Card 4: 재검사 건수 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        {/* KPI 4: 재검사 건수 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">재검사 건수</span>
-            <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">재검사(CAPA)</span>
+            <div className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
               <RotateCcw className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-amber-600 tracking-tight">3 <span className="text-xs font-bold text-slate-500">건</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▼ 2</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+              12 <span className="text-xs font-bold text-slate-500">건</span>
+            </div>
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-0.5 mt-0.5">
+              <span>4건 진행중</span>
+              <span className="text-slate-400 font-normal">(8건 해결)</span>
             </div>
           </div>
         </div>
 
-        {/* Card 5: 평균 검사 시간 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        {/* KPI 5: 평균 검사 시간 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">평균 검사 시간</span>
-            <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">평균 검사 시간</span>
+            <div className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-slate-900 tracking-tight">18 <span className="text-xs font-bold text-slate-500">분</span> 45 <span className="text-xs font-bold text-slate-500">초</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▼ 2분 15초</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              24.5 <span className="text-xs font-bold text-slate-500">분</span>
+            </div>
+            <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5 mt-0.5">
+              <span>초정밀 CMM 스캔</span>
             </div>
           </div>
         </div>
 
-        {/* Card 6: CMM 가동률 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        {/* KPI 6: CMM 가동률 */}
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">CMM 가동률</span>
-            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">CMM 가동률</span>
+            <div className="p-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
               <Gauge className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-xl font-black text-slate-900 tracking-tight">92.1 <span className="text-xs font-bold text-slate-500">%</span></div>
-            <div className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 mt-0.5">
-              <span>▲ 3.1%</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-2xl font-black text-teal-600 dark:text-teal-400 tracking-tight">
+              94.2 <span className="text-xs font-bold text-slate-500">%</span>
+            </div>
+            <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 flex items-center gap-0.5 mt-0.5">
+              <span>4기 정상 가동중</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* ==================================================================== */}
-      {/* 2-A. QUALITY STATUS PANELS (4 Grid Dashboard)                         */}
+      {/* 2. QUALITY PROCESS TREE NAVIGATION (IQC -> IPQC -> OQC)              */}
       {/* ==================================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Panel 1: 불량 유형 분포 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900">불량 유형 분포</h3>
-            <span className="text-[10px] text-slate-400 font-semibold">총 16건</span>
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+        {/* Level 1: Quality Stages Hierarchy */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#00A396]" />
+            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+              품질 관리 프로세스 (IQC ➔ IPQC ➔ OQC)
+            </span>
           </div>
-          <div className="flex items-center justify-around py-1">
-            {/* SVG Donut Chart */}
-            <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                <path className="text-slate-100" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 치수 불량 56% (blue) */}
-                <path className="text-blue-600" strokeDasharray="56, 100" strokeWidth="4.2" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 형상 불량 25% (amber) */}
-                <path className="text-amber-500" strokeDasharray="25, 100" strokeDashoffset="-56" strokeWidth="4.2" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 표면 불량 13% (cyan) */}
-                <path className="text-cyan-500" strokeDasharray="13, 100" strokeDashoffset="-81" strokeWidth="4.2" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 조립 불량 6% (rose) */}
-                <path className="text-rose-500" strokeDasharray="6, 100" strokeDashoffset="-94" strokeWidth="4.2" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-              </svg>
-              <div className="absolute text-center">
-                <span className="text-[10px] text-slate-400 block font-bold">총</span>
-                <span className="text-sm font-extrabold text-slate-900">16건</span>
-              </div>
-            </div>
-            {/* Legend */}
-            <div className="space-y-1 text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
-                <span className="text-slate-600 font-medium">치수 불량</span>
-                <span className="font-extrabold text-slate-900 ml-auto">9 (56%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
-                <span className="text-slate-600 font-medium">형상 불량</span>
-                <span className="font-extrabold text-slate-900 ml-auto">4 (25%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 inline-block" />
-                <span className="text-slate-600 font-medium">표면 불량</span>
-                <span className="font-extrabold text-slate-900 ml-auto">2 (13%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
-                <span className="text-slate-600 font-medium">조립 불량</span>
-                <span className="font-extrabold text-slate-900 ml-auto">1 (6%)</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Panel 2: 최근 7일 불량 추이 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900">불량 추이 <span className="text-[10px] text-slate-400 font-normal">(최근 7일)</span></h3>
-            <div className="flex items-center gap-2 text-[10px] font-bold">
-              <span className="flex items-center gap-1 text-teal-600"><span className="w-2 h-0.5 bg-teal-600" />검사 건수</span>
-              <span className="flex items-center gap-1 text-rose-500"><span className="w-2 h-0.5 bg-rose-500" />불량률(%)</span>
-            </div>
-          </div>
-          {/* Trend Line Chart SVG */}
-          <div className="w-full h-24 pt-1">
-            <svg className="w-full h-full overflow-visible" viewBox="0 0 280 80">
-              {/* Background Grid Lines */}
-              <line x1="0" y1="20" x2="280" y2="20" stroke="#F1F5F9" strokeWidth="1" />
-              <line x1="0" y1="50" x2="280" y2="50" stroke="#F1F5F9" strokeWidth="1" />
-              <line x1="0" y1="70" x2="280" y2="70" stroke="#F1F5F9" strokeWidth="1" />
-              {/* Teal Line: Inspection Count */}
-              <polyline fill="none" stroke="#00A396" strokeWidth="2.5" points="10,40 50,30 90,45 130,25 170,50 210,30 250,40" />
-              {/* Rose Line: Defect Rate */}
-              <polyline fill="none" stroke="#F43F5E" strokeWidth="2" strokeDasharray="3,3" points="10,50 50,55 90,35 130,60 170,45 210,65 250,55" />
-              {/* Data Points */}
-              <circle cx="10" cy="40" r="3" fill="#00A396" />
-              <circle cx="50" cy="30" r="3" fill="#00A396" />
-              <circle cx="90" cy="45" r="3" fill="#00A396" />
-              <circle cx="130" cy="25" r="3" fill="#00A396" />
-              <circle cx="170" cy="50" r="3" fill="#00A396" />
-              <circle cx="210" cy="30" r="3" fill="#00A396" />
-              <circle cx="250" cy="40" r="3" fill="#00A396" />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                setQualityStage('IQC');
+                setActiveTab('TAB_IQC');
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                qualityStage === 'IQC'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>1. 수입검사 (IQC)</span>
+            </button>
 
-              <circle cx="130" cy="60" r="3" fill="#F43F5E" />
-            </svg>
-            <div className="flex justify-between text-[9px] text-slate-400 font-mono mt-1 px-1">
-              <span>05/15</span>
-              <span>05/16</span>
-              <span>05/17</span>
-              <span>05/18</span>
-              <span>05/19</span>
-              <span>05/20</span>
-              <span>05/21</span>
-            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+
+            <button
+              onClick={() => {
+                setQualityStage('IPQC');
+                if (activeTab !== 'TAB1_IPQC_CMM' && activeTab !== 'TAB2_SPC_ANALYSIS') {
+                  setActiveTab('TAB1_IPQC_CMM');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                qualityStage === 'IPQC'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>2. 공정검사 (IPQC)</span>
+            </button>
+
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+
+            <button
+              onClick={() => {
+                setQualityStage('OQC');
+                if (activeTab !== 'TAB_SLOT_DIE_COA' && activeTab !== 'TAB3_SHIPPING_COA') {
+                  setActiveTab('TAB_SLOT_DIE_COA');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                qualityStage === 'OQC'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>3. 출하검사 (OQC / 성적서)</span>
+            </button>
           </div>
         </div>
 
-        {/* Panel 3: 검사 결과 현황 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900">검사 결과 현황</h3>
-            <span className="text-[10px] text-slate-400 font-semibold">금일 기준</span>
-          </div>
-          <div className="flex items-center justify-around py-1">
-            <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                <path className="text-slate-100" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 합격 98.7% (teal) */}
-                <path className="text-teal-500" strokeDasharray="98.7, 100" strokeWidth="4.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                {/* 불합격 1.3% (rose) */}
-                <path className="text-rose-500" strokeDasharray="1.3, 100" strokeDashoffset="-98.7" strokeWidth="4.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-              </svg>
-              <div className="absolute text-center">
-                <span className="text-[10px] text-slate-400 block font-bold">총</span>
-                <span className="text-xs font-black text-slate-900">1,256건</span>
-              </div>
-            </div>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block" />
-                <span className="text-slate-600 font-medium">합격</span>
-                <span className="font-extrabold text-slate-900 ml-1">1,240 (98.7%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
-                <span className="text-slate-600 font-medium">불합격</span>
-                <span className="font-extrabold text-rose-600 ml-1">16 (1.3%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-                <span className="text-slate-600 font-medium">재검사</span>
-                <span className="font-extrabold text-emerald-600 ml-1">3 (0.2%)</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Level 2: Sub-views based on selected quality stage */}
+        <div className="flex items-center gap-2 overflow-x-auto pt-0.5">
+          {qualityStage === 'IQC' && (
+            <button
+              id="tab-btn-iqc-log"
+              onClick={() => {
+                setActiveTab('TAB_IQC');
+                setIsIqcModalOpen(true);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                activeTab === 'TAB_IQC'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Boxes className="w-4 h-4" />
+              <span>[수입검사] 모재(SUS420J2/STS630) 및 외주품 수입 검사대장 열기</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 text-white font-mono">
+                대장 상세 팝업 ➔
+              </span>
+            </button>
+          )}
 
-        {/* Panel 4: 주요 불량 원인 TOP 5 */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-            <h3 className="text-xs font-extrabold text-slate-900">주요 불량 원인 TOP 5</h3>
-            <span className="text-[10px] text-slate-400 font-bold">건수</span>
-          </div>
-          <div className="overflow-x-auto text-[11px]">
-            <table className="w-full text-left">
-              <thead className="text-slate-400 font-bold border-b border-slate-100 text-[10px]">
-                <tr>
-                  <th className="pb-1 w-8 text-center">순위</th>
-                  <th className="pb-1">불량 원인</th>
-                  <th className="pb-1 w-10 text-right">건수</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                <tr>
-                  <td className="py-1 text-center font-bold text-amber-600">1</td>
-                  <td className="py-1 font-bold text-slate-900">치수 공차 초과</td>
-                  <td className="py-1 text-right font-black text-rose-600">6</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-center font-bold text-slate-500">2</td>
-                  <td className="py-1">지그 마모</td>
-                  <td className="py-1 text-right font-bold text-slate-800">4</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-center font-bold text-slate-500">3</td>
-                  <td className="py-1">고정 불량 / 변형</td>
-                  <td className="py-1 text-right font-bold text-slate-800">3</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-center font-bold text-slate-500">4</td>
-                  <td className="py-1">설비 정밀도 저하</td>
-                  <td className="py-1 text-right font-bold text-slate-800">2</td>
-                </tr>
-                <tr>
-                  <td className="py-1 text-center font-bold text-slate-500">5</td>
-                  <td className="py-1">측정 프로그램 오류</td>
-                  <td className="py-1 text-right font-bold text-slate-800">1</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* ==================================================================== */}
-      {/* 2-B. MIDDLE SPLIT: 검사 목록 vs CMM 검사 결과 상세 (핵심)             */}
-      {/* ==================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* LEFT 6 COLS: 검사 목록 */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3 flex flex-col justify-between">
-          <div>
-            {/* Title & Filter Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-teal-50 text-teal-600 border border-teal-200">
-                  <Eye className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">CMM 검사 이력 목록</h3>
-                  <p className="text-[11px] text-slate-500">
-                    행(Row)을 클릭하면 우측에 3D 포인트별 CMM 검사 상세가 표시됩니다.
-                  </p>
-                </div>
-              </div>
-
-              {/* Filter Selects */}
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <select
-                  value={searchLine}
-                  onChange={(e) => setSearchLine(e.target.value)}
-                  className="px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-bold focus:ring-1 focus:ring-teal-500"
-                >
-                  <option value="ALL">라인 전체</option>
-                  <option value="LINE 1">LINE 1</option>
-                  <option value="LINE 2">LINE 2</option>
-                  <option value="LINE 3">LINE 3</option>
-                </select>
-
-                <select
-                  value={searchResult}
-                  onChange={(e) => setSearchResult(e.target.value)}
-                  className="px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-bold focus:ring-1 focus:ring-teal-500"
-                >
-                  <option value="ALL">결과 전체</option>
-                  <option value="PASS">합격 (OK)</option>
-                  <option value="FAIL">불합격 (NG)</option>
-                </select>
-
-                <select
-                  value={searchDefect}
-                  onChange={(e) => setSearchDefect(e.target.value)}
-                  className="px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-bold focus:ring-1 focus:ring-teal-500"
-                >
-                  <option value="ALL">불량 전체</option>
-                  <option value="치수 불량">치수 불량</option>
-                  <option value="형상 불량">형상 불량</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Inspection Table */}
-            <div className="overflow-x-auto mt-3 border border-slate-200 rounded-xl">
-              <table className="w-full text-left text-xs min-w-[580px]">
-                <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
-                  <tr>
-                    <th className="p-2.5">검사 ID</th>
-                    <th className="p-2.5">제품명</th>
-                    <th className="p-2.5">LINE</th>
-                    <th className="p-2.5">LOT No.</th>
-                    <th className="p-2.5">검사 시간</th>
-                    <th className="p-2.5 text-center">CMM</th>
-                    <th className="p-2.5 text-center">검사 결과</th>
-                    <th className="p-2.5 text-center">불량 유형</th>
-                    <th className="p-2.5 text-center">상세</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                  {filteredList.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-400 font-semibold">
-                        검색 조건에 해당하는 검사 데이터가 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredList.map((item) => {
-                      const isSelected = selectedInspection.id === item.id;
-                      return (
-                        <tr
-                          key={item.id}
-                          onClick={() => setSelectedInspection(item)}
-                          className={`hover:bg-teal-50/60 transition cursor-pointer ${
-                            isSelected ? 'bg-teal-50/90 font-bold border-l-4 border-l-teal-600' : ''
-                          }`}
-                        >
-                          <td className="p-2.5 font-mono text-[11px] font-extrabold text-slate-900">
-                            {item.id}
-                          </td>
-                          <td className="p-2.5 font-bold text-slate-900">{item.productName}</td>
-                          <td className="p-2.5 text-slate-500 text-[11px]">{item.line}</td>
-                          <td className="p-2.5 font-mono text-[11px] text-slate-500">{item.lotNo}</td>
-                          <td className="p-2.5 text-[11px] text-slate-500">{item.inspectTime}</td>
-                          <td className="p-2.5 text-center font-extrabold text-slate-700 text-[11px]">
-                            {item.cmmDevice}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
-                                item.result === 'PASS'
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                  : 'bg-rose-100 text-rose-800 border border-rose-300'
-                              }`}
-                            >
-                              {item.result === 'PASS' ? '합격' : '불합격'}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-center text-[11px] font-bold text-rose-600">
-                            {item.defectType || '-'}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedInspection(item);
-                              }}
-                              className={`p-1 rounded-lg transition ${
-                                isSelected
-                                  ? 'bg-teal-600 text-white'
-                                  : 'text-slate-400 hover:text-teal-600 hover:bg-slate-100'
-                              }`}
-                              title="3D 측정 포인트 상세 보기"
-                            >
-                              <Search className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-500">
-            <div>총 {filteredList.length}건 목록 표시 중</div>
-            <div className="flex items-center gap-1">
-              <button className="p-1 border rounded hover:bg-slate-100"><ChevronLeft className="w-3.5 h-3.5" /></button>
-              <button className="px-2 py-0.5 bg-teal-600 text-white font-bold rounded">1</button>
-              <button className="px-2 py-0.5 border rounded hover:bg-slate-100">2</button>
-              <button className="px-2 py-0.5 border rounded hover:bg-slate-100">3</button>
-              <button className="p-1 border rounded hover:bg-slate-100"><ChevronRight className="w-3.5 h-3.5" /></button>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT 6 COLS: CMM 검사 결과 상세 (핵심) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border-2 border-teal-500/30 shadow-md p-4 space-y-3.5 flex flex-col justify-between">
-          <div>
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-teal-600 text-white shadow-2xs">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">CMM 검사 결과 상세</h3>
-                  <p className="text-[11px] text-slate-500">
-                    선택 수주 3D 포인트별 정밀 공차 및 치수 측정 데이터
-                  </p>
-                </div>
-              </div>
+          {qualityStage === 'IPQC' && (
+            <>
+              <button
+                id="tab-btn-ipqc-cmm"
+                onClick={() => setActiveTab('TAB1_IPQC_CMM')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
+                  activeTab === 'TAB1_IPQC_CMM'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Activity className="w-4 h-4" />
+                <span>[탭 1] 실시간 IPQC & CMM 검사 (현장 작업자/검사원용)</span>
+              </button>
 
               <button
-                onClick={handlePrintReport}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                id="tab-btn-spc-analysis"
+                onClick={() => setActiveTab('TAB2_SPC_ANALYSIS')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
+                  activeTab === 'TAB2_SPC_ANALYSIS'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
               >
-                <Printer className="w-3.5 h-3.5 text-teal-400" />
-                <span>검사 리포트 출력</span>
+                <BarChart3 className="w-4 h-4" />
+                <span>[탭 2] SPC 및 품질 데이터 분석 (품질 엔지니어용)</span>
               </button>
-            </div>
+            </>
+          )}
 
-            {/* Basic Info Bar */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div>
-                <span className="text-slate-400 font-medium block text-[10px]">검사 ID</span>
-                <span className="font-mono font-extrabold text-slate-900">{selectedInspection.id}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 font-medium block text-[10px]">제품명 / LINE</span>
-                <span className="font-extrabold text-slate-900">{selectedInspection.productName} <span className="text-slate-500 font-normal">({selectedInspection.line})</span></span>
-              </div>
-              <div>
-                <span className="text-slate-400 font-medium block text-[10px]">LOT No. / CMM</span>
-                <span className="font-mono font-bold text-slate-800">{selectedInspection.lotNo} ({selectedInspection.cmmDevice})</span>
-              </div>
-              <div>
-                <span className="text-slate-400 font-medium block text-[10px]">검사 일시 / 검사자</span>
-                <span className="font-bold text-slate-800">{selectedInspection.inspectTime} ({selectedInspection.inspector})</span>
-              </div>
-            </div>
+          {qualityStage === 'OQC' && (
+            <>
+              <button
+                id="tab-btn-slotdie-coa"
+                onClick={() => setActiveTab('TAB_SLOT_DIE_COA')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
+                  activeTab === 'TAB_SLOT_DIE_COA'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <FileCheck className="w-4 h-4 text-amber-300" />
+                <span>[슬롯다이 성적서 관리] 세메스 1580mm STS630 (JS-QC260303-01N)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 text-white font-mono">
+                  8-Page COA
+                </span>
+              </button>
 
-            {/* Middle Section: CAD Image & Interactive 3D Pinpoints Diagram + Measurements Table */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-3">
-              {/* Left 5 cols: CMM 3D Target & Interactive Pinpoints */}
-              <div className="sm:col-span-5 bg-slate-900 rounded-xl p-3 border border-slate-800 text-white flex flex-col justify-between relative min-h-[260px] overflow-hidden">
-                {/* View Tabs */}
-                <div className="flex items-center justify-between z-10">
-                  <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700 text-[10px]">
-                    <button
-                      onClick={() => setViewTab('MEASURE')}
-                      className={`px-2 py-1 rounded font-bold transition cursor-pointer ${
-                        viewTab === 'MEASURE' ? 'bg-teal-500 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      측정 뷰
-                    </button>
-                    <button
-                      onClick={() => setViewTab('TOLERANCE')}
-                      className={`px-2 py-1 rounded font-bold transition cursor-pointer ${
-                        viewTab === 'TOLERANCE' ? 'bg-teal-500 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      공차 뷰
-                    </button>
+              <button
+                id="tab-btn-shipping-coa"
+                onClick={() => setActiveTab('TAB3_SHIPPING_COA')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
+                  activeTab === 'TAB3_SHIPPING_COA'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <PackageCheck className="w-4 h-4" />
+                <span>[출하 보증 종합 검토 & COA 승인] (임원/QA책임자)</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* 3. TAB 1: 실시간 IPQC 및 CMM 검사 뷰                                 */}
+      {/* ==================================================================== */}
+      {activeTab === 'TAB1_IPQC_CMM' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Main Top Grid (Left Queue + Right 3D & Measure Matrix) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* -------------------------------------------------------------- */}
+            {/* Left Queue List (5 Cols)                                       */}
+            {/* -------------------------------------------------------------- */}
+            <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                        실시간 CMM 검사 대기열 및 큐
+                      </h3>
+                      <p className="text-[11px] text-slate-500">슬롯다이 초정밀 검사 진행 목록</p>
+                    </div>
                   </div>
-
-                  <span className="text-[10px] bg-teal-500/20 text-teal-300 border border-teal-500/40 px-2 py-0.5 rounded font-mono">
-                    {selectedInspection.programName}
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    총 {filteredInspections.length}건
                   </span>
                 </div>
 
-                {/* Simulated CMM Probe & Machined Part Interactive SVG Graphic */}
-                <div className="my-auto py-2 flex items-center justify-center relative select-none">
-                  <div
-                    className="transition-transform duration-300 ease-out relative"
-                    style={{
-                      transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
-                    }}
-                  >
-                    {/* CMM Probe Machine & Part Silhouette */}
-                    <svg className="w-48 h-40" viewBox="0 0 200 160">
-                      {/* CMM Machine Frame */}
-                      <path d="M 20 140 L 180 140 L 180 20 L 150 20 L 150 120 L 50 120 L 50 20 L 20 20 Z" fill="#1E293B" stroke="#334155" strokeWidth="2" />
-                      {/* CMM Probe Vertical Column */}
-                      <rect x="95" y="10" width="10" height="70" fill="#00C4B4" opacity="0.9" />
-                      <circle cx="100" cy="82" r="5" fill="#F43F5E" className="animate-ping" />
-                      <circle cx="100" cy="82" r="4" fill="#F43F5E" />
-
-                      {/* Machined Part Block */}
-                      <rect x="55" y="90" width="90" height="45" rx="6" fill="#334155" stroke="#00C4B4" strokeWidth="2" />
-                      <circle cx="75" cy="112" r="10" fill="#0F172A" stroke="#00C4B4" strokeWidth="1.5" />
-                      <circle cx="125" cy="112" r="8" fill="#0F172A" stroke="#F43F5E" strokeWidth="1.5" />
-
-                      {/* Interactive Pinpoints Linked to Table Items */}
-                      {/* Pin 1: Ø26 H7 */}
-                      <g
-                        onClick={() => setSelectedPoint(1)}
-                        className="cursor-pointer hover:scale-125 transition"
-                      >
-                        <circle cx="75" cy="112" r="8" fill="#00C4B4" opacity="0.8" />
-                        <text x="75" y="115" textAnchor="middle" fill="#FFFFFF" fontSize="9" fontStyle="bold">1</text>
-                      </g>
-
-                      {/* Pin 2: Ø15 H7 (Defect) */}
-                      <g
-                        onClick={() => setSelectedPoint(2)}
-                        className="cursor-pointer hover:scale-125 transition animate-bounce"
-                      >
-                        <circle cx="125" cy="112" r="8" fill="#F43F5E" opacity="0.9" />
-                        <text x="125" y="115" textAnchor="middle" fill="#FFFFFF" fontSize="9" fontStyle="bold">2</text>
-                      </g>
-
-                      {/* Pin 3: 평면도 */}
-                      <g
-                        onClick={() => setSelectedPoint(3)}
-                        className="cursor-pointer hover:scale-125 transition"
-                      >
-                        <circle cx="100" cy="90" r="7" fill="#00C4B4" opacity="0.8" />
-                        <text x="100" y="93" textAnchor="middle" fill="#FFFFFF" fontSize="8" fontStyle="bold">3</text>
-                      </g>
-
-                      {/* Pin 4: 위치도 (Defect) */}
-                      <g
-                        onClick={() => setSelectedPoint(4)}
-                        className="cursor-pointer hover:scale-125 transition"
-                      >
-                        <circle cx="140" cy="95" r="7" fill="#F43F5E" opacity="0.9" />
-                        <text x="140" y="98" textAnchor="middle" fill="#FFFFFF" fontSize="8" fontStyle="bold">4</text>
-                      </g>
-                    </svg>
+                {/* Filters */}
+                <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                  <div>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="검사ID, 수주명, LOT 검색..."
+                      className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={searchLine}
+                      onChange={(e) => setSearchLine(e.target.value)}
+                      className="w-1/2 px-2 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    >
+                      <option value="ALL">전체 라인</option>
+                      <option value="LINE 1">LINE 1</option>
+                      <option value="LINE 2">LINE 2</option>
+                      <option value="LINE 3">LINE 3</option>
+                    </select>
+                    <select
+                      value={searchResult}
+                      onChange={(e) => setSearchResult(e.target.value)}
+                      className="w-1/2 px-2 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
+                    >
+                      <option value="ALL">전체 결과</option>
+                      <option value="PASS">PASS</option>
+                      <option value="FAIL">FAIL</option>
+                      <option value="REINSPECT">재검사</option>
+                    </select>
                   </div>
                 </div>
 
-                {/* Control Tools Bar */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800 z-10 text-[11px] text-slate-400">
-                  <span className="text-[10px]">3D 회전/줌 클릭</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setRotationAngle((r) => r + 45)}
-                      className="p-1 hover:bg-slate-800 rounded text-slate-300"
-                      title="회전"
-                    >
-                      <RotateCw className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setZoomLevel((z) => Math.min(1.5, z + 0.1))}
-                      className="p-1 hover:bg-slate-800 rounded text-slate-300"
-                      title="확대"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.1))}
-                      className="p-1 hover:bg-slate-800 rounded text-slate-300"
-                      title="축소"
-                    >
-                      <ZoomOut className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setZoomLevel(1);
-                        setRotationAngle(0);
-                        setSelectedPoint(null);
-                      }}
-                      className="p-1 hover:bg-slate-800 rounded text-slate-300"
-                      title="초기화"
-                    >
-                      <Folder className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                {/* Inspection Queue Items */}
+                <div className="space-y-2 mt-3 max-h-[420px] overflow-y-auto pr-1">
+                  {filteredInspections.map((item) => {
+                    const isSelected = selectedInspection.id === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedInspection(item);
+                          setSelectedPointIndex(null);
+                        }}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+                          isSelected
+                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 shadow-xs ring-1 ring-blue-500'
+                            : 'bg-slate-50/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400">
+                              {item.id}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold">
+                              {item.line}
+                            </span>
+                          </div>
+
+                          {item.result === 'PASS' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                              <CheckCircle2 className="w-3 h-3" /> PASS
+                            </span>
+                          ) : item.result === 'FAIL' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-700 animate-pulse">
+                              <XCircle className="w-3 h-3" /> FAIL
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                              <RotateCcw className="w-3 h-3" /> 재검사
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white line-clamp-1">
+                          {item.productName}
+                        </h4>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-black/5 dark:border-white/5">
+                          <span>고객: {item.customer.split(' ')[0]}</span>
+                          <span className="font-mono">{item.lotNo}</span>
+                        </div>
+
+                        {item.defectType && (
+                          <div className="text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900 flex items-center justify-between">
+                            <span>불량유형: {item.defectType}</span>
+                            <span>CAPA {item.capa.step}단계</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Right 7 cols: 측정 결과 테이블 */}
-              <div className="sm:col-span-7 overflow-x-auto border border-slate-200 rounded-xl bg-white">
-                <table className="w-full text-left text-xs min-w-[340px]">
-                  <thead className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200">
-                    <tr>
-                      <th className="p-2 text-center w-8">No.</th>
-                      <th className="p-2">측정 항목</th>
-                      <th className="p-2 text-right">기준값</th>
-                      <th className="p-2 text-right">측정값</th>
-                      <th className="p-2 text-right">편차</th>
-                      <th className="p-2 text-center">공차</th>
-                      <th className="p-2 text-center">판정</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                    {selectedInspection.measurements.map((m) => {
-                      const isPointSelected = selectedPoint === m.no;
-                      const isNG = m.status === 'NG';
-                      return (
-                        <tr
-                          key={m.no}
-                          onClick={() => setSelectedPoint(m.no)}
-                          className={`hover:bg-teal-50/50 transition cursor-pointer ${
-                            isPointSelected
-                              ? 'bg-amber-100/80 font-bold'
-                              : isNG
-                              ? 'bg-rose-50/60'
-                              : ''
-                          }`}
-                        >
-                          <td className="p-2 text-center font-bold text-slate-500">{m.no}</td>
-                          <td className="p-2 font-bold text-slate-900">{m.item}</td>
-                          <td className="p-2 text-right font-mono text-slate-600">{m.nominal.toFixed(3)}</td>
-                          <td className={`p-2 text-right font-mono font-bold ${isNG ? 'text-rose-600' : 'text-slate-900'}`}>
-                            {m.actual.toFixed(3)}
-                          </td>
-                          <td className={`p-2 text-right font-mono font-bold text-[11px] ${isNG ? 'text-rose-600' : 'text-teal-700'}`}>
-                            {m.deviation}
-                          </td>
-                          <td className="p-2 text-center font-mono text-slate-500 text-[10px]">{m.tolerance}</td>
-                          <td className="p-2 text-center">
-                            <span
-                              className={`px-1.5 py-0.2 rounded text-[10px] font-black ${
-                                isNG
-                                  ? 'bg-rose-600 text-white'
-                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              }`}
-                            >
-                              {m.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* Summary of current list */}
+              <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] flex items-center justify-between font-bold text-slate-600 dark:text-slate-400">
+                <span>선택된 검사: <strong className="text-blue-600 dark:text-blue-400">{selectedInspection.id}</strong></span>
+                <span>측정 항목: {selectedInspection.measurements.length}개 포인트</span>
               </div>
             </div>
 
-            {/* Bottom Comprehensive Verdict Bar */}
-            <div className="bg-slate-900 text-white rounded-xl p-3 mt-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-bold">종합 판정:</span>
-                <span
-                  className={`px-3 py-1 rounded-lg text-xs font-black tracking-wide ${
-                    selectedInspection.result === 'PASS'
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-rose-600 text-white animate-pulse'
+            {/* -------------------------------------------------------------- */}
+            {/* Right: 3D Slot Die Viewer & Tolerance Matrix (7 Cols)           */}
+            {/* -------------------------------------------------------------- */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* 3D Interactive Slot Die Viewer */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                        슬롯다이 3D 정밀 검사 뷰어 & 립(Lip) 포인트 매핑
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {selectedInspection.productName} ({selectedInspection.lipWidthMm}mm)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 3D Real-time Angle/Zoom HUD & Quick Reset */}
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      Rx: {Math.round(rotX)}° | Ry: {Math.round(rotY)}° | Zoom: {(zoom * 100).toFixed(0)}%
+                    </div>
+                    <button
+                      id="btn-3d-reset-view"
+                      onClick={reset3DView}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                      title="시점 초기화 (원점 복귀)"
+                    >
+                      리셋
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3D Canvas / Geometric Representation with OrbitControls Dragging */}
+                <div
+                  id="slotdie-3d-viewport"
+                  onMouseDown={handle3DMouseDown}
+                  onMouseMove={handle3DMouseMove}
+                  onMouseUp={handle3DMouseUp}
+                  onMouseLeave={handle3DMouseUp}
+                  onTouchStart={handle3DTouchStart}
+                  onTouchMove={handle3DTouchMove}
+                  onTouchEnd={handle3DTouchEnd}
+                  onWheel={handle3DWheel}
+                  onDoubleClick={reset3DView}
+                  className={`relative h-60 sm:h-72 w-full bg-radial from-slate-900 via-slate-950 to-black rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner select-none ${
+                    is3DDragging ? 'cursor-grabbing' : 'cursor-grab'
                   }`}
                 >
-                  {selectedInspection.result === 'PASS' ? '합격 (OK)' : '불합격 (NG)'}
+                  {/* Grid Background */}
+                  <div
+                    className="absolute inset-0 opacity-20 pointer-events-none"
+                    style={{
+                      backgroundImage: 'radial-gradient(circle, #38bdf8 1px, transparent 1px)',
+                      backgroundSize: '20px 20px'
+                    }}
+                  />
+
+                  {/* 3D Slot Die Body Container with CSS 3D Transforms */}
+                  <div
+                    className="relative transition-transform duration-100 ease-out select-none pointer-events-none"
+                    style={{
+                      transform: `perspective(700px) scale(${zoom}) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+                      transformStyle: 'preserve-3d'
+                    }}
+                  >
+                    {/* Upper Die Body Solid */}
+                    <div
+                      className="w-64 h-16 bg-gradient-to-r from-cyan-600 via-blue-500 to-indigo-600 border border-cyan-300/80 shadow-2xl rounded-sm flex items-center justify-center text-white/90 text-[11px] font-mono font-black"
+                      style={{
+                        boxShadow: '0 0 25px rgba(6,182,212,0.3)',
+                        transform: 'translateZ(15px)'
+                      }}
+                    >
+                      <span>SLOT DIE UPPER BODY</span>
+                    </div>
+
+                    {/* Lip Discharge Gap (Highlighted Micro-Gap) */}
+                    <div
+                      className="w-64 h-2 bg-amber-400 border-y border-amber-300 animate-pulse my-1 flex items-center justify-center text-[8px] font-black text-black tracking-widest"
+                      style={{ transform: 'translateZ(20px)' }}
+                    >
+                      LIP GAP (50.0㎛)
+                    </div>
+
+                    {/* Lower Die Body Solid */}
+                    <div
+                      className="w-64 h-16 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-800 border border-slate-500 shadow-2xl rounded-sm flex items-center justify-center text-white/80 text-[11px] font-mono font-bold"
+                      style={{
+                        boxShadow: '0 0 20px rgba(0,0,0,0.5)',
+                        transform: 'translateZ(10px)'
+                      }}
+                    >
+                      <span>SLOT DIE LOWER BODY</span>
+                    </div>
+
+                    {/* 3D Probe Scan Points */}
+                    {selectedInspection.measurements.map((p, idx) => {
+                      const isTarget = selectedPointIndex === idx;
+                      const isNg = p.status === 'NG';
+                      return (
+                        <div
+                          key={p.code}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPointIndex(idx);
+                          }}
+                          className="absolute pointer-events-auto cursor-pointer group"
+                          style={{
+                            left: `calc(50% + ${p.pos3D.x}px)`,
+                            top: `calc(50% + ${p.pos3D.y}px)`,
+                            transform: `translateZ(${p.pos3D.z + 30}px) translate(-50%, -50%)`,
+                            transformStyle: 'preserve-3d'
+                          }}
+                        >
+                          <div
+                            className={`relative flex items-center justify-center w-6 h-6 rounded-full font-mono text-[10px] font-black shadow-lg transition-transform ${
+                              isNg
+                                ? 'bg-rose-600 text-white ring-2 ring-rose-400 animate-bounce'
+                                : isTarget
+                                ? 'bg-amber-400 text-black ring-2 ring-amber-200 scale-125'
+                                : 'bg-emerald-500 text-white hover:scale-110'
+                            }`}
+                          >
+                            <span>{p.code}</span>
+                            {/* Hover / Active Tooltip */}
+                            <div className="absolute bottom-full mb-1.5 hidden group-hover:flex flex-col items-center bg-slate-900/90 text-white text-[10px] px-2 py-1 rounded shadow-xl whitespace-nowrap z-30 border border-slate-700">
+                              <span className="font-bold">{p.item}</span>
+                              <span className="font-mono">
+                                실측: {p.actual} {p.unit} ({p.deviation})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Measurement Status Indicator Overlay */}
+                  <div className="absolute top-2.5 left-3 text-[11px] text-cyan-300/90 font-mono flex items-center gap-2 pointer-events-none bg-slate-950/70 px-2.5 py-1 rounded-lg border border-slate-800 backdrop-blur-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>항온항습 20.0℃ | CMM 전수 스캔 포인트 8개 활성화</span>
+                  </div>
+
+                  {/* OrbitControls Interactive HUD Guidance Pill */}
+                  <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-slate-900/85 backdrop-blur-xs border border-slate-700/80 text-[10px] font-medium text-slate-300 flex items-center gap-2 pointer-events-none whitespace-nowrap shadow-xl">
+                    <span>🖱️ <strong>좌클릭 드래그</strong>: 360° 회전</span>
+                    <span className="text-slate-600">|</span>
+                    <span><strong>휠</strong>: 줌 인/아웃</span>
+                    <span className="text-slate-600">|</span>
+                    <span><strong>더블클릭</strong>: 리셋</span>
+                  </div>
+                </div>
+
+                {/* Precision Measurement Table */}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 dark:bg-slate-800/80 p-2.5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
+                    <span className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      <Gauge className="w-3.5 h-3.5 text-blue-500" />
+                      <span>포인트별 기준값(Nominal) vs 실측값(Actual) 정밀 공차 비교표</span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-mono">단위: ㎛ / mm</span>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-52 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-100/70 dark:bg-slate-800/50 text-[11px] font-bold text-slate-600 dark:text-slate-400 sticky top-0">
+                        <tr>
+                          <th className="p-2">No</th>
+                          <th className="p-2">코드</th>
+                          <th className="p-2">측정 항목</th>
+                          <th className="p-2">기준값</th>
+                          <th className="p-2">실측값</th>
+                          <th className="p-2">허용 공차</th>
+                          <th className="p-2">편차</th>
+                          <th className="p-2 text-center">판정</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                        {selectedInspection.measurements.map((m, idx) => {
+                          const isSelected = selectedPointIndex === idx;
+                          const isNg = m.status === 'NG';
+                          return (
+                            <tr
+                              key={m.code}
+                              onClick={() => setSelectedPointIndex(idx)}
+                              className={`cursor-pointer transition ${
+                                isSelected
+                                  ? 'bg-blue-50/80 dark:bg-blue-950/40 font-bold'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                              } ${isNg ? 'bg-rose-50/40 dark:bg-rose-950/20' : ''}`}
+                            >
+                              <td className="p-2 font-mono text-slate-500">{m.no}</td>
+                              <td className="p-2 font-mono font-black text-blue-600 dark:text-blue-400">
+                                {m.code}
+                              </td>
+                              <td className="p-2 font-bold text-slate-800 dark:text-slate-200">
+                                {m.item}
+                              </td>
+                              <td className="p-2 font-mono text-slate-600 dark:text-slate-300">
+                                {m.nominal.toFixed(2)} {m.unit}
+                              </td>
+                              <td
+                                className={`p-2 font-mono font-black ${
+                                  isNg
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-emerald-700 dark:text-emerald-400'
+                                }`}
+                              >
+                                {m.actual.toFixed(m.unit.includes('㎛') ? 2 : 3)} {m.unit}
+                              </td>
+                              <td className="p-2 font-mono text-slate-500">{m.tolerance}</td>
+                              <td
+                                className={`p-2 font-mono font-bold ${
+                                  isNg
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-slate-700 dark:text-slate-300'
+                                }`}
+                              >
+                                {m.deviation}
+                              </td>
+                              <td className="p-2 text-center">
+                                {m.status === 'OK' ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                                    OK
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 animate-pulse">
+                                    NG
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ================================================================ */}
+          {/* Bottom Section: 5-Step CAPA Tracking & CMM Device Real-time Status */}
+          {/* ================================================================ */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Left: 5-Step CAPA Tracking Bar (7 Cols) */}
+            <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      5단계 품질 개선 흐름(CAPA) 트래킹 & 시정 조치
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      불량 발생 시 원인 분석, 지그 교정, 재검사 및 최종 합격 판정 라이프사이클
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                  현재: <strong className="text-blue-600">{selectedInspection.capa.step}단계 진행중</strong>
                 </span>
+              </div>
 
-                {selectedInspection.defectType && (
-                  <span className="text-xs bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2.5 py-0.5 rounded font-bold">
-                    불량 유형: {selectedInspection.defectType}
+              {/* 5-Step Stepper Bar */}
+              <div className="grid grid-cols-5 gap-1.5 py-2">
+                {[
+                  { step: 1, label: '1. 불량 발생/감지' },
+                  { step: 2, label: '2. 원인 분석' },
+                  { step: 3, label: '3. 시정 조치' },
+                  { step: 4, label: '4. CMM 재검사' },
+                  { step: 5, label: '5. 최종 합격 판정' }
+                ].map((s) => {
+                  const isPassed = selectedInspection.capa.step > s.step;
+                  const isCurrent = selectedInspection.capa.step === s.step;
+                  return (
+                    <div
+                      key={s.step}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-between ${
+                        isPassed
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                          : isCurrent
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-md font-black ring-2 ring-blue-300'
+                          : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <span className="text-[10px] font-bold">
+                        {isPassed ? '✓ 완료' : isCurrent ? '▶ 진행중' : '대기'}
+                      </span>
+                      <span className="text-[11px] font-black mt-1 leading-tight">{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Detailed CAPA History Box */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500 font-bold">불량 감지:</span>{' '}
+                    <strong className="text-slate-800 dark:text-slate-200">
+                      {selectedInspection.capa.defectOccurred.type}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold">원인 분석:</span>{' '}
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">
+                      {selectedInspection.capa.causeAnalysis.reason}
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-bold">시정 조치 내역:</span>{' '}
+                  <span className="text-blue-700 dark:text-blue-400 font-bold">
+                    {selectedInspection.capa.correctiveAction.action} (
+                    {selectedInspection.capa.correctiveAction.changeDetails})
                   </span>
-                )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: CMM 4-Machines Real-time Monitor (5 Cols) */}
+            <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
+                    <Cpu className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      CMM 장비 현황 (CMM-01 ~ CMM-04)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">20.0℃ 항온항습실 실시간 상태</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-emerald-600">클린룸 #1/2 연동</span>
               </div>
 
-              <div className="text-xs text-slate-300 font-mono">
-                최대 편차: <span className="text-amber-400 font-bold">+0.065 mm (4번 위치도)</span>
+              <div className="space-y-2">
+                {CMM_MACHINES_STATUS.map((cmm) => (
+                  <div
+                    key={cmm.id}
+                    className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col justify-between gap-1 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            cmm.status === 'RUNNING'
+                              ? 'bg-emerald-500 animate-pulse'
+                              : 'bg-amber-500'
+                          }`}
+                        />
+                        <strong className="text-slate-900 dark:text-white">{cmm.name}</strong>
+                      </div>
+                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                        가동률 {cmm.utilization}%
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate">
+                      현재: {cmm.currentTask}
+                    </p>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1 border-t border-black/5 dark:border-white/5">
+                      <span className="flex items-center gap-1">
+                        <Thermometer className="w-3 h-3 text-rose-500" /> {cmm.temp}℃
+                        <Droplets className="w-3 h-3 text-blue-500 ml-1" /> {cmm.humidity}%
+                      </span>
+                      <span>{cmm.calibratedAt}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ==================================================================== */}
-      {/* 3. BOTTOM ROW: 불량 조치 이력 / CMM 현황 / 최근 이미지                 */}
+      {/* 4. TAB 2: SPC 및 품질 데이터 분석 뷰                                 */}
       {/* ==================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* COL 1 (5 cols): 불량 분석 및 조치 이력 */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              불량 분석 및 조치 이력 (CAPA)
-            </h3>
-            <span className="text-[10px] text-teal-600 font-bold">불량 발생 → 최종 합격</span>
+      {activeTab === 'TAB2_SPC_ANALYSIS' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Top Row: Pareto Defect Donut & X-Bar R Control Trend Chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Left: Pareto Distribution Chart (5 Cols) */}
+            <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      부품별 불량 유형 파레토(Pareto) 분포
+                    </h3>
+                    <p className="text-[11px] text-slate-500">누적 점유율 분석 (80:20 법칙)</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-rose-600">총 90건 분석</span>
+              </div>
+
+              {/* Pareto Bars */}
+              <div className="space-y-2.5 pt-1">
+                {PARETO_DEFECTS.map((item, idx) => (
+                  <div key={item.type} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span>#{idx + 1} {item.type}</span>
+                      </span>
+                      <span className="font-mono text-slate-600 dark:text-slate-400">
+                        {item.count}건 ({item.percent}%)
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${item.percent}%`,
+                          backgroundColor: item.color
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900 text-xs space-y-1">
+                <span className="font-black text-rose-900 dark:text-rose-300">
+                  ※ 파레토 핵심 중점 관리 공정:
+                </span>
+                <p className="text-slate-600 dark:text-slate-400 text-[11px]">
+                  '립 토출구 간격 편차'와 '진직도/평면도' 2개 항목이 전체 불량의 <strong>68.9%</strong>를 차지하므로, 초정밀 연마 지그 토크 제어 집중 개선이 요구됩니다.
+                </p>
+              </div>
+            </div>
+
+            {/* Right: 7-Day Trend / X-bar R Control Chart (7 Cols) */}
+            <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      최근 7일간 립 평면도 및 H7 공차 변동 관리도 (X-bar R Chart)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      UCL/LCL 상·하한 관리선 및 이상점(Outlier) 실시간 모니터링
+                    </p>
+                  </div>
+                </div>
+
+                {/* Metric Switch */}
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setSpcMetric('LIP_FLATNESS')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      spcMetric === 'LIP_FLATNESS'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    립 평면도 (㎛)
+                  </button>
+                  <button
+                    onClick={() => setSpcMetric('H7_TOLERANCE')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      spcMetric === 'H7_TOLERANCE'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    볼트 홀 H7 (㎛)
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom SVG Control Chart */}
+              {(() => {
+                const isLip = spcMetric === 'LIP_FLATNESS';
+                const maxScale = isLip ? 1.5 : 15.0;
+                const data = SPC_TREND_DATA[spcMetric];
+                const spcSummary = isLip
+                  ? {
+                      cp: '1.84',
+                      cpk: '1.72 (6-Sigma)',
+                      outliers: '0건 (정상 관리 상태)',
+                      outlierColor: 'text-blue-600 dark:text-blue-400'
+                    }
+                  : {
+                      cp: '1.78',
+                      cpk: '1.62 (5.8-Sigma)',
+                      outliers: '1건 (08/16 조치 완료)',
+                      outlierColor: 'text-amber-600 dark:text-amber-400'
+                    };
+
+                return (
+                  <>
+                    <div className="relative h-56 w-full bg-slate-50 dark:bg-slate-950 rounded-xl p-3 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-500">
+                        <span className="text-rose-600 font-bold">
+                          UCL (상한선: +{isLip ? '1.50' : '15.00'}㎛)
+                        </span>
+                        <span className="text-blue-600 font-bold">
+                          CL (중심선: 0.00㎛)
+                        </span>
+                        <span className="text-rose-600 font-bold">
+                          LCL (하한선: -{isLip ? '1.50' : '15.00'}㎛)
+                        </span>
+                      </div>
+
+                      {/* SVG Visual Graph */}
+                      <div className="relative h-36 w-full flex items-center">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 500 120">
+                          {/* Horizontal Reference Lines */}
+                          <line x1="0" y1="20" x2="500" y2="20" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="4 4" />
+                          <line x1="0" y1="60" x2="500" y2="60" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="2 2" />
+                          <line x1="0" y1="100" x2="500" y2="100" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="4 4" />
+
+                          {/* Polyline of Data Points */}
+                          {(() => {
+                            const points = data
+                              .map((d, i) => {
+                                const x = (i / (data.length - 1)) * 480 + 10;
+                                const y = 60 - (d.value / maxScale) * 40;
+                                return `${x},${y}`;
+                              })
+                              .join(' ');
+
+                            return (
+                              <>
+                                <polyline fill="none" stroke="#2563eb" strokeWidth="2.5" points={points} />
+                                {data.map((d, i) => {
+                                  const x = (i / (data.length - 1)) * 480 + 10;
+                                  const y = 60 - (d.value / maxScale) * 40;
+                                  const textY = y < 22 ? y - 6 : y - 8;
+                                  return (
+                                    <g key={d.batch + i} className="cursor-pointer group">
+                                      <circle
+                                        cx={x}
+                                        cy={y}
+                                        r={d.isOutlier ? 5.5 : 4}
+                                        fill={d.isOutlier ? '#e11d48' : '#2563eb'}
+                                        stroke="#ffffff"
+                                        strokeWidth="2"
+                                        className={d.isOutlier ? 'animate-pulse' : ''}
+                                      />
+                                      <text
+                                        x={x}
+                                        y={textY}
+                                        textAnchor="middle"
+                                        fontSize="9"
+                                        fontWeight="bold"
+                                        fill={d.isOutlier ? '#e11d48' : '#64748b'}
+                                      >
+                                        {d.value}
+                                      </text>
+                                    </g>
+                                  );
+                                })}
+                              </>
+                            );
+                          })()}
+                        </svg>
+                      </div>
+
+                      {/* X Axis Labels */}
+                      <div className="flex justify-between text-[10px] font-mono text-slate-500 px-2 border-t border-slate-200 dark:border-slate-800 pt-1">
+                        <span>08/12 (Batch #1)</span>
+                        <span>08/14</span>
+                        <span className="text-rose-600 font-bold">
+                          {isLip ? '08/16 (클램핑 이상 경고)' : '08/16 (홀 가공부하 경고)'}
+                        </span>
+                        <span>08/17 (조치 완료)</span>
+                        <span className="text-emerald-600 font-bold">08/18 (안정화)</span>
+                      </div>
+                    </div>
+
+                    {/* Capability Metrics Cpk */}
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-500 font-bold text-[10px]">공정능력지수 Cp</span>
+                        <p className="text-base font-black text-slate-900 dark:text-white mt-0.5">{spcSummary.cp}</p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold text-[10px]">
+                          편향계수 고려 Cpk
+                        </span>
+                        <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {spcSummary.cpk}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
+                        <span className="text-blue-700 dark:text-blue-400 font-bold text-[10px]">
+                          이상점 검출(Run rule)
+                        </span>
+                        <p className={`text-base font-black ${spcSummary.outlierColor} mt-0.5`}>
+                          {spcSummary.outliers}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
 
-          {/* Process Steps Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 text-xs text-center">
-            {/* Step 1 */}
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-2 space-y-1">
-              <span className="text-[10px] font-black text-rose-800 block">1. 불량 발생</span>
-              <div className="text-[11px] font-mono font-bold text-slate-900">INS-250521-001</div>
-              <div className="text-[10px] font-bold text-rose-600">치수 불량 (Ø15 H7)</div>
-              <div className="text-[9px] text-slate-400 font-mono">10:28</div>
+          {/* Bottom Row: Machine Precision Comparison & TOP 5 Defect Causes */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Machine Precision Comparison (6 Cols) */}
+            <div className="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
+                    <Cpu className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      가공 설비별 CMM 정밀도 & 공정능력(Cpk) 비교
+                    </h3>
+                    <p className="text-[11px] text-slate-500">MCT 및 3M 연마기별 정밀도 순위</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {MACHINE_PRECISION_LIST.map((m) => (
+                  <div
+                    key={m.machine}
+                    className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <h4 className="font-black text-slate-800 dark:text-slate-200">{m.machine}</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        평균 가공 편차: <strong className="text-blue-600">{m.avgDeviation}</strong> | 누적 측정 {m.count}회
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs font-mono font-black px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                        Cpk {m.cpk}
+                      </span>
+                      <p className="text-[10px] text-slate-500 font-bold mt-1">
+                        합격률 {m.passRate}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* Step 2 */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 space-y-1">
-              <span className="text-[10px] font-black text-amber-900 block">2. 원인 분석</span>
-              <div className="text-[11px] font-extrabold text-slate-900">지그 마모 확인</div>
-              <div className="text-[10px] text-slate-600 font-mono">JIG-015 (0.03mm)</div>
-              <div className="text-[9px] text-slate-400 font-mono">11:00</div>
-            </div>
+            {/* TOP 5 Defect Causes (6 Cols) */}
+            <div className="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                      주요 불량 원인 TOP 5 통계 및 방지 대책
+                    </h3>
+                    <p className="text-[11px] text-slate-500">현장 발생 빈도순 예방 조치 매뉴얼</p>
+                  </div>
+                </div>
+              </div>
 
-            {/* Step 3 */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 space-y-1">
-              <span className="text-[10px] font-black text-blue-900 block">3. 조치 내용</span>
-              <div className="text-[11px] font-extrabold text-blue-700">지그 교체 완료</div>
-              <div className="text-[10px] text-slate-600 font-mono">JIG-015A 교체</div>
-              <div className="text-[9px] text-slate-400 font-mono">11:20</div>
-            </div>
-
-            {/* Step 4 */}
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-2 space-y-1">
-              <span className="text-[10px] font-black text-purple-900 block">4. CMM 재검사</span>
-              <div className="text-[11px] font-mono font-bold text-slate-900">INS-001-R1</div>
-              <div className="text-[10px] font-bold text-purple-700">재측정 진행</div>
-              <div className="text-[9px] text-slate-400 font-mono">12:10</div>
-            </div>
-
-            {/* Step 5 */}
-            <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-2 space-y-1">
-              <span className="text-[10px] font-black text-emerald-900 block">5. 최종 판정</span>
-              <div className="text-sm font-black text-emerald-600 my-0.5">합격 (OK)</div>
-              <div className="text-[9px] text-emerald-700 font-bold">출하 승인 완료</div>
-              <div className="text-[9px] text-slate-400 font-mono">12:10</div>
+              <div className="space-y-2">
+                {TOP_DEFECT_CAUSES.map((c) => (
+                  <div
+                    key={c.rank}
+                    className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700 text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px]">
+                          {c.rank}
+                        </span>
+                        <span>{c.cause}</span>
+                      </span>
+                      <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+                        {c.count}건 ({c.percent}%)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium pl-5.5">
+                      ↳ 조치: {c.action}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* COL 2 (3 cols): CMM 장비 현황 */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900">CMM 장비 현황</h3>
-            <span className="text-[10px] text-slate-400 font-bold">4대 가동</span>
-          </div>
+      {/* ==================================================================== */}
+      {/* 5. TAB 3: 출하 보증 및 COA 성적서 관리 뷰                           */}
+      {/* ==================================================================== */}
+      {activeTab === 'TAB3_SHIPPING_COA' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Left: Project Shipping Readiness List (4 Cols) */}
+            <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                      <PackageCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                        프로젝트별 출하 적합성 검토
+                      </h3>
+                      <p className="text-[11px] text-slate-500">CMM, 조도, 도금, 세척 종합 판정</p>
+                    </div>
+                  </div>
+                </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold">
-                <tr>
-                  <th className="p-1.5">장비명</th>
-                  <th className="p-1.5">상태</th>
-                  <th className="p-1.5 text-right">금일 검사</th>
-                  <th className="p-1.5 text-right">가동률</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                <tr>
-                  <td className="p-1.5 font-black">CMM-01</td>
-                  <td className="p-1.5">
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">정상</span>
-                  </td>
-                  <td className="p-1.5 text-right font-mono">426건</td>
-                  <td className="p-1.5 text-right font-bold text-teal-700">95.2%</td>
-                </tr>
-                <tr>
-                  <td className="p-1.5 font-black">CMM-02</td>
-                  <td className="p-1.5">
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">정상</span>
-                  </td>
-                  <td className="p-1.5 text-right font-mono">388건</td>
-                  <td className="p-1.5 text-right font-bold text-teal-700">91.3%</td>
-                </tr>
-                <tr>
-                  <td className="p-1.5 font-black">CMM-03</td>
-                  <td className="p-1.5">
-                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-bold">점검중</span>
-                  </td>
-                  <td className="p-1.5 text-right font-mono">312건</td>
-                  <td className="p-1.5 text-right font-bold text-amber-700">78.6%</td>
-                </tr>
-                <tr>
-                  <td className="p-1.5 font-black">CMM-04</td>
-                  <td className="p-1.5">
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">정상</span>
-                  </td>
-                  <td className="p-1.5 text-right font-mono">130건</td>
-                  <td className="p-1.5 text-right font-bold text-teal-700">93.5%</td>
-                </tr>
-              </tbody>
-            </table>
+                <div className="space-y-2 mt-3">
+                  {shippingProjects.map((p) => {
+                    const isSelected = selectedShipping.id === p.id;
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setSelectedShipping(p)}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col gap-1.5 ${
+                          isSelected
+                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 shadow-xs ring-1 ring-blue-500'
+                            : 'bg-slate-50/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-mono font-bold text-slate-500">
+                            {p.coaNo}
+                          </span>
+
+                          {p.shippingStatus === 'APPROVED' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                              출하 승인 완료
+                            </span>
+                          ) : p.shippingStatus === 'REJECTED' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300">
+                              출하 보류/반려
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                              출하 검수 대기
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white line-clamp-1">
+                          {p.orderName}
+                        </h4>
+
+                        <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-600 dark:text-slate-400 pt-1 border-t border-black/5 dark:border-white/5">
+                          <span>3D CMM: {p.cmmStatus === 'PASS' ? '✅ 합격' : '❌ 불량'}</span>
+                          <span>표면 조도: {p.roughnessValue}</span>
+                          <span>도금 두께: {p.coatingValue}</span>
+                          <span>진공 포장: {p.checklist.cleanroomPackaging ? '✅ 완료' : '⏳ 대기'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                선택 수주: <strong className="text-blue-600">{selectedShipping.orderName}</strong>
+              </div>
+            </div>
+
+            {/* Right: Live COA Certificate Viewer & Verification Checklist (8 Cols) */}
+            <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                    <FileCheck2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      실시간 COA (공인 품질성적서) 미리보기 & 출하 검증
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Certificate of Analysis - Jun Sung Tech Precision QA Center
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-xs font-mono font-bold px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {selectedShipping.coaNo}
+                </span>
+              </div>
+
+              {/* Official Printable COA Certificate Layout */}
+              <div
+                id="coa-printable-sheet"
+                className="bg-white text-slate-900 p-6 rounded-2xl border-2 border-slate-300 shadow-inner space-y-5 font-sans"
+              >
+                {/* COA Header */}
+                <div className="border-b-2 border-slate-900 pb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight text-slate-900">
+                      품질 검사 및 출하 보증 성적서 (COA)
+                    </h2>
+                    <p className="text-xs font-bold text-slate-500 font-mono">
+                      CERTIFICATE OF QUALITY ASSURANCE & ANALYSIS
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-blue-900 tracking-wider">
+                      준성테크(주) 정밀가공 품질보증센터
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      발행일자: {selectedShipping.issueDate}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Product & Spec Info Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-xl text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">고객사명</span>
+                    <strong className="text-slate-900">{selectedShipping.customer}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">제품명/규격</span>
+                    <strong className="text-slate-900">{selectedShipping.productSpec}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">소재 및 경도</span>
+                    <strong className="text-slate-900">{selectedShipping.material} ({selectedShipping.hardness})</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">관리 LOT 번호</span>
+                    <strong className="text-slate-900 font-mono">{selectedShipping.lotNo}</strong>
+                  </div>
+                </div>
+
+                {/* Core Measured Precision Results Table */}
+                <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-100 text-[11px] font-bold text-slate-700">
+                      <tr>
+                        <th className="p-2 border-b">검사 항목</th>
+                        <th className="p-2 border-b">설계 사양</th>
+                        <th className="p-2 border-b">실측 데이터</th>
+                        <th className="p-2 border-b">측정 장비</th>
+                        <th className="p-2 border-b text-center">판정</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      <tr>
+                        <td className="p-2 font-bold">3차원 립 갭 (Lip Gap)</td>
+                        <td className="p-2 font-mono">50.0㎛ ±0.8㎛</td>
+                        <td className="p-2 font-mono font-black text-emerald-700">50.12㎛</td>
+                        <td className="p-2">CMM Zeiss Prismo</td>
+                        <td className="p-2 text-center font-bold text-emerald-600">PASS</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-bold">경면부 진직도/평면도</td>
+                        <td className="p-2 font-mono">≤ 1.0㎛</td>
+                        <td className="p-2 font-mono font-black text-emerald-700">0.52㎛</td>
+                        <td className="p-2">CMM 3D 스캔</td>
+                        <td className="p-2 text-center font-bold text-emerald-600">PASS</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-bold">경면부 표면 조도 (Ra)</td>
+                        <td className="p-2 font-mono">≤ 0.020㎛</td>
+                        <td className="p-2 font-mono font-black text-emerald-700">{selectedShipping.roughnessValue}</td>
+                        <td className="p-2">광학 간섭계 (Zygo)</td>
+                        <td className="p-2 text-center font-bold text-emerald-600">PASS</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-bold">표면 처리 (도금/코팅)</td>
+                        <td className="p-2 font-mono">15.0㎛ ±2.0㎛</td>
+                        <td className="p-2 font-mono font-black text-emerald-700">{selectedShipping.coatingValue}</td>
+                        <td className="p-2">X-선 형광분석기 (XRF)</td>
+                        <td className="p-2 text-center font-bold text-emerald-600">PASS</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Sign-off Stamps & Environment */}
+                <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                  <div className="space-y-0.5 text-slate-500 text-[11px]">
+                    <div>측정 환경: 20.0℃ ±0.2℃ / 45% RH (ISO Class 5 Cleanroom)</div>
+                    <div>본 성적서는 KOLAS 공인 검사 기준에 의거하여 발행되었습니다.</div>
+                  </div>
+
+                  <div className="flex items-center gap-6 text-right mt-2 sm:mt-0">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block">검사 책임자</span>
+                      <strong className="text-slate-900">{selectedShipping.inspector}</strong>
+                    </div>
+                    <div className="relative">
+                      <span className="text-[10px] text-slate-500 block">QA 부서장 승인</span>
+                      <strong className="text-slate-900">{selectedShipping.qaManager}</strong>
+                      {/* Red Stamp Badge */}
+                      <span className="absolute -top-1 -right-4 w-10 h-10 rounded-full border-2 border-rose-600 text-rose-600 font-bold text-[9px] flex items-center justify-center rotate-12 opacity-85 select-none pointer-events-none">
+                        검사인
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5 Checklist Items */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+                <span className="font-black text-slate-900 dark:text-white">
+                  필수 출하 검증 5개 체크리스트 확인
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedShipping.checklist.cmmPointScan}
+                      readOnly
+                      className="rounded text-blue-600"
+                    />
+                    <span>1. CMM 3차원 전수 포인트 공차 검사 완료</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedShipping.checklist.roughnessInterferometer}
+                      readOnly
+                      className="rounded text-blue-600"
+                    />
+                    <span>2. 비접촉 광학 간섭계 경면 조도(Ra≤0.02㎛) 확인</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedShipping.checklist.boltInterference}
+                      readOnly
+                      className="rounded text-blue-600"
+                    />
+                    <span>3. 립 조절 볼트 및 심 플레이트 조립 간섭 테스트</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedShipping.checklist.ultrasonicCleaning}
+                      readOnly
+                      className="rounded text-blue-600"
+                    />
+                    <span>4. 메가소닉 3단계 정밀 탈지 세척 및 건조</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedShipping.checklist.cleanroomPackaging}
+                      readOnly
+                      className="rounded text-blue-600"
+                    />
+                    <span>5. 방청 피막 및 클린룸 2중 진공 포장 완료</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Bottom Action Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  id="btn-print-coa"
+                  onClick={handlePrintCOA}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-black transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                  <span>[ 🖨️ 최종 COA 성적서 일괄 출력 ]</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    id="btn-reject-shipping"
+                    onClick={handleRejectShipping}
+                    className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs font-black transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Ban className="w-4 h-4 text-rose-600" />
+                    <span>[ 🚨 품질 부적합 출하 보류 및 반려 ]</span>
+                  </button>
+
+                  <button
+                    id="btn-approve-shipping"
+                    onClick={handleApproveShipping}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>[ 📦 출하 검수 최종 승인 ]</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* COL 3 (4 cols): 최근 검사 이미지 (불량 샘플) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-extrabold text-slate-900">최근 검사 이미지 <span className="text-[10px] text-slate-400 font-normal">(불량 샘플)</span></h3>
-            <button className="text-[11px] text-teal-600 hover:underline font-bold">더보기</button>
+      {/* ==================================================================== */}
+      {/* 6. TAB: [슬롯다이 성적서 관리 (SEMES 1580mm STS630)]                   */}
+      {/* ==================================================================== */}
+      {activeTab === 'TAB_SLOT_DIE_COA' && (
+        <SlotDieCertificateView
+          onTriggerCapa={(defectInfo) => {
+            setQualityStage('IPQC');
+            setActiveTab('TAB1_IPQC_CMM');
+            showToast(
+              'warning',
+              '🚨 긴급 CAPA 시정 조치 티켓이 생성되었습니다.',
+              `이탈 항목 [${defectInfo.item}] 실측값(${defectInfo.actual}) 재가공/재연마 공정으로 이관됨`
+            );
+          }}
+        />
+      )}
+
+      {/* ==================================================================== */}
+      {/* 7. TAB: [수입검사 (IQC - 소재/외주 입고 검사대장)]                   */}
+      {/* ==================================================================== */}
+      {activeTab === 'TAB_IQC' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                <Boxes className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>수입검사 (IQC) - 원소재(STS630 / SUS420J2) 및 외주 가공품 입고 검사대장</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300">
+                    전수 합격 (100% PASS)
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  밀시트(Mill Sheet) 8종 화학 성분 분석, 초음파 비파괴 탐상(UT), 열처리 경도(HRC), 모재 표면 결함 및 치수 검증
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                id="btn-open-iqc-modal-full"
+                onClick={() => {
+                  setSelectedIqcLotId(undefined);
+                  setIsIqcModalOpen(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-black shadow-md shadow-amber-600/20 transition cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>수입검사대장 상세 팝업 열기</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {/* Image Card 1 */}
-            <div className="bg-slate-900 rounded-xl p-2 border border-slate-800 text-center space-y-1">
-              <div className="h-16 bg-slate-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                <svg className="w-12 h-12 text-teal-400 opacity-80" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="35" fill="none" stroke="currentColor" strokeWidth="3" />
-                  <circle cx="50" cy="50" r="20" fill="none" stroke="#F43F5E" strokeWidth="4" />
-                </svg>
-                <span className="absolute bottom-1 right-1 bg-rose-600 text-white text-[8px] font-black px-1 rounded">NG</span>
+          {/* IQC Lots Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* LOT 1: STS630 */}
+            <div
+              id="card-iqc-lot-sts630"
+              onClick={() => {
+                setSelectedIqcLotId('IQC-2026-0301');
+                setIsIqcModalOpen(true);
+              }}
+              className="p-5 rounded-2xl bg-slate-50 hover:bg-white dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 hover:border-amber-500 dark:border-slate-700 dark:hover:border-amber-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-slate-500 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    모재 입고 LOT
+                  </span>
+                  <span className="font-mono text-blue-600 dark:text-blue-400 font-black">
+                    LOT-260303-STS630
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                    세메스 납품용 STS630 고경도 스테인리스 블록
+                  </h4>
+                  <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    1580mm 슬롯다이 바디용 (POSCO 특수강)
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 font-mono">
+                  <div className="flex justify-between">
+                    <span>• 입고 치수:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">1650 x 180 x 80 mm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 경도 (HRC):</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">38.5 ~ 41.2 (규격 OK)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 비파괴 UT:</span>
+                    <span className="font-bold text-emerald-600">내부 크랙 0건 (PASS)</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-[10px] font-extrabold text-slate-200">Ø15 H7 초과</div>
-              <div className="text-[9px] text-slate-400 font-mono">INS-250521-001</div>
+
+              <div className="pt-4 mt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] font-bold text-amber-600 dark:text-amber-400 group-hover:text-amber-700">
+                <span>밀시트 성분 & UT 성적서 상세</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
 
-            {/* Image Card 2 */}
-            <div className="bg-slate-900 rounded-xl p-2 border border-slate-800 text-center space-y-1">
-              <div className="h-16 bg-slate-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                <svg className="w-12 h-12 text-teal-400 opacity-80" viewBox="0 0 100 100">
-                  <rect x="20" y="30" width="60" height="40" fill="none" stroke="currentColor" strokeWidth="3" />
-                  <line x1="15" y1="30" x2="85" y2="30" stroke="#F43F5E" strokeWidth="3" strokeDasharray="3,3" />
-                </svg>
-                <span className="absolute bottom-1 right-1 bg-rose-600 text-white text-[8px] font-black px-1 rounded">NG</span>
+            {/* LOT 2: SUS420J2 */}
+            <div
+              id="card-iqc-lot-sus420"
+              onClick={() => {
+                setSelectedIqcLotId('IQC-2026-0412');
+                setIsIqcModalOpen(true);
+              }}
+              className="p-5 rounded-2xl bg-slate-50 hover:bg-white dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 hover:border-amber-500 dark:border-slate-700 dark:hover:border-amber-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-slate-500 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    모재 입고 LOT
+                  </span>
+                  <span className="font-mono text-blue-600 dark:text-blue-400 font-black">
+                    LOT-260412-SUS420
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                    LG에너지솔루션 납품용 SUS420J2 마르텐사이트 블록
+                  </h4>
+                  <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    1200mm 극판 코팅 노즐 (대동특수강)
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 font-mono">
+                  <div className="flex justify-between">
+                    <span>• 입고 치수:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">1400 x 200 x 90 mm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 경도 (HRC):</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">54.8 ~ 55.4 (진공열처리)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 화학 성분:</span>
+                    <span className="font-bold text-emerald-600">Cr 13.2%, C 0.32%</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-[10px] font-extrabold text-slate-200">평면도 초과</div>
-              <div className="text-[9px] text-slate-400 font-mono">INS-250521-003</div>
+
+              <div className="pt-4 mt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] font-bold text-amber-600 dark:text-amber-400 group-hover:text-amber-700">
+                <span>밀시트 성분 & UT 성적서 상세</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
 
-            {/* Image Card 3 */}
-            <div className="bg-slate-900 rounded-xl p-2 border border-slate-800 text-center space-y-1">
-              <div className="h-16 bg-slate-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                <svg className="w-12 h-12 text-teal-400 opacity-80" viewBox="0 0 100 100">
-                  <circle cx="35" cy="50" r="8" fill="none" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="70" cy="50" r="8" fill="none" stroke="#F43F5E" strokeWidth="3" />
-                </svg>
-                <span className="absolute bottom-1 right-1 bg-rose-600 text-white text-[8px] font-black px-1 rounded">NG</span>
+            {/* LOT 3: DLC Coating */}
+            <div
+              id="card-iqc-lot-dlc"
+              onClick={() => {
+                setSelectedIqcLotId('IQC-2026-0501');
+                setIsIqcModalOpen(true);
+              }}
+              className="p-5 rounded-2xl bg-slate-50 hover:bg-white dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 hover:border-amber-500 dark:border-slate-700 dark:hover:border-amber-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-slate-500 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    외주 도금 입고
+                  </span>
+                  <span className="font-mono text-blue-600 dark:text-blue-400 font-black">
+                    LOT-260501-DLC
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                    DLC(다이아몬드상 카본) 초정밀 박막 코팅 바디
+                  </h4>
+                  <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    (주)나노코텍 외주 코팅 검증
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 font-mono">
+                  <div className="flex justify-between">
+                    <span>• 코팅 두께:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">2.45 ~ 2.52 ㎛ (99.1%)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 조도 Ra:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">0.012 ㎛ (초경면)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>• 밀착력:</span>
+                    <span className="font-bold text-emerald-600">5B 스크래치 PASS</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-[10px] font-extrabold text-slate-200">홀 위치 편차</div>
-              <div className="text-[9px] text-slate-400 font-mono">INS-250521-005</div>
-            </div>
 
-            {/* Image Card 4 */}
-            <div className="bg-slate-900 rounded-xl p-2 border border-slate-800 text-center space-y-1">
-              <div className="h-16 bg-slate-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                <svg className="w-12 h-12 text-teal-400 opacity-80" viewBox="0 0 100 100">
-                  <path d="M 20 80 Q 50 10 80 80" fill="none" stroke="#F43F5E" strokeWidth="4" />
-                </svg>
-                <span className="absolute bottom-1 right-1 bg-rose-600 text-white text-[8px] font-black px-1 rounded">NG</span>
+              <div className="pt-4 mt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] font-bold text-amber-600 dark:text-amber-400 group-hover:text-amber-700">
+                <span>밀시트 성분 & UT 성적서 상세</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </div>
-              <div className="text-[10px] font-extrabold text-slate-200">R 형상 불량</div>
-              <div className="text-[9px] text-slate-400 font-mono">INS-250521-008</div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* IQC Detail Inspection Log Modal */}
+      <IqcDetailModal
+        isOpen={isIqcModalOpen}
+        onClose={() => setIsIqcModalOpen(false)}
+        initialLotId={selectedIqcLotId}
+      />
     </div>
   );
 };

@@ -970,7 +970,14 @@ export default function App() {
             )}
 
             {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
-            {activeTab === 'quality' && <QualityInspectionView />}
+            {activeTab === 'quality' && (
+              <QualityInspectionView
+                orders={orders}
+                scheduledTasks={scheduledTasks}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
+              />
+            )}
 
             {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
             {activeTab === 'archive' && (
