@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   FileText,
   Printer,
@@ -25,11 +25,19 @@ import {
   AlertOctagon,
   Wrench,
   Check,
-  X
+  X,
+  Plus,
+  Settings2,
+  Edit3,
+  Save,
+  RefreshCw,
+  Box,
+  SlidersHorizontal,
+  ChevronDown
 } from 'lucide-react';
 
 // ============================================================================
-// 1. DATA DEFINITIONS & CERTIFICATE RAW DATA (JS-QC260303-01N)
+// 1. DATA DEFINITIONS & CERTIFICATE RAW DATA (DYNAMIC VARIABLE RECIPES)
 // ============================================================================
 
 export interface Measurement30Point {
@@ -45,6 +53,363 @@ export interface Straightness30Point {
   frontLine: number;
   rearLine: number;
 }
+
+export interface ProductSpecRecipe {
+  id: string;
+  docNo: string;
+  customer: string;
+  productName: string;
+  material: string;
+  scope: string;
+  inspector: string;
+  approver: string;
+  inspectionDate: string;
+
+  // FRONT PLATE DIMENSIONS
+  frontLengthNominal: number;
+  frontLengthTol: number;
+  frontLengthActual: number;
+  frontHeightNominal: number;
+  frontHeightTol: number;
+  frontHeightActual: number;
+  frontThicknessNominal: number;
+  frontThicknessTol: number;
+  frontThicknessActual: number;
+  frontLipNominal: number;
+  frontLipTol: number;
+  frontLipActual: number;
+  frontGapNominal: number;
+  frontGapTol: number;
+  frontGapActual: number;
+  frontRoughnessLimit: number;
+  frontRoughnessActual: number;
+
+  // REAR PLATE DIMENSIONS
+  rearLengthNominal: number;
+  rearLengthTol: number;
+  rearLengthActual: number;
+  rearHeightNominal: number;
+  rearHeightTol: number;
+  rearHeightActual: number;
+  rearThicknessNominal: number;
+  rearThicknessTol: number;
+  rearThicknessActual: number;
+  rearLipNominal: number;
+  rearLipTol: number;
+  rearLipActual: number;
+  rearRoughnessLimit: number;
+  rearRoughnessActual: number;
+
+  // TOLERANCES & PHYSICAL TESTS
+  geometryToleranceLimitUm: number;
+  hardnessTarget: string;
+  hardnessMin: number;
+  hardnessMax: number;
+  hardnessVal1: number;
+  hardnessVal2: number;
+  magnetismLimit: number;
+  magnetismFront1: number;
+  magnetismFront2: number;
+  magnetismRear1: number;
+  magnetismRear2: number;
+
+  // BOLT SPEC
+  boltCount: number;
+  boltTorque: number;
+}
+
+export const PRODUCT_PRESETS: ProductSpecRecipe[] = [
+  {
+    id: 'SEMES_1580',
+    docNo: 'JS-QC260303-01N',
+    customer: '세메스(SEMES)',
+    productName: 'SLIT NOZZLE 1580mm',
+    material: 'STS630',
+    scope: 'New / All',
+    inspector: 'MW.Jeon (선임연구원)',
+    approver: 'SH.Kim (품질보증총괄)',
+    inspectionDate: '2026.03.03',
+    frontLengthNominal: 1580.0,
+    frontLengthTol: 0.3,
+    frontLengthActual: 1580.0,
+    frontHeightNominal: 160.0,
+    frontHeightTol: 0.2,
+    frontHeightActual: 160.0,
+    frontThicknessNominal: 60.0,
+    frontThicknessTol: 0.1,
+    frontThicknessActual: 60.0,
+    frontLipNominal: 0.3,
+    frontLipTol: 0.005,
+    frontLipActual: 0.3,
+    frontGapNominal: 0.08,
+    frontGapTol: 0.002,
+    frontGapActual: 0.08,
+    frontRoughnessLimit: 0.2,
+    frontRoughnessActual: 0.17,
+
+    rearLengthNominal: 1493.0,
+    rearLengthTol: 0.1,
+    rearLengthActual: 1493.0,
+    rearHeightNominal: 160.0,
+    rearHeightTol: 0.2,
+    rearHeightActual: 160.0,
+    rearThicknessNominal: 70.0,
+    rearThicknessTol: 0.1,
+    rearThicknessActual: 70.0,
+    rearLipNominal: 0.3,
+    rearLipTol: 0.005,
+    rearLipActual: 0.3,
+    rearRoughnessLimit: 0.2,
+    rearRoughnessActual: 0.169,
+
+    geometryToleranceLimitUm: 5.0,
+    hardnessTarget: 'HRC 40 ± 2',
+    hardnessMin: 38.0,
+    hardnessMax: 42.0,
+    hardnessVal1: 40.2,
+    hardnessVal2: 39.9,
+    magnetismLimit: 0.2,
+    magnetismFront1: 0.08,
+    magnetismFront2: 0.06,
+    magnetismRear1: 0.05,
+    magnetismRear2: 0.07,
+
+    boltCount: 43,
+    boltTorque: 5.0
+  },
+  {
+    id: 'SDI_1200',
+    docNo: 'JS-QC260519-SDI01',
+    customer: '삼성SDI',
+    productName: '2차전지 양극재 코팅용 슬롯다이 (1200mm)',
+    material: 'SUS420J2',
+    scope: 'New / All',
+    inspector: '김준성 (책임연구원)',
+    approver: '이준혁 (품질이사)',
+    inspectionDate: '2026.05.19',
+    frontLengthNominal: 1200.0,
+    frontLengthTol: 0.2,
+    frontLengthActual: 1200.02,
+    frontHeightNominal: 140.0,
+    frontHeightTol: 0.15,
+    frontHeightActual: 140.01,
+    frontThicknessNominal: 55.0,
+    frontThicknessTol: 0.08,
+    frontThicknessActual: 55.0,
+    frontLipNominal: 0.25,
+    frontLipTol: 0.004,
+    frontLipActual: 0.25,
+    frontGapNominal: 0.06,
+    frontGapTol: 0.002,
+    frontGapActual: 0.06,
+    frontRoughnessLimit: 0.15,
+    frontRoughnessActual: 0.12,
+
+    rearLengthNominal: 1140.0,
+    rearLengthTol: 0.1,
+    rearLengthActual: 1140.01,
+    rearHeightNominal: 140.0,
+    rearHeightTol: 0.15,
+    rearHeightActual: 140.0,
+    rearThicknessNominal: 65.0,
+    rearThicknessTol: 0.08,
+    rearThicknessActual: 65.01,
+    rearLipNominal: 0.25,
+    rearLipTol: 0.004,
+    rearLipActual: 0.25,
+    rearRoughnessLimit: 0.15,
+    rearRoughnessActual: 0.118,
+
+    geometryToleranceLimitUm: 3.0,
+    hardnessTarget: 'HRC 54 ± 2',
+    hardnessMin: 52.0,
+    hardnessMax: 56.0,
+    hardnessVal1: 54.5,
+    hardnessVal2: 54.2,
+    magnetismLimit: 0.15,
+    magnetismFront1: 0.04,
+    magnetismFront2: 0.05,
+    magnetismRear1: 0.03,
+    magnetismRear2: 0.04,
+
+    boltCount: 31,
+    boltTorque: 5.5
+  },
+  {
+    id: 'LGD_1600',
+    docNo: 'JS-QC260519-LGD02',
+    customer: 'LG디스플레이',
+    productName: 'OLED OCA 광학 코팅용 슬롯다이 (1600mm)',
+    material: 'STS630',
+    scope: 'New / All',
+    inspector: '이영희 (선임연구원)',
+    approver: '이준혁 (품질이사)',
+    inspectionDate: '2026.05.19',
+    frontLengthNominal: 1600.0,
+    frontLengthTol: 0.3,
+    frontLengthActual: 1600.0,
+    frontHeightNominal: 160.0,
+    frontHeightTol: 0.2,
+    frontHeightActual: 160.0,
+    frontThicknessNominal: 60.0,
+    frontThicknessTol: 0.1,
+    frontThicknessActual: 60.0,
+    frontLipNominal: 0.35,
+    frontLipTol: 0.005,
+    frontLipActual: 0.35,
+    frontGapNominal: 0.09,
+    frontGapTol: 0.003,
+    frontGapActual: 0.09,
+    frontRoughnessLimit: 0.2,
+    frontRoughnessActual: 0.165,
+
+    rearLengthNominal: 1510.0,
+    rearLengthTol: 0.15,
+    rearLengthActual: 1510.0,
+    rearHeightNominal: 160.0,
+    rearHeightTol: 0.2,
+    rearHeightActual: 160.0,
+    rearThicknessNominal: 70.0,
+    rearThicknessTol: 0.1,
+    rearThicknessActual: 70.0,
+    rearLipNominal: 0.35,
+    rearLipTol: 0.005,
+    rearLipActual: 0.35,
+    rearRoughnessLimit: 0.2,
+    rearRoughnessActual: 0.162,
+
+    geometryToleranceLimitUm: 5.0,
+    hardnessTarget: 'HRC 40 ± 2',
+    hardnessMin: 38.0,
+    hardnessMax: 42.0,
+    hardnessVal1: 40.4,
+    hardnessVal2: 40.1,
+    magnetismLimit: 0.2,
+    magnetismFront1: 0.06,
+    magnetismFront2: 0.07,
+    magnetismRear1: 0.05,
+    magnetismRear2: 0.06,
+
+    boltCount: 45,
+    boltTorque: 5.0
+  },
+  {
+    id: 'MOBIS_800',
+    docNo: 'JS-QC260519-HM03',
+    customer: '현대모비스',
+    productName: '수소연료전지 전해질막 노즐 심 플레이트 (800mm)',
+    material: 'SUS316L',
+    scope: 'New / Precision',
+    inspector: '박철수 (주임연구원)',
+    approver: '이준혁 (품질이사)',
+    inspectionDate: '2026.05.19',
+    frontLengthNominal: 800.0,
+    frontLengthTol: 0.15,
+    frontLengthActual: 800.0,
+    frontHeightNominal: 120.0,
+    frontHeightTol: 0.1,
+    frontHeightActual: 120.0,
+    frontThicknessNominal: 45.0,
+    frontThicknessTol: 0.05,
+    frontThicknessActual: 45.0,
+    frontLipNominal: 0.2,
+    frontLipTol: 0.003,
+    frontLipActual: 0.2,
+    frontGapNominal: 0.04,
+    frontGapTol: 0.0015,
+    frontGapActual: 0.04,
+    frontRoughnessLimit: 0.1,
+    frontRoughnessActual: 0.085,
+
+    rearLengthNominal: 760.0,
+    rearLengthTol: 0.1,
+    rearLengthActual: 760.0,
+    rearHeightNominal: 120.0,
+    rearHeightTol: 0.1,
+    rearHeightActual: 120.0,
+    rearThicknessNominal: 50.0,
+    rearThicknessTol: 0.05,
+    rearThicknessActual: 50.0,
+    rearLipNominal: 0.2,
+    rearLipTol: 0.003,
+    rearLipActual: 0.2,
+    rearRoughnessLimit: 0.1,
+    rearRoughnessActual: 0.082,
+
+    geometryToleranceLimitUm: 2.0,
+    hardnessTarget: 'HRB 90 ± 5',
+    hardnessMin: 85.0,
+    hardnessMax: 95.0,
+    hardnessVal1: 91.2,
+    hardnessVal2: 90.8,
+    magnetismLimit: 0.05,
+    magnetismFront1: 0.01,
+    magnetismFront2: 0.02,
+    magnetismRear1: 0.01,
+    magnetismRear2: 0.01,
+
+    boltCount: 21,
+    boltTorque: 4.0
+  },
+  {
+    id: 'SKON_1400',
+    docNo: 'JS-QC260520-SK01',
+    customer: 'SK온',
+    productName: '하이니켈 배터리 전극 코팅용 슬롯노즐 (1400mm)',
+    material: 'STS630',
+    scope: 'New / All',
+    inspector: '최민지 (선임연구원)',
+    approver: '이준혁 (품질이사)',
+    inspectionDate: '2026.05.20',
+    frontLengthNominal: 1400.0,
+    frontLengthTol: 0.25,
+    frontLengthActual: 1400.01,
+    frontHeightNominal: 150.0,
+    frontHeightTol: 0.2,
+    frontHeightActual: 150.0,
+    frontThicknessNominal: 65.0,
+    frontThicknessTol: 0.1,
+    frontThicknessActual: 65.0,
+    frontLipNominal: 0.3,
+    frontLipTol: 0.005,
+    frontLipActual: 0.3,
+    frontGapNominal: 0.075,
+    frontGapTol: 0.002,
+    frontGapActual: 0.075,
+    frontRoughnessLimit: 0.2,
+    frontRoughnessActual: 0.158,
+
+    rearLengthNominal: 1330.0,
+    rearLengthTol: 0.12,
+    rearLengthActual: 1330.0,
+    rearHeightNominal: 150.0,
+    rearHeightTol: 0.2,
+    rearHeightActual: 150.0,
+    rearThicknessNominal: 70.0,
+    rearThicknessTol: 0.1,
+    rearThicknessActual: 70.0,
+    rearLipNominal: 0.3,
+    rearLipTol: 0.005,
+    rearLipActual: 0.3,
+    rearRoughnessLimit: 0.2,
+    rearRoughnessActual: 0.155,
+
+    geometryToleranceLimitUm: 4.0,
+    hardnessTarget: 'HRC 40 ± 2',
+    hardnessMin: 38.0,
+    hardnessMax: 42.0,
+    hardnessVal1: 40.1,
+    hardnessVal2: 39.8,
+    magnetismLimit: 0.2,
+    magnetismFront1: 0.07,
+    magnetismFront2: 0.05,
+    magnetismRear1: 0.04,
+    magnetismRear2: 0.06,
+
+    boltCount: 37,
+    boltTorque: 5.0
+  }
+];
 
 // Page 2 Flatness 30 Points
 export const RAW_FLATNESS_30_FRONT: Measurement30Point[] = [
@@ -179,25 +544,119 @@ export const RAW_DAMPER_STEP = [
   { no: 10, front: 0.050, damper: 0.050, dev: 0.000 }
 ];
 
-export const RAW_ADJUSTMENT_BOLTS_43 = Array.from({ length: 43 }, (_, i) => ({
-  id: i + 1,
-  torque: 5.0,
-  pitch: 'M6 x 0.5 Micro',
-  travelMm: 0.50,
-  backlashUm: 1.2,
-  status: 'OK' as const
-}));
+export const generateAdjustmentBolts = (count: number, torque: number = 5.0) => {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i + 1,
+    torque: torque,
+    pitch: 'M6 x 0.5 Micro',
+    travelMm: 0.50,
+    backlashUm: 1.2,
+    status: 'OK' as const
+  }));
+};
 
 // ============================================================================
 // 2. MAIN COMPONENT: SlotDieCertificateView
 // ============================================================================
 
 interface SlotDieCertificateViewProps {
+  initialRecipeId?: string;
   onTriggerCapa?: (defectInfo: { item: string; tolerance: string; actual: string }) => void;
+  currentUser?: { name: string; role?: string } | null;
+  inspectors?: string[];
+  qaManagers?: string[];
 }
 
-export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ onTriggerCapa }) => {
+export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({
+  initialRecipeId = 'SEMES_1580',
+  onTriggerCapa,
+  currentUser,
+  inspectors = [],
+  qaManagers = []
+}) => {
   const [activeCertTab, setActiveCertTab] = useState<'TAB1_MAIN' | 'TAB2_FLATNESS_30' | 'TAB3_ROUGHNESS_OPTICAL' | 'TAB4_HARDNESS_BOLT' | 'TAB_PRINT_ALL'>('TAB1_MAIN');
+
+  // Dynamic Inspector & QA list with currentUser prioritized
+  const currentUserName = currentUser?.name?.trim() || '';
+  const currentUserTitle = currentUser ? `${currentUser.name} (${currentUser.role === 'ADMIN' ? 'QA 총괄/관리자' : '품질 검사원'})` : '';
+
+  const availableInspectors = useMemo(() => {
+    const list = [
+      '김준성 책임연구원 (KOLAS 공인)',
+      '이영희 (선임연구원)',
+      '박민우 (책임연구원)',
+      '이동훈 수석검사관 (CMM 1급)',
+      '박진우 정밀측정 엔지니어',
+      '최현우 품질검사원',
+      ...inspectors
+    ];
+    if (currentUserTitle && !list.includes(currentUserTitle)) {
+      return [currentUserTitle, currentUserName, ...list.filter(item => item !== currentUserName && item !== currentUserTitle)];
+    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
+      return [currentUserName, ...list];
+    }
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [currentUserTitle, currentUserName, inspectors]);
+
+  const availableApprovers = useMemo(() => {
+    const list = [
+      '이준혁 (품질이사)',
+      '이준혁 품질보증총괄이사',
+      '정승원 QA그룹장',
+      '강태호 품질보증센터장',
+      '오민석 공장장 / 기술이사',
+      ...qaManagers
+    ];
+    if (currentUser?.role === 'ADMIN' && currentUserName) {
+      const adminFormatted = `${currentUserName} (QA 관리자)`;
+      if (!list.includes(adminFormatted)) {
+        return [adminFormatted, currentUserName, ...list];
+      }
+    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
+      return [currentUserName, ...list];
+    }
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [currentUser, currentUserName, qaManagers]);
+
+  // Multi-Product Variable Recipe State
+  const [recipes, setRecipes] = useState<ProductSpecRecipe[]>(() => {
+    // If logged in, initialize preset with current user if appropriate
+    return PRODUCT_PRESETS.map((p, idx) => {
+      if (idx === 0 && currentUser?.name) {
+        return {
+          ...p,
+          inspector: currentUserTitle || currentUser.name
+        };
+      }
+      return p;
+    });
+  });
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string>(initialRecipeId);
+  const [isSpecEditorOpen, setIsSpecEditorOpen] = useState<boolean>(false);
+
+  // Active Recipe Lookup
+  const activeRecipe = useMemo(() => {
+    return recipes.find((r) => r.id === selectedRecipeId) || recipes[0];
+  }, [recipes, selectedRecipeId]);
+
+  // Form edit buffer for Active Recipe
+  const [editForm, setEditForm] = useState<ProductSpecRecipe>(activeRecipe);
+
+  useEffect(() => {
+    setEditForm(activeRecipe);
+  }, [activeRecipe]);
+
+  const handleQuickChangeInspector = (newInspector: string) => {
+    setRecipes((prev) =>
+      prev.map((r) => (r.id === activeRecipe.id ? { ...r, inspector: newInspector } : r))
+    );
+  };
+
+  const handleQuickChangeApprover = (newApprover: string) => {
+    setRecipes((prev) =>
+      prev.map((r) => (r.id === activeRecipe.id ? { ...r, approver: newApprover } : r))
+    );
+  };
 
   // Interactive Editable States for Real-time Testing & Tolerance Verification
   const [frontData30, setFrontData30] = useState<Measurement30Point[]>(RAW_FLATNESS_30_FRONT);
@@ -205,23 +664,45 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
   const [straightness30, setStraightness30] = useState<Straightness30Point[]>(RAW_STRAIGHTNESS_30);
   const [opticalData, setOpticalData] = useState(RAW_OPTICAL_MEASUREMENTS);
   const [damperData, setDamperData] = useState(RAW_DAMPER_STEP);
-  const [bolts43, setBolts43] = useState(RAW_ADJUSTMENT_BOLTS_43);
+  
+  // Dynamic Bolts generated per recipe count
+  const dynamicBolts = useMemo(() => {
+    return generateAdjustmentBolts(activeRecipe.boltCount, activeRecipe.boltTorque);
+  }, [activeRecipe.boltCount, activeRecipe.boltTorque]);
 
-  // Hardness & Magnetism States
-  const [hardnessP1, setHardnessP1] = useState<number>(40.2);
-  const [hardnessP2, setHardnessP2] = useState<number>(39.9);
-  const [magFrontP1, setMagFrontP1] = useState<number>(0.08);
-  const [magFrontP2, setMagFrontP2] = useState<number>(0.06);
-  const [magRearP1, setMagRearP1] = useState<number>(0.05);
-  const [magRearP2, setMagRearP2] = useState<number>(0.07);
+  // Hardness & Magnetism States derived/synced with activeRecipe
+  const [hardnessP1, setHardnessP1] = useState<number>(activeRecipe.hardnessVal1);
+  const [hardnessP2, setHardnessP2] = useState<number>(activeRecipe.hardnessVal2);
+  const [magFrontP1, setMagFrontP1] = useState<number>(activeRecipe.magnetismFront1);
+  const [magFrontP2, setMagFrontP2] = useState<number>(activeRecipe.magnetismFront2);
+  const [magRearP1, setMagRearP1] = useState<number>(activeRecipe.magnetismRear1);
+  const [magRearP2, setMagRearP2] = useState<number>(activeRecipe.magnetismRear2);
 
-  // Gap step
-  const [gapStepP1, setGapStepP1] = useState<number>(0.080);
-  const [gapStepP2, setGapStepP2] = useState<number>(0.080);
-  const [gapStepP3, setGapStepP3] = useState<number>(0.080);
+  // Gap step synced with activeRecipe
+  const [gapStepP1, setGapStepP1] = useState<number>(activeRecipe.frontGapActual);
+  const [gapStepP2, setGapStepP2] = useState<number>(activeRecipe.frontGapActual);
+  const [gapStepP3, setGapStepP3] = useState<number>(activeRecipe.frontGapActual);
+
+  // Update physical states when selected recipe changes
+  useEffect(() => {
+    setHardnessP1(activeRecipe.hardnessVal1);
+    setHardnessP2(activeRecipe.hardnessVal2);
+    setMagFrontP1(activeRecipe.magnetismFront1);
+    setMagFrontP2(activeRecipe.magnetismFront2);
+    setMagRearP1(activeRecipe.magnetismRear1);
+    setMagRearP2(activeRecipe.magnetismRear2);
+    setGapStepP1(activeRecipe.frontGapActual);
+    setGapStepP2(activeRecipe.frontGapActual);
+    setGapStepP3(activeRecipe.frontGapActual);
+  }, [activeRecipe]);
 
   // Toast / Alert Notification
   const [alertModal, setAlertModal] = useState<{ item: string; tolerance: string; actual: string } | null>(null);
+
+  // Helper to test if numeric tolerance passes
+  const checkPass = (actual: number, nominal: number, tol: number) => {
+    return Math.abs(actual - nominal) <= tol;
+  };
 
   // Calculated Stats Helper
   const calcStats = (vals: number[]) => {
@@ -232,15 +713,92 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
     return { max: Math.round(max * 10) / 10, min: Math.round(min * 10) / 10, flatness };
   };
 
-  // Front Lip A1 Stats
+  // Front Lip A1/A2 and Bolt B1/B2 Stats
   const frontLipA1Stats = useMemo(() => calcStats(frontData30.map((d) => d.lipA1)), [frontData30]);
+  const frontLipA2Stats = useMemo(() => calcStats(frontData30.map((d) => d.lipA2)), [frontData30]);
   const frontBoltB1Stats = useMemo(() => calcStats(frontData30.map((d) => d.boltB1)), [frontData30]);
+  const frontBoltB2Stats = useMemo(() => calcStats(frontData30.map((d) => d.boltB2)), [frontData30]);
   const frontStraightStats = useMemo(() => calcStats(straightness30.map((d) => d.frontLine)), [straightness30]);
 
-  // Rear Lip A1 Stats
+  // Rear Lip A1/A2 and Bolt B1/B2 Stats
   const rearLipA1Stats = useMemo(() => calcStats(rearData30.map((d) => d.lipA1)), [rearData30]);
+  const rearLipA2Stats = useMemo(() => calcStats(rearData30.map((d) => d.lipA2)), [rearData30]);
   const rearBoltB1Stats = useMemo(() => calcStats(rearData30.map((d) => d.boltB1)), [rearData30]);
+  const rearBoltB2Stats = useMemo(() => calcStats(rearData30.map((d) => d.boltB2)), [rearData30]);
   const rearStraightStats = useMemo(() => calcStats(straightness30.map((d) => d.rearLine)), [straightness30]);
+
+  // Save recipe spec modifications
+  const handleSaveRecipeEdit = () => {
+    setRecipes((prev) => prev.map((r) => (r.id === editForm.id ? editForm : r)));
+    setIsSpecEditorOpen(false);
+  };
+
+  // Add new custom product recipe
+  const handleCreateNewRecipe = () => {
+    const newId = `CUSTOM_${Date.now()}`;
+    const newRecipe: ProductSpecRecipe = {
+      id: newId,
+      docNo: `JS-QC260520-CUST${Math.floor(Math.random() * 900 + 100)}`,
+      customer: '신규 고객사 (Custom)',
+      productName: '신규 가변형 초정밀 슬롯다이',
+      material: 'STS630',
+      scope: 'New / Custom',
+      inspector: '검사 담당자',
+      approver: '품질 부서장',
+      inspectionDate: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
+      frontLengthNominal: 1500.0,
+      frontLengthTol: 0.3,
+      frontLengthActual: 1500.0,
+      frontHeightNominal: 160.0,
+      frontHeightTol: 0.2,
+      frontHeightActual: 160.0,
+      frontThicknessNominal: 60.0,
+      frontThicknessTol: 0.1,
+      frontThicknessActual: 60.0,
+      frontLipNominal: 0.3,
+      frontLipTol: 0.005,
+      frontLipActual: 0.3,
+      frontGapNominal: 0.08,
+      frontGapTol: 0.002,
+      frontGapActual: 0.08,
+      frontRoughnessLimit: 0.2,
+      frontRoughnessActual: 0.165,
+
+      rearLengthNominal: 1420.0,
+      rearLengthTol: 0.15,
+      rearLengthActual: 1420.0,
+      rearHeightNominal: 160.0,
+      rearHeightTol: 0.2,
+      rearHeightActual: 160.0,
+      rearThicknessNominal: 70.0,
+      rearThicknessTol: 0.1,
+      rearThicknessActual: 70.0,
+      rearLipNominal: 0.3,
+      rearLipTol: 0.005,
+      rearLipActual: 0.3,
+      rearRoughnessLimit: 0.2,
+      rearRoughnessActual: 0.16,
+
+      geometryToleranceLimitUm: 5.0,
+      hardnessTarget: 'HRC 40 ± 2',
+      hardnessMin: 38.0,
+      hardnessMax: 42.0,
+      hardnessVal1: 40.0,
+      hardnessVal2: 40.1,
+      magnetismLimit: 0.2,
+      magnetismFront1: 0.05,
+      magnetismFront2: 0.06,
+      magnetismRear1: 0.04,
+      magnetismRear2: 0.05,
+
+      boltCount: 40,
+      boltTorque: 5.0
+    };
+    setRecipes((prev) => [newRecipe, ...prev]);
+    setSelectedRecipeId(newId);
+    setEditForm(newRecipe);
+    setIsSpecEditorOpen(true);
+  };
 
   // Print Document Trigger
   const handlePrintDocument = () => {
@@ -316,29 +874,64 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
       {/* 1. METADATA HEADER & OFFICIAL COA BADGE                              */}
       {/* ==================================================================== */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-5 rounded-3xl border border-blue-900/60 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
+        <div className="space-y-1.5 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-mono font-bold">
-              Doc No: JS-QC260303-01N
+              Doc No: {activeRecipe.docNo}
             </span>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
-              세메스(SEMES) 공식 납품용
+              {activeRecipe.customer} 공식 납품 규격
             </span>
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold">
-              New / All
+              {activeRecipe.scope}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[10px] font-mono font-bold">
+              조절볼트 {activeRecipe.boltCount}EA
             </span>
           </div>
 
           <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-            <span>SLIT NOZZLE 1580mm (STS630) 검사 성적서</span>
+            <span>{activeRecipe.productName} ({activeRecipe.material}) 검사 성적서</span>
             <Sparkles className="w-5 h-5 text-amber-400" />
           </h2>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-slate-300 font-medium pt-1">
-            <div>고객사: <strong className="text-white">세메스</strong></div>
-            <div>규격/재질: <strong className="text-white">1580mm / STS630</strong></div>
-            <div>검사일자: <strong className="text-white font-mono">2026.03.03</strong></div>
-            <div>검사/승인: <strong className="text-white">MW.Jeon / SH.Kim</strong></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-300 font-medium pt-1">
+            <div>고객사: <strong className="text-white">{activeRecipe.customer}</strong></div>
+            <div>규격/재질: <strong className="text-white">{activeRecipe.frontLengthNominal}mm / {activeRecipe.material}</strong></div>
+            
+            {/* Interactive Inspector Selector */}
+            <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-xl border border-white/10">
+              <span className="text-slate-400 shrink-0 font-bold">검사자:</span>
+              <select
+                value={activeRecipe.inspector}
+                onChange={(e) => handleQuickChangeInspector(e.target.value)}
+                className="bg-transparent text-emerald-400 font-bold text-xs cursor-pointer focus:outline-none w-full truncate"
+                title="클릭하여 검사 책임자 변경"
+              >
+                {availableInspectors.map((insp) => (
+                  <option key={insp} value={insp} className="bg-slate-900 text-white">
+                    {insp}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Interactive Approver Selector */}
+            <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-xl border border-white/10">
+              <span className="text-slate-400 shrink-0 font-bold">승인자:</span>
+              <select
+                value={activeRecipe.approver}
+                onChange={(e) => handleQuickChangeApprover(e.target.value)}
+                className="bg-transparent text-blue-400 font-bold text-xs cursor-pointer focus:outline-none w-full truncate"
+                title="클릭하여 승인자 / QA 부서장 변경"
+              >
+                {availableApprovers.map((appr) => (
+                  <option key={appr} value={appr} className="bg-slate-900 text-white">
+                    {appr}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -351,15 +944,444 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
             <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
           </div>
 
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setIsSpecEditorOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-blue-400" />
+              <span>규격/공차 상세 편집</span>
+            </button>
+            <button
+              onClick={handlePrintDocument}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>8P 통합 성적서 출력</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* 1.1 DYNAMIC PRODUCT RECIPE SELECTOR & SPEC SWITCHER                  */}
+      {/* ==================================================================== */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
+            <SlidersHorizontal className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <span>동적 제품 규격 레시피 (Product Spec Recipe) 선택</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-mono font-bold">
+                {recipes.length}개 등록됨
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              길이·두께·공차·볼트수량 등 제품별 가변 치수 규격이 검사표 및 판정 로직에 실시간 연동됩니다.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {recipes.map((rec) => {
+            const isSelected = rec.id === selectedRecipeId;
+            return (
+              <button
+                key={rec.id}
+                onClick={() => setSelectedRecipeId(rec.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Box className="w-3.5 h-3.5" />
+                <span>{rec.customer} ({rec.frontLengthNominal}mm / {rec.boltCount}EA)</span>
+                {isSelected && <Check className="w-3.5 h-3.5" />}
+              </button>
+            );
+          })}
+
           <button
-            onClick={handlePrintDocument}
-            className="px-4 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg flex items-center gap-2 transition cursor-pointer"
+            onClick={handleCreateNewRecipe}
+            className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 hover:bg-emerald-100 text-xs font-black flex items-center gap-1 transition cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
-            <span>8페이지 통합 성적서 출력</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>신규 제품 규격 등록</span>
           </button>
         </div>
       </div>
+
+      {/* ==================================================================== */}
+      {/* 1.2 DYNAMIC PRODUCT SPEC RECIPE EDITOR MODAL                         */}
+      {/* ==================================================================== */}
+      {isSpecEditorOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-600 border border-blue-200">
+                  <Settings2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    제품 파라미터 및 공차 규격(Recipe) 편집
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    현재 선택된 [{editForm.productName}]의 기준값(Nominal), 공차(Tolerance), 볼트수량 등을 수정합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSpecEditorOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Basic Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">문서 번호 (Doc No)</label>
+                <input
+                  type="text"
+                  value={editForm.docNo}
+                  onChange={(e) => setEditForm({ ...editForm, docNo: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">고객사 명</label>
+                <input
+                  type="text"
+                  value={editForm.customer}
+                  onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">품목명 (Product Name)</label>
+                <input
+                  type="text"
+                  value={editForm.productName}
+                  onChange={(e) => setEditForm({ ...editForm, productName: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold"
+                />
+              </div>
+            </div>
+
+            {/* Inspector & Approver Assignment */}
+            <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>검사 책임자 및 QA 승인자 지정</span>
+                </span>
+                {currentUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const myName = currentUserTitle || currentUser.name;
+                      setEditForm({
+                        ...editForm,
+                        inspector: myName,
+                        approver: currentUser.role === 'ADMIN' ? myName : editForm.approver
+                      });
+                    }}
+                    className="text-[11px] px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-200 transition cursor-pointer"
+                  >
+                    현재 로그인 계정({currentUser.name})으로 자동 설정
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">검사 책임자 (Inspector)</label>
+                  <div className="space-y-1.5">
+                    <select
+                      value={editForm.inspector}
+                      onChange={(e) => setEditForm({ ...editForm, inspector: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-emerald-600"
+                    >
+                      {availableInspectors.map((insp) => (
+                        <option key={insp} value={insp}>
+                          {insp}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="또는 직접 이름/직급 입력"
+                      value={editForm.inspector}
+                      onChange={(e) => setEditForm({ ...editForm, inspector: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">QA 부서장 / 승인자 (Approver)</label>
+                  <div className="space-y-1.5">
+                    <select
+                      value={editForm.approver}
+                      onChange={(e) => setEditForm({ ...editForm, approver: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-blue-600"
+                    >
+                      {availableApprovers.map((appr) => (
+                        <option key={appr} value={appr}>
+                          {appr}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="또는 직접 이름/직급 입력"
+                      value={editForm.approver}
+                      onChange={(e) => setEditForm({ ...editForm, approver: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">재질 (Material)</label>
+                <input
+                  type="text"
+                  value={editForm.material}
+                  onChange={(e) => setEditForm({ ...editForm, material: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">조절볼트 수량 (Bolt Count EA)</label>
+                <input
+                  type="number"
+                  value={editForm.boltCount}
+                  onChange={(e) => setEditForm({ ...editForm, boltCount: parseInt(e.target.value) || 1 })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">기하공차 허용한계 (㎛)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={editForm.geometryToleranceLimitUm}
+                  onChange={(e) => setEditForm({ ...editForm, geometryToleranceLimitUm: parseFloat(e.target.value) || 5.0 })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold text-blue-600"
+                />
+              </div>
+            </div>
+
+            {/* Front Plate Dimensions */}
+            <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 space-y-3">
+              <h4 className="text-xs font-black text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                <Box className="w-4 h-4" />
+                <span>FRONT PLATE 기준값 & 허용 공차 설정</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">길이 (Length mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.frontLengthNominal}
+                      onChange={(e) => setEditForm({ ...editForm, frontLengthNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.frontLengthTol}
+                      onChange={(e) => setEditForm({ ...editForm, frontLengthTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">높이 (Height mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.frontHeightNominal}
+                      onChange={(e) => setEditForm({ ...editForm, frontHeightNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.frontHeightTol}
+                      onChange={(e) => setEditForm({ ...editForm, frontHeightTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">두께 (Thickness mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.frontThicknessNominal}
+                      onChange={(e) => setEditForm({ ...editForm, frontThicknessNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.frontThicknessTol}
+                      onChange={(e) => setEditForm({ ...editForm, frontThicknessTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">Lip Thk (mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.frontLipNominal}
+                      onChange={(e) => setEditForm({ ...editForm, frontLipNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editForm.frontLipTol}
+                      onChange={(e) => setEditForm({ ...editForm, frontLipTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">Gap Step (mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editForm.frontGapNominal}
+                      onChange={(e) => setEditForm({ ...editForm, frontGapNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editForm.frontGapTol}
+                      onChange={(e) => setEditForm({ ...editForm, frontGapTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">조도 한계 Rmax (㎛)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editForm.frontRoughnessLimit}
+                    onChange={(e) => setEditForm({ ...editForm, frontRoughnessLimit: parseFloat(e.target.value) || 0.2 })}
+                    className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Rear Plate Dimensions */}
+            <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 space-y-3">
+              <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                <Box className="w-4 h-4" />
+                <span>REAR PLATE 기준값 & 허용 공차 설정</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">길이 (Length mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.rearLengthNominal}
+                      onChange={(e) => setEditForm({ ...editForm, rearLengthNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.rearLengthTol}
+                      onChange={(e) => setEditForm({ ...editForm, rearLengthTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">높이 (Height mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.rearHeightNominal}
+                      onChange={(e) => setEditForm({ ...editForm, rearHeightNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.rearHeightTol}
+                      onChange={(e) => setEditForm({ ...editForm, rearHeightTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-medium mb-1">두께 (Thickness mm ± 공차)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={editForm.rearThicknessNominal}
+                      onChange={(e) => setEditForm({ ...editForm, rearThicknessNominal: parseFloat(e.target.value) || 0 })}
+                      className="w-2/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono font-bold"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.rearThicknessTol}
+                      onChange={(e) => setEditForm({ ...editForm, rearThicknessTol: parseFloat(e.target.value) || 0 })}
+                      className="w-1/3 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border font-mono text-slate-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setIsSpecEditorOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveRecipeEdit}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>레시피 규격 저장 및 적용</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==================================================================== */}
       {/* 2. TAB NAVIGATION (4 TABS + PRINT VIEW)                              */}
@@ -439,7 +1461,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-blue-600" />
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                    FRONT PLATE 형상 및 치수 검증
+                    FRONT PLATE 형상 및 치수 검증 ({activeRecipe.customer})
                   </h3>
                 </div>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -453,8 +1475,8 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <th className="p-2.5">No</th>
                       <th className="p-2.5">항목</th>
-                      <th className="p-2.5">규격</th>
-                      <th className="p-2.5">측정값</th>
+                      <th className="p-2.5">규격 (Nominal ± Tol)</th>
+                      <th className="p-2.5">측정값 (Actual)</th>
                       <th className="p-2.5 text-center">결과</th>
                     </tr>
                   </thead>
@@ -462,44 +1484,56 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">1</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Length</td>
-                      <td className="p-2.5 font-mono text-slate-500">1580 ± 0.3 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">1580.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.frontLengthNominal} ± {activeRecipe.frontLengthTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.frontLengthActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.frontLengthActual, activeRecipe.frontLengthNominal, activeRecipe.frontLengthTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">2</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Height</td>
-                      <td className="p-2.5 font-mono text-slate-500">160 ± 0.2 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">160.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.frontHeightNominal} ± {activeRecipe.frontHeightTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.frontHeightActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.frontHeightActual, activeRecipe.frontHeightNominal, activeRecipe.frontHeightTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">3</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Thickness</td>
-                      <td className="p-2.5 font-mono text-slate-500">60 ± 0.1 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">60.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.frontThicknessNominal} ± {activeRecipe.frontThicknessTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.frontThicknessActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.frontThicknessActual, activeRecipe.frontThicknessNominal, activeRecipe.frontThicknessTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr className="bg-blue-50/40 dark:bg-blue-950/20">
                       <td className="p-2.5 font-mono text-slate-500">4</td>
                       <td className="p-2.5 font-bold text-blue-700 dark:text-blue-400">Lip Thickness</td>
-                      <td className="p-2.5 font-mono text-slate-500">0.3 ± 0.005 mm</td>
-                      <td className="p-2.5 font-mono font-black text-blue-700 dark:text-blue-300">0.300 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.frontLipNominal} ± {activeRecipe.frontLipTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-blue-700 dark:text-blue-300">{activeRecipe.frontLipActual.toFixed(3)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.frontLipActual, activeRecipe.frontLipNominal, activeRecipe.frontLipTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr className="bg-amber-50/40 dark:bg-amber-950/20">
                       <td className="p-2.5 font-mono text-slate-500">*5</td>
                       <td className="p-2.5 font-bold text-amber-800 dark:text-amber-400">Gap (Step)</td>
-                      <td className="p-2.5 font-mono text-slate-500">0.080 ± 0.002 mm</td>
-                      <td className="p-2.5 font-mono font-black text-amber-700 dark:text-amber-300">0.080 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.frontGapNominal} ± {activeRecipe.frontGapTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-amber-700 dark:text-amber-300">{activeRecipe.frontGapActual.toFixed(3)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.frontGapActual, activeRecipe.frontGapNominal, activeRecipe.frontGapTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">*6</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Roughness</td>
-                      <td className="p-2.5 font-mono text-slate-500">Rmax ≤ 0.2 ㎛</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">0.170 ㎛</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">Rmax ≤ {activeRecipe.frontRoughnessLimit} ㎛</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.frontRoughnessActual.toFixed(3)} ㎛</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {activeRecipe.frontRoughnessActual <= activeRecipe.frontRoughnessLimit ? '합격' : '불합격'}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -512,7 +1546,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-indigo-600" />
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                    REAR PLATE 형상 및 치수 검증
+                    REAR PLATE 형상 및 치수 검증 ({activeRecipe.customer})
                   </h3>
                 </div>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -526,8 +1560,8 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <th className="p-2.5">No</th>
                       <th className="p-2.5">항목</th>
-                      <th className="p-2.5">규격</th>
-                      <th className="p-2.5">측정값</th>
+                      <th className="p-2.5">규격 (Nominal ± Tol)</th>
+                      <th className="p-2.5">측정값 (Actual)</th>
                       <th className="p-2.5 text-center">결과</th>
                     </tr>
                   </thead>
@@ -535,44 +1569,54 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">1</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Length</td>
-                      <td className="p-2.5 font-mono text-slate-500">1493 ± 0.1 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">1493.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.rearLengthNominal} ± {activeRecipe.rearLengthTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.rearLengthActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.rearLengthActual, activeRecipe.rearLengthNominal, activeRecipe.rearLengthTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">2</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Height</td>
-                      <td className="p-2.5 font-mono text-slate-500">160 ± 0.2 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">160.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.rearHeightNominal} ± {activeRecipe.rearHeightTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.rearHeightActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.rearHeightActual, activeRecipe.rearHeightNominal, activeRecipe.rearHeightTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">3</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Thickness</td>
-                      <td className="p-2.5 font-mono text-slate-500">70 ± 0.1 mm</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">70.00 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.rearThicknessNominal} ± {activeRecipe.rearThicknessTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.rearThicknessActual.toFixed(2)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.rearThicknessActual, activeRecipe.rearThicknessNominal, activeRecipe.rearThicknessTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr className="bg-blue-50/40 dark:bg-blue-950/20">
                       <td className="p-2.5 font-mono text-slate-500">4</td>
                       <td className="p-2.5 font-bold text-blue-700 dark:text-blue-400">Lip Thickness</td>
-                      <td className="p-2.5 font-mono text-slate-500">0.3 ± 0.005 mm</td>
-                      <td className="p-2.5 font-mono font-black text-blue-700 dark:text-blue-300">0.300 mm</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">{activeRecipe.rearLipNominal} ± {activeRecipe.rearLipTol} mm</td>
+                      <td className="p-2.5 font-mono font-black text-blue-700 dark:text-blue-300">{activeRecipe.rearLipActual.toFixed(3)} mm</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {checkPass(activeRecipe.rearLipActual, activeRecipe.rearLipNominal, activeRecipe.rearLipTol) ? '합격' : '불합격'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">*5</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Gap (Step)</td>
                       <td className="p-2.5 font-mono text-slate-500">-</td>
                       <td className="p-2.5 font-mono text-slate-500">-</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">적용제외</td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-mono text-slate-500">*6</td>
                       <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">Roughness</td>
-                      <td className="p-2.5 font-mono text-slate-500">Rmax ≤ 0.2 ㎛</td>
-                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">0.169 ㎛</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-600">합격</td>
+                      <td className="p-2.5 font-mono text-slate-500">Rmax ≤ {activeRecipe.rearRoughnessLimit} ㎛</td>
+                      <td className="p-2.5 font-mono font-black text-slate-900 dark:text-white">{activeRecipe.rearRoughnessActual.toFixed(3)} ㎛</td>
+                      <td className="p-2.5 text-center font-bold text-emerald-600">
+                        {activeRecipe.rearRoughnessActual <= activeRecipe.rearRoughnessLimit ? '합격' : '불합격'}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -731,42 +1775,42 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <tfoot className="bg-slate-200/90 dark:bg-slate-800 font-black text-xs sticky bottom-0 border-t-2 border-slate-300 dark:border-slate-700">
                   <tr>
                     <td className="p-2 text-center">Max</td>
-                    <td className="p-2 text-blue-700 dark:text-blue-400">{frontLipA1Stats.max}</td>
-                    <td className="p-2 text-blue-700 dark:text-blue-400">0.8</td>
-                    <td className="p-2 text-blue-700 dark:text-blue-400">0.9</td>
-                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 text-blue-700 dark:text-blue-400">0.9</td>
+                    <td className="p-2 text-blue-700 dark:text-blue-400">{frontLipA1Stats.max.toFixed(1)}</td>
+                    <td className="p-2 text-blue-700 dark:text-blue-400">{frontLipA2Stats.max.toFixed(1)}</td>
+                    <td className="p-2 text-blue-700 dark:text-blue-400">{frontBoltB1Stats.max.toFixed(1)}</td>
+                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 text-blue-700 dark:text-blue-400">{frontBoltB2Stats.max.toFixed(1)}</td>
 
                     <td className="p-2 text-center">Max</td>
-                    <td className="p-2 text-indigo-700 dark:text-indigo-400">{rearLipA1Stats.max}</td>
-                    <td className="p-2 text-indigo-700 dark:text-indigo-400">0.6</td>
-                    <td className="p-2 text-indigo-700 dark:text-indigo-400">1.7</td>
-                    <td className="p-2 text-indigo-700 dark:text-indigo-400">1.1</td>
+                    <td className="p-2 text-indigo-700 dark:text-indigo-400">{rearLipA1Stats.max.toFixed(1)}</td>
+                    <td className="p-2 text-indigo-700 dark:text-indigo-400">{rearLipA2Stats.max.toFixed(1)}</td>
+                    <td className="p-2 text-indigo-700 dark:text-indigo-400">{rearBoltB1Stats.max.toFixed(1)}</td>
+                    <td className="p-2 text-indigo-700 dark:text-indigo-400">{rearBoltB2Stats.max.toFixed(1)}</td>
                   </tr>
                   <tr>
                     <td className="p-2 text-center">Min</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">{frontLipA1Stats.min}</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">-0.6</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">-0.7</td>
-                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 text-rose-700 dark:text-rose-400">-0.6</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{frontLipA1Stats.min.toFixed(1)}</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{frontLipA2Stats.min.toFixed(1)}</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{frontBoltB1Stats.min.toFixed(1)}</td>
+                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 text-rose-700 dark:text-rose-400">{frontBoltB2Stats.min.toFixed(1)}</td>
 
                     <td className="p-2 text-center">Min</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">{rearLipA1Stats.min}</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">-0.6</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">-0.9</td>
-                    <td className="p-2 text-rose-700 dark:text-rose-400">-0.6</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{rearLipA1Stats.min.toFixed(1)}</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{rearLipA2Stats.min.toFixed(1)}</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{rearBoltB1Stats.min.toFixed(1)}</td>
+                    <td className="p-2 text-rose-700 dark:text-rose-400">{rearBoltB2Stats.min.toFixed(1)}</td>
                   </tr>
                   <tr className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
                     <td className="p-2 text-center font-black">Flatness</td>
-                    <td className="p-2 font-black">{frontLipA1Stats.flatness}</td>
-                    <td className="p-2 font-black">1.4</td>
-                    <td className="p-2 font-black">1.6</td>
-                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 font-black">1.5</td>
+                    <td className="p-2 font-black">{frontLipA1Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 font-black">{frontLipA2Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 font-black">{frontBoltB1Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 border-r border-slate-300 dark:border-slate-700 font-black">{frontBoltB2Stats.flatness.toFixed(1)}</td>
 
                     <td className="p-2 text-center font-black">Flatness</td>
-                    <td className="p-2 font-black">{rearLipA1Stats.flatness}</td>
-                    <td className="p-2 font-black">1.2</td>
-                    <td className="p-2 font-black">2.7</td>
-                    <td className="p-2 font-black">1.7</td>
+                    <td className="p-2 font-black">{rearLipA1Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 font-black">{rearLipA2Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 font-black">{rearBoltB1Stats.flatness.toFixed(1)}</td>
+                    <td className="p-2 font-black">{rearBoltB2Stats.flatness.toFixed(1)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -774,19 +1818,32 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
 
             {/* Lip Straightness 30 Points Section */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-              <h4 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Compass className="w-4 h-4 text-blue-600" />
-                <span>Lip 진직도 (Straightness) 30포인트 측정값</span>
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-blue-600" />
+                  <span>Lip 진직도 (Straightness) 30포인트 측정값</span>
+                </h4>
+                <span className="text-[11px] font-mono text-slate-500 font-bold">
+                  허용 공차: ≤ {activeRecipe.geometryToleranceLimitUm} ㎛
+                </span>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs font-bold">
-                  <span>FRONT PLATE 진직도 (Max: 1.0, Min: -0.7)</span>
-                  <strong className="text-emerald-600 font-mono text-sm">Flatness 1.7 ㎛ (합격)</strong>
+                  <span>
+                    FRONT PLATE 진직도 (Max: {frontStraightStats.max.toFixed(1)}, Min: {frontStraightStats.min.toFixed(1)})
+                  </span>
+                  <strong className={`font-mono text-sm ${frontStraightStats.flatness <= activeRecipe.geometryToleranceLimitUm ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    Flatness {frontStraightStats.flatness.toFixed(1)} ㎛ ({frontStraightStats.flatness <= activeRecipe.geometryToleranceLimitUm ? '합격' : '불합격'})
+                  </strong>
                 </div>
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs font-bold">
-                  <span>REAR PLATE 진직도 (Max: 0.9, Min: -0.6)</span>
-                  <strong className="text-emerald-600 font-mono text-sm">Flatness 1.5 ㎛ (합격)</strong>
+                  <span>
+                    REAR PLATE 진직도 (Max: {rearStraightStats.max.toFixed(1)}, Min: {rearStraightStats.min.toFixed(1)})
+                  </span>
+                  <strong className={`font-mono text-sm ${rearStraightStats.flatness <= activeRecipe.geometryToleranceLimitUm ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    Flatness {rearStraightStats.flatness.toFixed(1)} ㎛ ({rearStraightStats.flatness <= activeRecipe.geometryToleranceLimitUm ? '합격' : '불합격'})
+                  </strong>
                 </div>
               </div>
             </div>
@@ -808,7 +1865,9 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
                     표면조도 측정 데이터 (Measurement Point a, b)
                   </h3>
-                  <p className="text-xs text-slate-500">허용 규격: Rmax ≤ 0.2 ㎛ (Front/Rear Plate)</p>
+                  <p className="text-xs text-slate-500">
+                    허용 규격: Rmax ≤ {activeRecipe.frontRoughnessLimit} ㎛ (Front/Rear Plate)
+                  </p>
                 </div>
               </div>
             </div>
@@ -820,15 +1879,15 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <div className="grid grid-cols-3 gap-2 text-xs text-center font-mono">
                   <div className="p-2 rounded bg-white dark:bg-slate-900 border">
                     <span className="text-[10px] text-slate-500 block font-sans">위치 (a)</span>
-                    <strong>0.177 ㎛</strong>
+                    <strong>{(activeRecipe.frontRoughnessActual + 0.012).toFixed(3)} ㎛</strong>
                   </div>
                   <div className="p-2 rounded bg-white dark:bg-slate-900 border">
                     <span className="text-[10px] text-slate-500 block font-sans">위치 (b)</span>
-                    <strong>0.163 ㎛</strong>
+                    <strong>{(activeRecipe.frontRoughnessActual - 0.002).toFixed(3)} ㎛</strong>
                   </div>
-                  <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
-                    <span className="text-[10px] block font-sans font-bold">평균값 (Avg)</span>
-                    <strong>0.170 ㎛ (합격)</strong>
+                  <div className={`p-2 rounded border ${activeRecipe.frontRoughnessActual <= activeRecipe.frontRoughnessLimit ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300'}`}>
+                    <span className="text-[10px] block font-sans font-bold">실측 평균값</span>
+                    <strong>{activeRecipe.frontRoughnessActual.toFixed(3)} ㎛ ({activeRecipe.frontRoughnessActual <= activeRecipe.frontRoughnessLimit ? '합격' : '불합격'})</strong>
                   </div>
                 </div>
               </div>
@@ -839,15 +1898,15 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <div className="grid grid-cols-3 gap-2 text-xs text-center font-mono">
                   <div className="p-2 rounded bg-white dark:bg-slate-900 border">
                     <span className="text-[10px] text-slate-500 block font-sans">위치 (a)</span>
-                    <strong>0.170 ㎛</strong>
+                    <strong>{(activeRecipe.rearRoughnessActual + 0.010).toFixed(3)} ㎛</strong>
                   </div>
                   <div className="p-2 rounded bg-white dark:bg-slate-900 border">
                     <span className="text-[10px] text-slate-500 block font-sans">위치 (b)</span>
-                    <strong>0.167 ㎛</strong>
+                    <strong>{(activeRecipe.rearRoughnessActual + 0.007).toFixed(3)} ㎛</strong>
                   </div>
-                  <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
-                    <span className="text-[10px] block font-sans font-bold">평균값 (Avg)</span>
-                    <strong>0.169 ㎛ (합격)</strong>
+                  <div className={`p-2 rounded border ${activeRecipe.rearRoughnessActual <= activeRecipe.rearRoughnessLimit ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300'}`}>
+                    <span className="text-[10px] block font-sans font-bold">실측 평균값</span>
+                    <strong>{activeRecipe.rearRoughnessActual.toFixed(3)} ㎛ ({activeRecipe.rearRoughnessActual <= activeRecipe.rearRoughnessLimit ? '합격' : '불합격'})</strong>
                   </div>
                 </div>
               </div>
@@ -863,7 +1922,9 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
                     광학 현미경 검사 (Front/Rear 6포인트 립 간격 매핑)
                   </h3>
-                  <p className="text-xs text-slate-500">규격: 0.3 ± 0.005 mm (평균 측정값: 0.300 mm)</p>
+                  <p className="text-xs text-slate-500">
+                    규격: {activeRecipe.frontLipNominal.toFixed(3)} ± {activeRecipe.frontLipTol.toFixed(3)} mm (실측 평균: {activeRecipe.frontLipActual.toFixed(3)} mm)
+                  </p>
                 </div>
               </div>
             </div>
@@ -922,18 +1983,42 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                 <span className="text-xs text-slate-500 block font-bold">GAP 단차 (Point 1)</span>
-                <strong className="text-base font-black text-slate-900 dark:text-white font-mono">0.080 mm</strong>
-                <span className="text-[10px] text-emerald-600 block">규격: 0.080 ± 0.002 (합격)</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={gapStepP1}
+                  onChange={(e) => setGapStepP1(parseFloat(e.target.value) || 0)}
+                  className="w-24 text-center text-base font-black text-slate-900 dark:text-white font-mono bg-white dark:bg-slate-900 border rounded py-0.5 my-1"
+                />
+                <span className={`text-[10px] block font-bold ${Math.abs(gapStepP1 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  규격: {activeRecipe.frontGapNominal.toFixed(3)} ± {activeRecipe.frontGapTol.toFixed(3)} ({Math.abs(gapStepP1 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? '합격' : '불합격'})
+                </span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                 <span className="text-xs text-slate-500 block font-bold">GAP 단차 (Point 2)</span>
-                <strong className="text-base font-black text-slate-900 dark:text-white font-mono">0.080 mm</strong>
-                <span className="text-[10px] text-emerald-600 block">규격: 0.080 ± 0.002 (합격)</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={gapStepP2}
+                  onChange={(e) => setGapStepP2(parseFloat(e.target.value) || 0)}
+                  className="w-24 text-center text-base font-black text-slate-900 dark:text-white font-mono bg-white dark:bg-slate-900 border rounded py-0.5 my-1"
+                />
+                <span className={`text-[10px] block font-bold ${Math.abs(gapStepP2 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  규격: {activeRecipe.frontGapNominal.toFixed(3)} ± {activeRecipe.frontGapTol.toFixed(3)} ({Math.abs(gapStepP2 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? '합격' : '불합격'})
+                </span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                 <span className="text-xs text-slate-500 block font-bold">GAP 단차 (Point 3)</span>
-                <strong className="text-base font-black text-slate-900 dark:text-white font-mono">0.080 mm</strong>
-                <span className="text-[10px] text-emerald-600 block">규격: 0.080 ± 0.002 (합격)</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={gapStepP3}
+                  onChange={(e) => setGapStepP3(parseFloat(e.target.value) || 0)}
+                  className="w-24 text-center text-base font-black text-slate-900 dark:text-white font-mono bg-white dark:bg-slate-900 border rounded py-0.5 my-1"
+                />
+                <span className={`text-[10px] block font-bold ${Math.abs(gapStepP3 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  규격: {activeRecipe.frontGapNominal.toFixed(3)} ± {activeRecipe.frontGapTol.toFixed(3)} ({Math.abs(gapStepP3 - activeRecipe.frontGapNominal) <= activeRecipe.frontGapTol ? '합격' : '불합격'})
+                </span>
               </div>
             </div>
 
@@ -955,14 +2040,18 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     {damperData.map((d) => (
                       <td key={d.no} className="p-2 text-center">{d.front.toFixed(3)}</td>
                     ))}
-                    <td className="p-2 text-center font-bold text-blue-600">0.050</td>
+                    <td className="p-2 text-center font-bold text-blue-600">
+                      {(damperData.reduce((acc, c) => acc + c.front, 0) / damperData.length).toFixed(3)}
+                    </td>
                   </tr>
                   <tr>
                     <td className="p-2 font-bold font-sans">DAMPER</td>
                     {damperData.map((d) => (
                       <td key={d.no} className="p-2 text-center">{d.damper.toFixed(3)}</td>
                     ))}
-                    <td className="p-2 text-center font-bold text-blue-600">0.050</td>
+                    <td className="p-2 text-center font-bold text-blue-600">
+                      {(damperData.reduce((acc, c) => acc + c.damper, 0) / damperData.length).toFixed(3)}
+                    </td>
                   </tr>
                   <tr className="bg-emerald-50/50 dark:bg-emerald-950/30 font-bold">
                     <td className="p-2 font-sans text-emerald-800 dark:text-emerald-300">편차</td>
@@ -971,7 +2060,9 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                         {d.dev >= 0 ? `+${d.dev.toFixed(3)}` : d.dev.toFixed(3)}
                       </td>
                     ))}
-                    <td className="p-2 text-center text-emerald-700 dark:text-emerald-400">0.000</td>
+                    <td className="p-2 text-center text-emerald-700 dark:text-emerald-400">
+                      {(damperData.reduce((acc, c) => acc + c.dev, 0) / damperData.length).toFixed(3)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -981,7 +2072,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
       )}
 
       {/* ==================================================================== */}
-      {/* 6. [탭 4] 경도, 자력 및 조절볼트(43개) 검사 뷰                        */}
+      {/* 6. [탭 4] 경도, 자력 및 조절볼트 검사 뷰                             */}
       {/* ==================================================================== */}
       {activeCertTab === 'TAB4_HARDNESS_BOLT' && (
         <div className="space-y-4 animate-in fade-in duration-200">
@@ -993,22 +2084,26 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                 <div className="flex items-center gap-2">
                   <Hammer className="w-5 h-5 text-amber-600" />
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                    경도 측정 데이터 (REAR PLATE)
+                    경도 측정 데이터 (REAR PLATE - {activeRecipe.material})
                   </h3>
                 </div>
-                <span className="text-xs font-mono font-bold text-slate-500">규격: HRC 40 ± 2</span>
+                <span className="text-xs font-mono font-bold text-slate-500">규격: {activeRecipe.hardnessTarget}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                   <span className="text-slate-500 block font-bold">Point 1</span>
                   <strong className="text-lg font-black text-emerald-600 font-mono">{hardnessP1} HRC</strong>
-                  <span className="text-[10px] text-slate-400 block font-bold">판정: 합격 (OK)</span>
+                  <span className="text-[10px] text-slate-400 block font-bold">
+                    판정: {hardnessP1 >= activeRecipe.hardnessMin && hardnessP1 <= activeRecipe.hardnessMax ? '합격 (OK)' : '불합격 (NG)'}
+                  </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                   <span className="text-slate-500 block font-bold">Point 2</span>
                   <strong className="text-lg font-black text-emerald-600 font-mono">{hardnessP2} HRC</strong>
-                  <span className="text-[10px] text-slate-400 block font-bold">판정: 합격 (OK)</span>
+                  <span className="text-[10px] text-slate-400 block font-bold">
+                    판정: {hardnessP2 >= activeRecipe.hardnessMin && hardnessP2 <= activeRecipe.hardnessMax ? '합격 (OK)' : '불합격 (NG)'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1022,7 +2117,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     자력 측정 데이터 (Front / Rear)
                   </h3>
                 </div>
-                <span className="text-xs font-mono font-bold text-slate-500">규격: 0.2 mT 이하</span>
+                <span className="text-xs font-mono font-bold text-slate-500">규격: {activeRecipe.magnetismLimit} mT 이하</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1031,48 +2126,52 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   <strong className="text-base font-black text-emerald-600 font-mono">
                     {magFrontP1} / {magFrontP2} mT
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-bold">기준치 0.2 이하 만족</span>
+                  <span className="text-[10px] text-slate-400 block font-bold">
+                    {magFrontP1 <= activeRecipe.magnetismLimit && magFrontP2 <= activeRecipe.magnetismLimit ? '기준치 만족 (합격)' : '규격 초과'}
+                  </span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-center">
                   <span className="text-slate-500 block font-bold">REAR (Point 1 / 2)</span>
                   <strong className="text-base font-black text-emerald-600 font-mono">
                     {magRearP1} / {magRearP2} mT
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-bold">기준치 0.2 이하 만족</span>
+                  <span className="text-[10px] text-slate-400 block font-bold">
+                    {magRearP1 <= activeRecipe.magnetismLimit && magRearP2 <= activeRecipe.magnetismLimit ? '기준치 만족 (합격)' : '규격 초과'}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 43 Adjustment Bolts Inspection Matrix (Page 8) */}
+          {/* Dynamic Adjustment Bolts Inspection Matrix (Page 8) */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <Sliders className="w-5 h-5 text-indigo-600" />
                 <div>
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                    조절볼트 전수 검사 매트릭스 (@1번 ~ @43번 총 43개)
+                    조절볼트 전수 검사 매트릭스 (@1번 ~ @{activeRecipe.boltCount}번 총 {activeRecipe.boltCount}개)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    마이크로 피치 나사산 체결 토크, 회전 유격(Backlash), 립 조절 원활성 전수 검사
+                    마이크로 피치 나사산 체결 토크({activeRecipe.boltTorque} N·m), 회전 유격(Backlash), 립 조절 원활성 전수 검사
                   </p>
                 </div>
               </div>
               <span className="text-xs font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-300">
-                43개 조절볼트 전수 정상 (100% PASS)
+                {activeRecipe.boltCount}개 조절볼트 전수 정상 (100% PASS)
               </span>
             </div>
 
-            {/* 43 Bolts Interactive Grid */}
+            {/* Dynamic Bolts Interactive Grid */}
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-11 gap-2">
-              {bolts43.map((bolt) => (
+              {dynamicBolts.map((bolt) => (
                 <div
                   key={bolt.id}
                   className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-between hover:border-blue-500 transition cursor-pointer"
                 >
                   <span className="text-[10px] font-mono font-bold text-slate-500">#{bolt.id}</span>
                   <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 my-1 shadow-xs" />
-                  <span className="text-[9px] font-mono text-slate-700 dark:text-slate-300 font-bold">5.0N·m</span>
+                  <span className="text-[9px] font-mono text-slate-700 dark:text-slate-300 font-bold">{bolt.torque}N·m</span>
                 </div>
               ))}
             </div>
@@ -1093,7 +2192,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   공식 공인 검사 성적서 (Official 8-Page COA Document)
                 </h4>
                 <p className="text-[11px] text-indigo-700 dark:text-indigo-400">
-                  세메스 납품 사양에 완벽히 부합하는 8페이지 구성의 정밀 측정 성적서입니다.
+                  {activeRecipe.customer} 납품 사양에 완벽히 부합하는 8페이지 구성의 정밀 측정 성적서입니다.
                 </p>
               </div>
             </div>
@@ -1120,7 +2219,7 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   검 사 성 적 서
                 </h1>
                 <div className="text-xs font-mono text-slate-600 mt-0.5">
-                  Document number : <strong className="text-black">JS-QC260303-01N</strong>
+                  Document number : <strong className="text-black">{activeRecipe.docNo}</strong>
                 </div>
               </div>
 
@@ -1134,9 +2233,9 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <td className="p-1.5">검사결과</td>
                   </tr>
                   <tr>
-                    <td className="p-2 font-mono border-r border-slate-900">2026.03.03</td>
-                    <td className="p-2 border-r border-slate-900">MW.Jeon</td>
-                    <td className="p-2 border-r border-slate-900">SH.Kim</td>
+                    <td className="p-2 font-mono border-r border-slate-900">{activeRecipe.inspectionDate}</td>
+                    <td className="p-2 border-r border-slate-900">{activeRecipe.inspector}</td>
+                    <td className="p-2 border-r border-slate-900">{activeRecipe.approver}</td>
                     <td className="p-2 font-black text-blue-700">Q.C PASS</td>
                   </tr>
                 </tbody>
@@ -1153,10 +2252,10 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                   <td className="p-2 w-1/4">재질</td>
                 </tr>
                 <tr className="border-b border-slate-900 font-bold">
-                  <td className="p-2 border-r border-slate-900">세메스</td>
-                  <td className="p-2 border-r border-slate-900">SLIT NOZZLE</td>
-                  <td className="p-2 border-r border-slate-900 font-mono">1580mm</td>
-                  <td className="p-2 font-mono">STS630</td>
+                  <td className="p-2 border-r border-slate-900">{activeRecipe.customer}</td>
+                  <td className="p-2 border-r border-slate-900">{activeRecipe.productName}</td>
+                  <td className="p-2 border-r border-slate-900 font-mono">{activeRecipe.frontLengthNominal}mm</td>
+                  <td className="p-2 font-mono">{activeRecipe.material}</td>
                 </tr>
                 <tr className="bg-slate-100 font-bold border-b border-slate-900">
                   <td className="p-2 border-r border-slate-900">입고일</td>
@@ -1197,43 +2296,43 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <td className="p-1 border-r border-slate-300">1</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Length</td>
-                      <td className="p-1 border-r border-slate-300">1580±0.3</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">1580.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.frontLengthNominal}±{activeRecipe.frontLengthTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontLengthActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">2</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Height</td>
-                      <td className="p-1 border-r border-slate-300">160±0.2</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">160.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.frontHeightNominal}±{activeRecipe.frontHeightTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontHeightActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">3</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Thickness</td>
-                      <td className="p-1 border-r border-slate-300">60±0.1</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">60.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.frontThicknessNominal}±{activeRecipe.frontThicknessTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontThicknessActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">4</td>
                       <td className="p-1 border-r border-slate-300 font-sans font-bold">Lip Thk</td>
-                      <td className="p-1 border-r border-slate-300">0.3±0.005</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">0.300</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.frontLipNominal}±{activeRecipe.frontLipTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontLipActual.toFixed(3)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">*5</td>
                       <td className="p-1 border-r border-slate-300 font-sans font-bold">Gap(Step)</td>
-                      <td className="p-1 border-r border-slate-300">0.080±0.002</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">0.080</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.frontGapNominal}±{activeRecipe.frontGapTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontGapActual.toFixed(3)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">*6</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Roughness</td>
-                      <td className="p-1 border-r border-slate-300">Rmax≤0.2</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">0.170</td>
+                      <td className="p-1 border-r border-slate-300">Rmax≤{activeRecipe.frontRoughnessLimit}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.frontRoughnessActual.toFixed(3)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                   </tbody>
@@ -1259,29 +2358,29 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                     <tr>
                       <td className="p-1 border-r border-slate-300">1</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Length</td>
-                      <td className="p-1 border-r border-slate-300">1493±0.1</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">1493.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.rearLengthNominal}±{activeRecipe.rearLengthTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.rearLengthActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">2</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Height</td>
-                      <td className="p-1 border-r border-slate-300">160±0.2</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">160.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.rearHeightNominal}±{activeRecipe.rearHeightTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.rearHeightActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">3</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Thickness</td>
-                      <td className="p-1 border-r border-slate-300">70±0.1</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">70.00</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.rearThicknessNominal}±{activeRecipe.rearThicknessTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.rearThicknessActual.toFixed(2)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">4</td>
                       <td className="p-1 border-r border-slate-300 font-sans font-bold">Lip Thk</td>
-                      <td className="p-1 border-r border-slate-300">0.3±0.005</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">0.300</td>
+                      <td className="p-1 border-r border-slate-300">{activeRecipe.rearLipNominal}±{activeRecipe.rearLipTol}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.rearLipActual.toFixed(3)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                     <tr>
@@ -1289,13 +2388,13 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = ({ 
                       <td className="p-1 border-r border-slate-300 font-sans">Gap(Step)</td>
                       <td className="p-1 border-r border-slate-300">-</td>
                       <td className="p-1 border-r border-slate-300 font-bold">-</td>
-                      <td className="p-1 font-bold text-emerald-700">합격</td>
+                      <td className="p-1 font-bold text-emerald-700">적용제외</td>
                     </tr>
                     <tr>
                       <td className="p-1 border-r border-slate-300">*6</td>
                       <td className="p-1 border-r border-slate-300 font-sans">Roughness</td>
-                      <td className="p-1 border-r border-slate-300">Rmax≤0.2</td>
-                      <td className="p-1 border-r border-slate-300 font-bold">0.169</td>
+                      <td className="p-1 border-r border-slate-300">Rmax≤{activeRecipe.rearRoughnessLimit}</td>
+                      <td className="p-1 border-r border-slate-300 font-bold">{activeRecipe.rearRoughnessActual.toFixed(3)}</td>
                       <td className="p-1 font-bold text-emerald-700">합격</td>
                     </tr>
                   </tbody>

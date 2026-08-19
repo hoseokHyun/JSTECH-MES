@@ -1,6 +1,6 @@
 {
   "name": "준성테크 스마트 공정 스케줄러",
-  "description": "스마트 공정관리 및 실시간 Gantt 타임라인 대시보드",
+  "description": "준성테크 초정밀 슬롯다이 스마트 제조 MES 및 3D CMM 품질검사(QMS)·공인성적서(COA) 통합 관리 시스템",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
