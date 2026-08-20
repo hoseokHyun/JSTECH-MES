@@ -87,13 +87,13 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Archive Vault Button */}
           <button
             onClick={onOpenArchiveModal}
-            className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            className="bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer"
             title="완료 수주 보관함"
           >
-            <Archive className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
             <span>보관함</span>
             {archivedCount > 0 && (
-              <span className="bg-amber-500 text-white px-1.5 py-0.2 rounded-full text-[10px] font-black">
+              <span className="bg-[#B45309] dark:bg-amber-600 text-white px-1.5 py-0.2 rounded-full text-[10px] font-black">
                 {archivedCount}
               </span>
             )}

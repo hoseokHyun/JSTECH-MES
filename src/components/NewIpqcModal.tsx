@@ -39,6 +39,7 @@ export const NewIpqcModal: React.FC<NewIpqcModalProps> = ({
   const [lotNo, setLotNo] = useState<string>(`LOT-260520-${Math.floor(100 + Math.random() * 900)}`);
   const [cmmDevice, setCmmDevice] = useState<string>('CMM-01 (Zeiss Prismo)');
   const [programName, setProgramName] = useState<string>('SLOT_DIE_1400_UPPER_V3');
+  const [lipWidthMm, setLipWidthMm] = useState<number>(1400);
   const [inspector, setInspector] = useState<string>(
     currentUserTitle || currentUserName || inspectors[0] || '김준성 책임연구원 (KOLAS 공인)'
   );

@@ -311,10 +311,10 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             </span>
             <button
               onClick={onOpenArchiveModal}
-              className="bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-3 py-1 rounded-full font-bold flex items-center gap-1 transition cursor-pointer"
+              className="bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 px-3 py-1 rounded-full font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs"
               title="완료 수주 보관함 열기"
             >
-              <Archive className="w-3.5 h-3.5 text-amber-600" />
+              <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
               <span>보관함</span>
             </button>
             {onNavigateToOrderForm && (
@@ -489,9 +489,9 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                               }
                               onArchiveOrder(ord.id);
                             }}
-                            className="bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5 cursor-pointer active:scale-95"
+                            className="bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 px-2 py-0.5 rounded-md text-[10px] font-bold transition flex items-center gap-0.5 cursor-pointer active:scale-95 shadow-2xs"
                           >
-                            <Archive className="w-3 h-3 text-amber-600" />
+                            <Archive className="w-3 h-3 text-[#B45309] dark:text-amber-400" />
                             <span>보관</span>
                           </button>
                         </div>

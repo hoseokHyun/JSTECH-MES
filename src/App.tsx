@@ -976,6 +976,7 @@ export default function App() {
                 scheduledTasks={scheduledTasks}
                 currentUser={currentUser}
                 approvedOperators={approvedOperators}
+                usersList={usersList}
               />
             )}
 

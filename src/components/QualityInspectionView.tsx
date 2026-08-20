@@ -56,6 +56,7 @@ import { IpqcPrintModal } from './IpqcPrintModal';
 import { NewIpqcModal } from './NewIpqcModal';
 import { ShippingCoaPrintModal } from './ShippingCoaPrintModal';
 import { NewShippingModal } from './NewShippingModal';
+import { KpiDetailModal } from './KpiDetailModal';
 
 // ============================================================================
 // 1. DATA INTERFACES
@@ -323,28 +324,6 @@ const CMM_MACHINES_STATUS: CmmMachineInfo[] = [
     temp: 19.98,
     humidity: 44.8,
     calibratedAt: '2026-07-28 (KOLAS 공인)'
-  },
-  {
-    id: 'CMM-03',
-    name: 'CMM #3 (덕인 Horizon Plus 1500)',
-    model: 'DUKIN High Precision Multi-Probe (1.5+L/400㎛)',
-    status: 'RUNNING',
-    currentTask: '수소연료전지 심 플레이트 3단계 재검사',
-    utilization: 95.0,
-    temp: 20.01,
-    humidity: 45.4,
-    calibratedAt: '2026-08-05 (KOLAS 공인)'
-  },
-  {
-    id: 'CMM-04',
-    name: 'CMM #4 (Zeiss Accura Multi)',
-    model: 'Zeiss Optical & Contact Hybrid Scanner',
-    status: 'CALIBRATING',
-    currentTask: '레이저 비접촉 광학 간섭 프로파일 센서 보정',
-    utilization: 88.4,
-    temp: 20.00,
-    humidity: 45.0,
-    calibratedAt: '2026-08-18 (실시간 자동 보정)'
   }
 ];
 
@@ -512,58 +491,89 @@ interface QualityInspectionViewProps {
   scheduledTasks?: ScheduledTaskItem[];
   currentUser?: User | null;
   approvedOperators?: string[];
+  usersList?: User[];
 }
 
 export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
   orders,
   scheduledTasks,
   currentUser,
+  approvedOperators = [],
+  usersList = []
 }) => {
   // Quality Stage Hierarchy: IQC -> IPQC -> OQC
-  const [qualityStage, setQualityStage] = useState<'IQC' | 'IPQC' | 'OQC'>('OQC');
+  const [qualityStage, setQualityStage] = useState<'IQC' | 'IPQC' | 'OQC'>('IQC');
 
   // Navigation Tabs: IQC, IPQC 2 tabs, OQC 2 tabs (including Slot Die Certificate)
   const [activeTab, setActiveTab] = useState<
     'TAB_IQC' | 'TAB1_IPQC_CMM' | 'TAB2_SPC_ANALYSIS' | 'TAB_SLOT_DIE_COA' | 'TAB3_SHIPPING_COA'
-  >('TAB_SLOT_DIE_COA');
+  >('TAB_IQC');
+
+  // KPI Modal Detail View State
+  const [selectedKpiModal, setSelectedKpiModal] = useState<
+    'DAILY_COUNT' | 'YIELD' | 'DEFECTS' | 'CAPA' | 'INSPECT_TIME' | 'CMM_UTILIZATION' | null
+  >(null);
 
   const currentUserName = currentUser?.name?.trim() || '';
   const currentUserTitle = currentUser ? `${currentUser.name} (${currentUser.role === 'ADMIN' ? 'QA 총괄/관리자' : '품질 검사원'})` : '';
 
-  // Inspector & QA manager options with currentUser priority
-  const approvedInspectors = useMemo(() => {
-    const list = [
-      '김준성 책임연구원 (KOLAS 공인)',
-      '이동훈 수석검사관 (CMM 1급)',
-      '박진우 정밀측정 엔지니어',
-      '최현우 품질검사원 (3차원 측정)',
-      '한서연 공정품질 담당'
-    ];
-    if (currentUserTitle && !list.includes(currentUserTitle)) {
-      return [currentUserTitle, currentUserName, ...list.filter(item => item !== currentUserName && item !== currentUserTitle)];
-    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
-      return [currentUserName, ...list];
-    }
-    return Array.from(new Set(list.filter(Boolean)));
-  }, [currentUserTitle, currentUserName]);
+  // Registered project names from active orders
+  const registeredProjects = useMemo(() => {
+    if (!orders) return [];
+    return Array.from(new Set(Object.values(orders).map((o) => o.name).filter(Boolean)));
+  }, [orders]);
 
-  const approvedQaManagers = useMemo(() => {
-    const list = [
-      '이준혁 품질보증총괄이사',
-      '정승원 QA그룹장 (품질경영기사)',
-      '강태호 품질보증센터장',
-      '오민석 공장장 / 기술이사'
-    ];
-    if (currentUser?.role === 'ADMIN' && currentUserName) {
-      const adminTitle = `${currentUserName} (QA 관리자)`;
-      if (!list.includes(adminTitle)) {
-        return [adminTitle, currentUserName, ...list.filter(item => item !== currentUserName && item !== adminTitle)];
-      }
-    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
-      return [currentUserName, ...list];
+  // Inspector options: ONLY registered approved field operators (role !== 'ADMIN')
+  const approvedInspectors = useMemo(() => {
+    const list: string[] = [];
+
+    // 1. Add current user if field operator (not admin)
+    if (currentUser && currentUser.role !== 'ADMIN' && currentUserName) {
+      list.push(currentUserName);
     }
+
+    // 2. Add DB registered approved field operators
+    if (usersList && usersList.length > 0) {
+      usersList
+        .filter((u) => u.name && u.role !== 'ADMIN' && u.isApproved !== false)
+        .forEach((u) => {
+          const name = u.name.trim();
+          if (name && !list.includes(name)) list.push(name);
+        });
+    }
+
+    // 3. Add approvedOperators (which are non-admin operators)
+    if (approvedOperators && approvedOperators.length > 0) {
+      approvedOperators.forEach((op) => {
+        const name = op.trim();
+        if (name && !list.includes(name)) list.push(name);
+      });
+    }
+
     return Array.from(new Set(list.filter(Boolean)));
-  }, [currentUser, currentUserName]);
+  }, [currentUser, currentUserName, usersList, approvedOperators]);
+
+  // QA Manager options: ONLY registered ADMIN users
+  const approvedQaManagers = useMemo(() => {
+    const list: string[] = [];
+
+    // 1. Add current user if ADMIN
+    if (currentUser?.role === 'ADMIN' && currentUserName) {
+      list.push(currentUserName);
+    }
+
+    // 2. Add DB registered admin users
+    if (usersList && usersList.length > 0) {
+      usersList
+        .filter((u) => u.name && u.role === 'ADMIN' && u.isApproved !== false)
+        .forEach((u) => {
+          const name = u.name.trim();
+          if (name && !list.includes(name)) list.push(name);
+        });
+    }
+
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [currentUser, currentUserName, usersList]);
 
   // IQC State & Sync
   const [iqcLots, setIqcLots] = useState<IqcLotItem[]>(DEFAULT_IQC_LOTS);
@@ -985,14 +995,20 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
       )}
 
       {/* ==================================================================== */}
-      {/* 1. TOP COMMON KPI CARDS (6 CARDS)                                   */}
+      {/* 1. TOP COMMON KPI CARDS (6 CARDS) - Interactive Modal View Enabled    */}
       {/* ==================================================================== */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* KPI 1: 금일 검사 건수 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-daily-count"
+          onClick={() => setSelectedKpiModal('DAILY_COUNT')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-blue-500 dark:hover:border-blue-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">금일 검사 건수</span>
-            <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-blue-600 transition-colors">
+              금일 검사 건수
+            </span>
+            <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 group-hover:scale-110 transition-transform">
               <FileSpreadsheet className="w-4 h-4" />
             </div>
           </div>
@@ -1000,18 +1016,24 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               1,480 <span className="text-xs font-bold text-slate-500">건</span>
             </div>
-            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
-              <span>▲ 145건</span>
-              <span className="text-slate-400 font-normal">(전일 대비)</span>
+            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between mt-0.5">
+              <span>▲ 145건 (전일 대비)</span>
+              <span className="text-[10px] text-blue-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
 
         {/* KPI 2: 합격률 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-yield"
+          onClick={() => setSelectedKpiModal('YIELD')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-emerald-500 dark:hover:border-emerald-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">합격률 (Yield)</span>
-            <div className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 transition-colors">
+              합격률 (Yield)
+            </span>
+            <div className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 group-hover:scale-110 transition-transform">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
@@ -1019,18 +1041,24 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
               99.4 <span className="text-xs font-bold text-slate-500">%</span>
             </div>
-            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
-              <span>▲ 0.6%</span>
-              <span className="text-slate-400 font-normal">(목표: 99.0%)</span>
+            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between mt-0.5">
+              <span>▲ 0.4% (목표 99.0%)</span>
+              <span className="text-[10px] text-emerald-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
 
         {/* KPI 3: 불량 건수 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-defects"
+          onClick={() => setSelectedKpiModal('DEFECTS')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-rose-500 dark:hover:border-rose-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">불량 건수</span>
-            <div className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-rose-600 transition-colors">
+              불량 건수
+            </span>
+            <div className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 group-hover:scale-110 transition-transform">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
@@ -1038,18 +1066,24 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
               8 <span className="text-xs font-bold text-slate-500">건</span>
             </div>
-            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 mt-0.5">
-              <span>▼ 3건 감소</span>
-              <span className="text-slate-400 font-normal">(개선세)</span>
+            <div className="text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center justify-between mt-0.5">
+              <span>▼ 3건 감소 (개선세)</span>
+              <span className="text-[10px] text-rose-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
 
         {/* KPI 4: 재검사 건수 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-capa"
+          onClick={() => setSelectedKpiModal('CAPA')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-amber-500 dark:hover:border-amber-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">재검사(CAPA)</span>
-            <div className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-amber-600 transition-colors">
+              재검사 (CAPA)
+            </span>
+            <div className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 group-hover:scale-110 transition-transform">
               <RotateCcw className="w-4 h-4" />
             </div>
           </div>
@@ -1057,18 +1091,24 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
               12 <span className="text-xs font-bold text-slate-500">건</span>
             </div>
-            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-0.5 mt-0.5">
-              <span>4건 진행중</span>
-              <span className="text-slate-400 font-normal">(8건 해결)</span>
+            <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center justify-between mt-0.5">
+              <span>4건 진행중 (8건 해결)</span>
+              <span className="text-[10px] text-amber-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
 
         {/* KPI 5: 평균 검사 시간 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-inspect-time"
+          onClick={() => setSelectedKpiModal('INSPECT_TIME')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">평균 검사 시간</span>
-            <div className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 transition-colors">
+              평균 검사 시간
+            </span>
+            <div className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 group-hover:scale-110 transition-transform">
               <Clock className="w-4 h-4" />
             </div>
           </div>
@@ -1076,26 +1116,34 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               24.5 <span className="text-xs font-bold text-slate-500">분</span>
             </div>
-            <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5 mt-0.5">
+            <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center justify-between mt-0.5">
               <span>초정밀 CMM 스캔</span>
+              <span className="text-[10px] text-indigo-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
 
         {/* KPI 6: CMM 가동률 */}
-        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:shadow-xs transition">
+        <div
+          id="kpi-card-cmm-util"
+          onClick={() => setSelectedKpiModal('CMM_UTILIZATION')}
+          className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-teal-500 dark:hover:border-teal-400 hover:shadow-md transition cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">CMM 가동률</span>
-            <div className="p-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 group-hover:text-teal-600 transition-colors">
+              CMM 가동률
+            </span>
+            <div className="p-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800 group-hover:scale-110 transition-transform">
               <Gauge className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2">
             <div className="text-2xl font-black text-teal-600 dark:text-teal-400 tracking-tight">
-              94.2 <span className="text-xs font-bold text-slate-500">%</span>
+              95.2 <span className="text-xs font-bold text-slate-500">%</span>
             </div>
-            <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 flex items-center gap-0.5 mt-0.5">
-              <span>4기 정상 가동중</span>
+            <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 flex items-center justify-between mt-0.5">
+              <span>2기 정상 운용중</span>
+              <span className="text-[10px] text-teal-500 font-normal">상세 ➔</span>
             </div>
           </div>
         </div>
@@ -1186,10 +1234,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
               }`}
             >
               <Boxes className="w-4 h-4" />
-              <span>[수입검사] 모재(SUS420J2/STS630) 및 외주품 수입 검사대장 열기</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 text-white font-mono">
-                대장 상세 팝업 ➔
-              </span>
+              <span>수입검사대장 / 신규 LOT 관리</span>
             </button>
           )}
 
@@ -1205,7 +1250,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <Activity className="w-4 h-4" />
-                <span>[탭 1] 실시간 IPQC & CMM 검사 (현장 작업자/검사원용)</span>
+                <span>[탭 1] 실시간 CMM 검사 현황</span>
               </button>
 
               <button
@@ -1218,7 +1263,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <BarChart3 className="w-4 h-4" />
-                <span>[탭 2] SPC 및 품질 데이터 분석 (품질 엔지니어용)</span>
+                <span>[탭 2] 품질 데이터 분석</span>
               </button>
             </>
           )}
@@ -1235,7 +1280,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <FileCheck className="w-4 h-4 text-amber-300" />
-                <span>[슬롯다이 성적서 관리] 세메스 1580mm STS630 (JS-QC260303-01N)</span>
+                <span>[성적서 관리] 세메스 1580mm 슬롯다이 성적서 (8-Page COA Editor)</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 text-white font-mono">
                   8-Page COA
                 </span>
@@ -1251,7 +1296,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <PackageCheck className="w-4 h-4" />
-                <span>[출하 보증 종합 검토 & COA 승인] (임원/QA책임자)</span>
+                <span>[출하 보증 검토 & COA 발행 대장]</span>
               </button>
             </>
           )}
@@ -1314,13 +1359,13 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                     onClick={() => setIpqcFilterArchive('ARCHIVED')}
                     className={`flex-1 py-1 px-2 rounded-lg font-bold transition flex items-center justify-center gap-1.5 text-[11px] cursor-pointer ${
                       ipqcFilterArchive === 'ARCHIVED'
-                        ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        ? 'bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-[#B45309]'
                     }`}
                   >
-                    <Archive className="w-3 h-3" />
+                    <Archive className="w-3 h-3 text-[#B45309] dark:text-amber-400" />
                     <span>보관함</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-mono font-black">
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#FEF3D6] dark:bg-amber-900/60 text-[#B45309] dark:text-amber-200 border border-[#FCD34D]/80 font-mono font-black">
                       {archivedIpqcCount}
                     </span>
                   </button>
@@ -1421,7 +1466,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                                   handleToggleArchiveIpqc(item.id);
                                 }}
                                 title={item.isArchived ? '보관함에서 복원' : '보관함으로 이동'}
-                                className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition cursor-pointer"
+                                className="p-1 rounded-md text-[#B45309] dark:text-amber-300 bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs transition cursor-pointer"
                               >
                                 {item.isArchived ? (
                                   <ArchiveRestore className="w-3.5 h-3.5" />
@@ -2583,11 +2628,11 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                     onClick={() => setShippingFilterArchive('ARCHIVED')}
                     className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       shippingFilterArchive === 'ARCHIVED'
-                        ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        ? 'bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs'
+                        : 'text-slate-500 hover:text-[#B45309] dark:hover:text-amber-300'
                     }`}
                   >
-                    <Archive className="w-3.5 h-3.5" />
+                    <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
                     <span>보관함 ({archivedShippingCount})</span>
                   </button>
                 </div>
@@ -3246,34 +3291,29 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5 animate-in fade-in duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+              <div className="p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0">
                 <Boxes className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>수입검사 (IQC) - 원소재(STS630 / SUS420J2) 및 외주 가공품 입고 검사대장</span>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300">
+                <div className="flex items-center flex-wrap gap-2">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    수입검사 (IQC) - 원소재(STS630 / SUS420J2) 및 외주 가공품 입고 검사대장
+                  </h3>
+                  <span className="text-sm font-black font-sans px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap shadow-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     전수 합격 ({iqcLots.filter((l) => l.inspectionResult === 'PASS').length}/{iqcLots.length} PASS)
                   </span>
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
                   밀시트(Mill Sheet) 화학 성분 분석, 초음파 비파괴 탐상(UT), 열처리 경도(HRC), 모재 표면 결함 및 치수 검증
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                id="btn-open-iqc-modal-full"
-                onClick={() => {
-                  setSelectedIqcLotId(undefined);
-                  setIsIqcModalOpen(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-black shadow-md shadow-amber-600/20 transition cursor-pointer"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>수입검사대장 상세 / 신규 LOT 관리 열기</span>
-              </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs font-bold text-amber-800 dark:text-amber-300">
+                원소재 전수 검사 완료
+              </div>
             </div>
           </div>
 
@@ -3316,7 +3356,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             <div className="p-12 text-center bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-xs text-slate-400">
               {iqcFilterArchive === 'ARCHIVED'
                 ? '보관함에 보관된 수입검사 LOT가 없습니다.'
-                : '현재 등록된 활성 입고 LOT가 없습니다. 상단 버튼으로 신규 LOT를 등록하세요.'}
+                : '현재 등록된 활성 입고 LOT가 없습니다. 상단 [수입검사대장 / 신규 LOT 관리] 버튼으로 신규 LOT를 등록하세요.'}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3331,14 +3371,15 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   className="p-5 rounded-2xl bg-slate-50 hover:bg-white dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 hover:border-amber-500 dark:border-slate-700 dark:hover:border-amber-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between"
                 >
                   <div className="space-y-3">
+                    {/* Top Row: Supplier name + Result badge & Archive toggle */}
                     <div className="flex justify-between items-center text-xs font-bold">
-                      <span className="text-slate-500 flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${lot.inspectionResult === 'PASS' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        {lot.supplier}
+                      <span className="text-slate-700 dark:text-slate-200 flex items-center gap-1.5 font-bold">
+                        <span className={`w-2.5 h-2.5 rounded-full ${lot.inspectionResult === 'PASS' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span>{lot.supplier}</span>
                       </span>
-                      <div className="flex items-center gap-1">
-                        <span className="font-mono text-blue-600 dark:text-blue-400 font-black">
-                          {lot.lotNo}
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
+                          {lot.inspectionResult}
                         </span>
                         {/* Archive Toggle */}
                         <button
@@ -3362,11 +3403,27 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                       </div>
                     </div>
 
+                    {/* LOT Number placed BELOW supplier name */}
+                    <div className="flex items-center justify-between bg-blue-50/60 dark:bg-blue-950/30 px-2.5 py-1 rounded-lg border border-blue-200/60 dark:border-blue-900/60">
+                      <span className="text-[10px] font-bold text-slate-500">LOT NO:</span>
+                      <span className="font-mono text-blue-600 dark:text-blue-400 font-black text-xs">
+                        {lot.lotNo}
+                      </span>
+                    </div>
+
                     <div>
                       <h4 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                         {lot.materialType}
                       </h4>
-                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      {lot.projectRef && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 truncate max-w-full">
+                            <span className="font-extrabold mr-1">프로젝트:</span>
+                            <span className="truncate">{lot.projectRef}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-slate-500 font-mono mt-1">
                         {lot.standard} ({lot.incomingDate})
                       </div>
                     </div>
@@ -3393,7 +3450,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                       <div className="flex justify-between">
                         <span>• 검사자:</span>
                         <span className="font-bold text-slate-700 dark:text-slate-300">
-                          {lot.inspector}
+                          {lot.inspector} {lot.approver ? `(승인: ${lot.approver})` : ''}
                         </span>
                       </div>
                     </div>
@@ -3414,6 +3471,13 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
       {/* 8. MODALS & POPUPS                                                   */}
       {/* ==================================================================== */}
 
+      {/* KPI Detail Analytics Modal */}
+      <KpiDetailModal
+        isOpen={!!selectedKpiModal}
+        onClose={() => setSelectedKpiModal(null)}
+        initialType={selectedKpiModal}
+      />
+
       {/* IQC Detail Inspection Log Modal */}
       <IqcDetailModal
         isOpen={isIqcModalOpen}
@@ -3424,6 +3488,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
         currentUser={currentUser}
         inspectors={approvedInspectors}
         qaManagers={approvedQaManagers}
+        projects={registeredProjects}
       />
 
       {/* IPQC Print Modal */}

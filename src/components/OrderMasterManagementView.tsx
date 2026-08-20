@@ -243,15 +243,15 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
           onClick={() => setOrderTableFilter('ARCHIVED')}
           className={`p-4 rounded-2xl border transition cursor-pointer ${
             orderTableFilter === 'ARCHIVED'
-              ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-400 shadow-xs'
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+              ? 'bg-[#FFF9EB] dark:bg-amber-950/40 border-[#FCD34D] dark:border-amber-700/80 shadow-xs'
+              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-300'
           }`}
         >
-          <div className="text-[11px] font-bold text-purple-700 dark:text-purple-400 flex items-center gap-1">
-            <Archive className="w-3.5 h-3.5" />
+          <div className="text-[11px] font-bold text-[#B45309] dark:text-amber-400 flex items-center gap-1">
+            <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
             <span>완료 보관함 (아카이브)</span>
           </div>
-          <div className="text-2xl font-black text-purple-800 dark:text-purple-300 mt-1">
+          <div className="text-2xl font-black text-[#B45309] dark:text-amber-300 mt-1">
             {archivedCount}<span className="text-xs font-medium ml-1">건</span>
           </div>
         </div>
@@ -301,8 +301,8 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
               onClick={() => setOrderTableFilter('ARCHIVED')}
               className={`px-3 py-1.5 rounded-lg transition ${
                 orderTableFilter === 'ARCHIVED'
-                  ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 shadow-xs font-black'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  ? 'bg-[#FFF9EB] dark:bg-amber-950/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D]/80 shadow-2xs font-black'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-[#B45309]'
               }`}
             >
               보관함 ({archivedCount})
@@ -509,12 +509,12 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                               }}
                               className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
                                 canArchive
-                                  ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer active:scale-95'
+                                  ? 'bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 cursor-pointer active:scale-95 shadow-2xs'
                                   : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
                               }`}
                               title="완료 보관함으로 이동"
                             >
-                              <Archive className="w-3 h-3 text-amber-600" />
+                              <Archive className="w-3 h-3 text-[#B45309] dark:text-amber-400" />
                               <span>보관</span>
                             </button>
                           )}

@@ -28,6 +28,7 @@ export interface IqcLotItem {
   incomingDate: string;
   inspector: string;
   approver?: string;
+  projectRef?: string;
   inspectionResult: 'PASS' | 'CONDITIONAL' | 'FAIL';
   isArchived?: boolean;
   rawDimensions: {
@@ -75,10 +76,12 @@ export const DEFAULT_IQC_LOTS: IqcLotItem[] = [
     id: 'IQC-2026-0301',
     lotNo: 'LOT-260303-STS630',
     materialType: 'STS630 (17-4PH 석출경화 스테인리스강)',
+    projectRef: '세메스 1580mm 슬롯다이 바디',
     standard: 'KS D 3706 / ASTM A564 Grade 630 (H1025)',
     supplier: '세아베스틸 (POSCO 특수강 가공원)',
     incomingDate: '2026-03-03 09:30',
-    inspector: '정품질 선임 (QA-04)',
+    inspector: '주정태',
+    approver: '관리자',
     inspectionResult: 'PASS',
     isArchived: false,
     millSheetNo: 'MS-POSCO-2603-9942',
@@ -123,95 +126,97 @@ export const DEFAULT_IQC_LOTS: IqcLotItem[] = [
   },
   {
     id: 'IQC-2026-0302',
-    lotNo: 'LOT-260412-SUS420',
+    lotNo: 'LOT-260302-SUS420J2',
     materialType: 'SUS420J2 (고경도 마르텐사이트계 스테인리스)',
-    standard: 'JIS G4303 / KS D 3705',
-    supplier: '현대제철 특수강본부',
-    incomingDate: '2026-03-02 14:15',
-    inspector: '김검사 수석 (QA-01)',
+    projectRef: '삼성SDI 1200L 고점도 다이',
+    standard: 'JIS G 4303 / KS D 3705 (QT 열처리)',
+    supplier: '현대제철 특수강사업부',
+    incomingDate: '2026-03-02 14:10',
+    inspector: '주정태',
+    approver: '관리자',
     inspectionResult: 'PASS',
     isArchived: false,
-    millSheetNo: 'MS-HD-2602-4412',
-    heatNo: 'HT-420-7719B',
-    notes: 'LG에너지솔루션 1400mm 전극 슬롯다이 립(Lip) 바디 소재. 진공 소성 및 심냉처리 완료 블록.',
+    millSheetNo: 'MS-HYUNDAI-2603-1108',
+    heatNo: 'HT-420-7712B',
+    notes: '고정밀 심 플레이트 및 슬롯 블레이드용 고경도 스테인리스강 모재.',
     rawDimensions: {
-      length: { spec: '1450 ± 5 mm', actual: '1451.8 mm', result: 'OK' },
-      width: { spec: '200 ± 2 mm', actual: '201.2 mm', result: 'OK' },
-      thickness: { spec: '90 ± 2 mm', actual: '90.7 mm', result: 'OK' },
-      straightness: { spec: '≤ 0.3 mm / m', actual: '0.12 mm / m', result: 'OK' }
+      length: { spec: '1300 ± 5 mm', actual: '1301.8 mm', result: 'OK' },
+      width: { spec: '150 ± 2 mm', actual: '150.4 mm', result: 'OK' },
+      thickness: { spec: '60 ± 2 mm', actual: '60.5 mm', result: 'OK' },
+      straightness: { spec: '≤ 0.3 mm / m', actual: '0.06 mm / m', result: 'OK' }
     },
     chemicalComposition: [
-      { element: 'C (탄소)', specMin: 0.26, specMax: 0.4, actual: 0.33, unit: '%', result: 'OK' },
-      { element: 'Si (규소)', specMin: 0.0, specMax: 1.0, actual: 0.52, unit: '%', result: 'OK' },
+      { element: 'C (탄소)', specMin: 0.26, specMax: 0.40, actual: 0.33, unit: '%', result: 'OK' },
+      { element: 'Si (규소)', specMin: 0.0, specMax: 1.0, actual: 0.42, unit: '%', result: 'OK' },
       { element: 'Mn (망간)', specMin: 0.0, specMax: 1.0, actual: 0.58, unit: '%', result: 'OK' },
       { element: 'P (인)', specMin: 0.0, specMax: 0.04, actual: 0.021, unit: '%', result: 'OK' },
-      { element: 'S (황)', specMin: 0.0, specMax: 0.03, actual: 0.005, unit: '%', result: 'OK' },
-      { element: 'Cr (크롬)', specMin: 12.0, specMax: 14.0, actual: 13.35, unit: '%', result: 'OK' },
-      { element: 'Ni (니켈)', specMin: 0.0, specMax: 0.6, actual: 0.22, unit: '%', result: 'OK' }
+      { element: 'S (황)', specMin: 0.0, specMax: 0.03, actual: 0.003, unit: '%', result: 'OK' },
+      { element: 'Cr (크롬)', specMin: 12.0, specMax: 14.0, actual: 13.15, unit: '%', result: 'OK' }
     ],
     mechanicalProperties: {
-      hardness: { spec: 'HRC 52.0 ~ 56.0', actual: 'HRC 54.8', result: 'OK' },
-      tensileStrength: { spec: '≥ 1500 MPa', actual: '1580 MPa', result: 'OK' },
-      yieldStrength: { spec: '≥ 1300 MPa', actual: '1370 MPa', result: 'OK' },
-      elongation: { spec: '≥ 8 %', actual: '10.2 %', result: 'OK' }
+      hardness: { spec: 'HRC 50.0 ~ 54.0', actual: 'HRC 52.4', result: 'OK' },
+      tensileStrength: { spec: '≥ 735 MPa', actual: '820 MPa', result: 'OK' },
+      yieldStrength: { spec: '≥ 540 MPa', actual: '610 MPa', result: 'OK' },
+      elongation: { spec: '≥ 15 %', actual: '18.2 %', result: 'OK' }
     },
     utInspection: {
-      method: '초음파 침투 탐상 (Immersion UT)',
+      method: '초음파 탐상 (UT)',
       frequency: '5.0 MHz',
-      standard: 'MIL-STD-2154 Class AA',
+      standard: 'KS B 0817 Grade 1',
       defectFound: false,
-      defectDetails: '초음파 결함 에코 0dB, 내부 기공 및 편석 결함 무',
+      defectDetails: '무결점 판정',
       result: 'PASS'
     },
     surfaceInspection: {
-      visualDefect: '진공 소성 표면 균일 산화막 형성, 크랙 및 핀홀 무',
-      roughnessRa: 'Ra 1.4 ㎛',
+      visualDefect: '표면 균일, 유해 결함 없음',
+      roughnessRa: 'Ra 1.2 ㎛',
       result: 'PASS'
     }
   },
   {
     id: 'IQC-2026-0303',
-    lotNo: 'LOT-260501-DLC',
-    materialType: 'DLC (Diamond-Like Carbon) 초정밀 박막 코팅 외주품',
-    standard: 'KOS-COAT-09 (내마모/저마찰 슬롯다이 표면처리 규격)',
-    supplier: '(주)나노코팅 테크놀로지 (외주 전문업체)',
-    incomingDate: '2026-03-01 16:40',
-    inspector: '이품질 주임 (QA-03)',
+    lotNo: 'LOT-260301-DLC',
+    materialType: 'DLC (Diamond-Like Carbon) 초정밀 박막 코팅',
+    projectRef: 'LG엔솔 1650mm 와이드 슬롯다이',
+    standard: '내부 QA-DLC-STD-02 / 코팅 두께 2.0±0.3㎛',
+    supplier: '(주)나노코트 테크놀로지',
+    incomingDate: '2026-03-01 11:00',
+    inspector: '주정태',
+    approver: '관리자',
     inspectionResult: 'PASS',
     isArchived: false,
-    millSheetNo: 'COA-NANO-2026-081',
-    heatNo: 'COAT-BATCH-0941',
-    notes: '2차전지 양극 슬러리 내식/내마모용 다이아몬드상 카본(DLC) 2.5㎛ 초정밀 증착 외주품.',
+    millSheetNo: 'MS-NANO-2603-0421',
+    heatNo: 'HT-DLC-5519',
+    notes: '슬롯다이 립(Lip) 토출 선단부 마모 방지 및 초저마찰 슬라이딩 DLC 코팅 외주 수입검사.',
     rawDimensions: {
-      length: { spec: '1580.00 ± 0.02 mm', actual: '1580.008 mm', result: 'OK' },
-      width: { spec: '160.00 ± 0.02 mm', actual: '160.004 mm', result: 'OK' },
-      thickness: { spec: '60.00 ± 0.02 mm', actual: '60.002 mm', result: 'OK' },
-      straightness: { spec: '≤ 0.005 mm', actual: '0.0018 mm', result: 'OK' }
+      length: { spec: '1650 ± 2 mm', actual: '1650.1 mm', result: 'OK' },
+      width: { spec: '180 ± 1 mm', actual: '180.2 mm', result: 'OK' },
+      thickness: { spec: '80 ± 1 mm', actual: '80.1 mm', result: 'OK' },
+      straightness: { spec: '≤ 0.05 mm / m', actual: '0.02 mm / m', result: 'OK' }
     },
     chemicalComposition: [
-      { element: 'sp3 탄소 결합비율', specMin: 70.0, specMax: 90.0, actual: 78.5, unit: '%', result: 'OK' },
-      { element: '수소(H) 함량', specMin: 0.0, specMax: 5.0, actual: 1.8, unit: '%', result: 'OK' },
-      { element: '도핑(Si/Cr)', specMin: 1.0, specMax: 3.0, actual: 2.1, unit: '%', result: 'OK' }
+      { element: 'sp3 탄소 비율', specMin: 70.0, specMax: 90.0, actual: 82.5, unit: '%', result: 'OK' },
+      { element: '수소 함량', specMin: 0.0, specMax: 15.0, actual: 8.2, unit: '%', result: 'OK' }
     ],
     mechanicalProperties: {
-      hardness: { spec: '≥ 2500 Hv (비커스 경도)', actual: '2840 Hv', result: 'OK' },
-      tensileStrength: { spec: '마찰계수 ≤ 0.08', actual: 'µ = 0.052', result: 'OK' },
-      yieldStrength: { spec: '내열온도 ≥ 400℃', actual: '450℃ 보증', result: 'OK' },
-      elongation: { spec: '균일도 ≥ 98%', actual: '99.1 %', result: 'OK' }
+      hardness: { spec: 'Hv 2200 ~ 2800', actual: 'Hv 2540', result: 'OK' },
+      tensileStrength: { spec: 'N/A', actual: 'N/A', result: 'OK' },
+      yieldStrength: { spec: 'N/A', actual: 'N/A', result: 'OK' },
+      elongation: { spec: 'N/A', actual: 'N/A', result: 'OK' }
     },
     utInspection: {
-      method: '와전류 & XRF 박막 두께 측정 (X-Ray Fluorescence)',
-      frequency: 'XRF 50kV 1mA',
-      standard: 'ISO 2178 / ASTM B499',
+      method: '계면 비파괴 레이저 음향 탐상',
+      frequency: 'Laser Acoustic Surface Wave',
+      standard: 'ISO 20502 (박리 평가)',
       defectFound: false,
-      defectDetails: '박막 핀홀 및 박리 현상 0건, 두께 편차 0.07㎛ 이내',
+      defectDetails: '박리 및 기포 없음 (밀착력 HF1 최우수)',
       result: 'PASS'
     },
     surfaceInspection: {
-      visualDefect: '블랙 미러 피니시 (초경면), 입자 뭉침 없음',
-      roughnessRa: 'Ra 0.012 ㎛ (초경면 합격)',
-      coatingThickness: '2.48 ㎛ (규격: 2.5 ± 0.3 ㎛)',
-      coatingAdhesion: 'Cross-cut 5B (100/100 무박리 합격)',
+      visualDefect: '무결점, 경면 무지갯빛 간섭 줄무늬 균일',
+      roughnessRa: 'Ra 0.008 ㎛ (초경면 미러 피니싱)',
+      coatingThickness: '2.14 ㎛ (스펙 2.0±0.3㎛ 충족)',
+      coatingAdhesion: 'HF1 등급 (박리 0%)',
       result: 'PASS'
     }
   }
@@ -226,6 +231,7 @@ interface IqcDetailModalProps {
   currentUser?: { name: string; role?: string } | null;
   inspectors?: string[];
   qaManagers?: string[];
+  projects?: string[];
 }
 
 export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
@@ -236,45 +242,66 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
   onUpdateLots,
   currentUser,
   inspectors = [],
-  qaManagers = []
+  qaManagers = [],
+  projects = []
 }) => {
   const currentUserName = currentUser?.name?.trim() || '';
   const currentUserTitle = currentUser ? `${currentUser.name} (${currentUser.role === 'ADMIN' ? 'QA 총괄/관리자' : '품질 검사원'})` : '';
 
+  // 1. Inspector list linked with registered field operators (ONLY role !== 'ADMIN')
   const effectiveInspectors = React.useMemo(() => {
-    const list = [
-      '정품질 선임 (QA-04)',
-      '이영희 선임 (QA-02)',
-      '박진우 수석 (QA-01)',
-      '김준성 책임연구원 (KOLAS 공인)',
-      '최현우 품질검사원',
-      ...inspectors
-    ];
-    if (currentUserTitle && !list.includes(currentUserTitle)) {
-      return [currentUserTitle, currentUserName, ...list.filter(item => item !== currentUserName && item !== currentUserTitle)];
-    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
-      return [currentUserName, ...list];
-    }
-    return Array.from(new Set(list.filter(Boolean)));
-  }, [currentUserTitle, currentUserName, inspectors]);
+    const list: string[] = [];
 
-  const effectiveQaManagers = React.useMemo(() => {
-    const list = [
-      '이준혁 품질보증총괄이사',
-      '정승원 QA그룹장',
-      '강태호 품질보증센터장',
-      ...qaManagers
-    ];
-    if (currentUser?.role === 'ADMIN' && currentUserName) {
-      const adminTitle = `${currentUserName} (QA 관리자)`;
-      if (!list.includes(adminTitle)) {
-        return [adminTitle, currentUserName, ...list.filter(item => item !== currentUserName && item !== adminTitle)];
-      }
-    } else if (currentUserName && !list.some(item => item.startsWith(currentUserName))) {
-      return [currentUserName, ...list];
+    // Add current user if field operator (not admin)
+    if (currentUser && currentUser.role !== 'ADMIN' && currentUserName) {
+      list.push(currentUserName);
     }
+
+    // Add inspectors from props (which already filtered out admins and fake names)
+    inspectors.forEach((insp) => {
+      const name = insp.trim();
+      if (name && !list.includes(name)) list.push(name);
+    });
+
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [currentUser, currentUserName, inspectors]);
+
+  // 2. QA Manager list linked with registered admin users (ONLY role === 'ADMIN')
+  const effectiveQaManagers = React.useMemo(() => {
+    const list: string[] = [];
+
+    // Add current user if ADMIN
+    if (currentUser?.role === 'ADMIN' && currentUserName) {
+      list.push(currentUserName);
+    }
+
+    // Add QA managers from props (which are registered admins)
+    qaManagers.forEach((mgr) => {
+      const name = mgr.trim();
+      if (name && !list.includes(name)) list.push(name);
+    });
+
     return Array.from(new Set(list.filter(Boolean)));
   }, [currentUser, currentUserName, qaManagers]);
+
+  // 3. Registered project names for quick linking
+  const effectiveProjects = React.useMemo(() => {
+    const list: string[] = [];
+    projects.forEach((p) => {
+      if (p && !list.includes(p)) list.push(p);
+    });
+    const defaults = [
+      '세메스 1580mm 슬롯다이 바디',
+      '삼성SDI 1200L 고점도 다이',
+      'LG에너지솔루션 1400mm 전극 슬롯다이',
+      'SK온 1650mm 초광폭 슬롯다이',
+      '포스코퓨처엠 800mm 코팅 블레이드'
+    ];
+    defaults.forEach((d) => {
+      if (!list.includes(d)) list.push(d);
+    });
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [projects]);
 
   const [internalLots, setInternalLots] = useState<IqcLotItem[]>(DEFAULT_IQC_LOTS);
   const lots = propLots || internalLots;
@@ -285,6 +312,27 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
       setInternalLots(newLots);
     }
   };
+
+  // Automatically sync existing lots if inspector/approver is missing or from outdated defaults
+  React.useEffect(() => {
+    if (!lots || lots.length === 0) return;
+    let hasChanges = false;
+    const updatedLots = lots.map((lot) => {
+      let updated = { ...lot };
+      if (effectiveInspectors.length > 0 && (!lot.inspector || !effectiveInspectors.includes(lot.inspector))) {
+        updated.inspector = effectiveInspectors[0];
+        hasChanges = true;
+      }
+      if (effectiveQaManagers.length > 0 && (!lot.approver || !effectiveQaManagers.includes(lot.approver))) {
+        updated.approver = effectiveQaManagers[0];
+        hasChanges = true;
+      }
+      return updated;
+    });
+    if (hasChanges) {
+      updateLotsList(updatedLots);
+    }
+  }, [effectiveInspectors, effectiveQaManagers]);
 
   const [selectedLotId, setSelectedLotId] = useState<string>(
     initialLotId || (lots.length > 0 ? lots[0].id : '')
@@ -309,9 +357,10 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
     materialType: 'STS630 (17-4PH 석출경화 스테인리스강)',
     standard: 'KS D 3706 / ASTM A564 Grade 630',
     supplier: '세아베스틸 (POSCO 특수강)',
+    projectRef: effectiveProjects[0] || '세메스 1580mm 슬롯다이 바디',
     incomingDate: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    inspector: currentUserTitle || currentUserName || '정품질 선임 (QA-04)',
-    approver: (currentUser?.role === 'ADMIN' && currentUserName ? `${currentUserName} (QA 관리자)` : '이준혁 품질보증총괄이사'),
+    inspector: effectiveInspectors[0] || (currentUser?.role !== 'ADMIN' ? currentUserName : '') || '',
+    approver: effectiveQaManagers[0] || (currentUser?.role === 'ADMIN' ? currentUserName : '') || '',
     millSheetNo: `MS-POSCO-${Math.floor(Math.random() * 9000 + 1000)}`,
     heatNo: `HT-630-${Math.floor(Math.random() * 9000 + 1000)}A`,
     notes: '신규 입고 모재 전수 수입검사'
@@ -328,7 +377,8 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
       l.lotNo.toLowerCase().includes(term) ||
       l.materialType.toLowerCase().includes(term) ||
       l.supplier.toLowerCase().includes(term) ||
-      l.heatNo.toLowerCase().includes(term)
+      l.heatNo.toLowerCase().includes(term) ||
+      (l.projectRef && l.projectRef.toLowerCase().includes(term))
     );
   });
 
@@ -388,9 +438,10 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
       materialType: newLotForm.materialType,
       standard: newLotForm.standard,
       supplier: newLotForm.supplier,
+      projectRef: newLotForm.projectRef || effectiveProjects[0] || '세메스 1580mm 슬롯다이 바디',
       incomingDate: newLotForm.incomingDate,
-      inspector: newLotForm.inspector,
-      approver: newLotForm.approver || effectiveQaManagers[0] || '이준혁 품질보증총괄이사',
+      inspector: newLotForm.inspector || effectiveInspectors[0] || currentUserName || '현장 담당자',
+      approver: newLotForm.approver || effectiveQaManagers[0] || (currentUser?.role === 'ADMIN' ? currentUserName : '') || 'QA 관리자',
       inspectionResult: 'PASS',
       isArchived: false,
       millSheetNo: newLotForm.millSheetNo,
@@ -438,6 +489,183 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
     setSelectedLotId(newId);
     setIsNewModalOpen(false);
     showToast(`신규 입고 LOT [${newLot.lotNo}]이(가) 등록되었습니다.`);
+  };
+
+  const handlePrintDocument = () => {
+    if (!displayLot) return;
+    
+    // Create or reuse hidden iframe to print isolated clean A4 sheet without modal background artifacts
+    let iframe = document.getElementById('iqc-print-frame') as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'iqc-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>원소재 수입 검사 성적서 - ${displayLot.lotNo}</title>
+          <style>
+            @page { size: A4 portrait; margin: 10mm; }
+            * { box-sizing: border-box; }
+            body { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; color: #0f172a; background: #fff; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 6px; }
+            th, td { border: 1px solid #1e293b; padding: 5px 7px; text-align: left; }
+            th { background-color: #f1f5f9; font-weight: 700; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-mono { font-family: monospace; }
+            .font-bold { font-weight: 700; }
+            .font-black { font-weight: 900; }
+            .header-wrap { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
+            .logo-img { height: 28px; max-height: 28px; width: auto; object-fit: contain; }
+            .title-main { font-size: 15px; font-weight: 900; letter-spacing: -0.2px; white-space: nowrap; }
+            .stamp-table { border: 1px solid #0f172a; text-align: center; font-size: 10px; width: 140px; }
+            .stamp-th { background: #f8fafc; font-weight: bold; padding: 3px 0; border-bottom: 1px solid #0f172a; }
+            .stamp-td { height: 44px; display: flex; align-items: center; justify-content: center; position: relative; font-weight: bold; }
+            .seal-stamp { position: absolute; width: 30px; height: 30px; border: 1.5px solid #e11d48; color: #e11d48; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 900; transform: rotate(12deg); opacity: 0.85; }
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+            .box { border: 1px solid #1e293b; padding: 7px 9px; }
+            .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 5px; }
+            .footer { border-top: 1px solid #0f172a; padding-top: 6px; margin-top: 12px; font-size: 9.5px; color: #475569; display: flex; justify-content: space-between; }
+          </style>
+        </head>
+        <body>
+          <div class="header-wrap">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <img src="https://sign.mail.worksmobile.com/signature/logo/kr1/5ZbZaxUwKAgZaxUwBqM-aAM./SqbwKAgmKAuZFxKZKqg9aAJjaAuZaxEdKo2rKA2rFob." class="logo-img" alt="준성테크" />
+              <div>
+                <div class="title-main">원소재 수입 검사 성적서 (IQC INSPECTION REPORT)</div>
+                <div class="font-mono" style="font-size: 10px; color: #64748b; margin-top: 2px;">
+                  성적서 관리번호: ${displayLot.id} | 밀시트 No: ${displayLot.millSheetNo}
+                </div>
+              </div>
+            </div>
+            <div class="stamp-table">
+              <div style="display: flex; border-bottom: 1px solid #0f172a;">
+                <div style="flex: 1; padding: 2px 0; border-right: 1px solid #0f172a; font-weight: bold; background: #f8fafc;">작성/검사</div>
+                <div style="flex: 1; padding: 2px 0; font-weight: bold; background: #f8fafc;">승인/QA</div>
+              </div>
+              <div style="display: flex; height: 42px;">
+                <div style="flex: 1; border-right: 1px solid #0f172a; display: flex; align-items: center; justify-content: center; font-weight: bold;">
+                  ${((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}
+                </div>
+                <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative;">
+                  <span>${((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
+                  <div class="seal-stamp">인</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <table>
+            <tbody>
+              <tr>
+                <th style="width: 15%;">품명 / 재질</th>
+                <td style="width: 35%; font-weight: bold;">${displayLot.materialType}</td>
+                <th style="width: 15%;">입고 LOT</th>
+                <td style="width: 35%; font-family: monospace; font-weight: bold;">${displayLot.lotNo}</td>
+              </tr>
+              <tr>
+                <th>규격 (Standard)</th>
+                <td class="font-mono">${displayLot.standard}</td>
+                <th>연계 프로젝트</th>
+                <td style="font-weight: bold; color: #1e40af;">${displayLot.projectRef || '일반 입고 모재'}</td>
+              </tr>
+              <tr>
+                <th>공급처 / Heat No</th>
+                <td>${displayLot.supplier} (${displayLot.heatNo})</td>
+                <th>입고일시</th>
+                <td class="font-mono">${displayLot.incomingDate}</td>
+              </tr>
+              <tr>
+                <th>검사 판정</th>
+                <td style="font-weight: 900; color: #047857;">PASS (전수 합격)</td>
+                <th>검사 / 승인자</th>
+                <td>${(isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || ''} / ${(isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || ''}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="margin-top: 8px;">
+            <div style="font-weight: bold; font-size: 11px; margin-bottom: 3px;">■ 화학 성분 분석 결과 (Chemical Composition, wt%)</div>
+            <table class="text-center">
+              <thead>
+                <tr>
+                  <th style="text-align: left; width: 14%;">원소</th>
+                  ${displayLot.chemicalComposition.map((c) => `<th>${c.element.split(' ')[0]}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody class="font-mono">
+                <tr style="background-color: #f8fafc;">
+                  <td style="text-align: left; font-family: sans-serif; font-weight: bold;">규격 (Spec)</td>
+                  ${displayLot.chemicalComposition.map((c) => `<td>${c.specMin > 0 ? `${c.specMin}~` : '≤'}${c.specMax}</td>`).join('')}
+                </tr>
+                <tr style="font-weight: bold; color: #1e3a8a;">
+                  <td style="text-align: left; font-family: sans-serif;">실측 (Actual)</td>
+                  ${displayLot.chemicalComposition.map((c) => `<td>${c.actual}</td>`).join('')}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid-2">
+            <div class="box">
+              <div class="box-title">■ 기계적 특성 (Mechanical Properties)</div>
+              <div class="font-mono" style="line-height: 1.6;">
+                <div>• 경도: <strong>${displayLot.mechanicalProperties.hardness.actual}</strong> (${displayLot.mechanicalProperties.hardness.spec})</div>
+                <div>• 인장강도: <strong>${displayLot.mechanicalProperties.tensileStrength.actual}</strong> (${displayLot.mechanicalProperties.tensileStrength.spec})</div>
+                <div>• 항복강도: <strong>${displayLot.mechanicalProperties.yieldStrength.actual}</strong> (${displayLot.mechanicalProperties.yieldStrength.spec})</div>
+                <div>• 연신율: <strong>${displayLot.mechanicalProperties.elongation.actual}</strong> (${displayLot.mechanicalProperties.elongation.spec})</div>
+              </div>
+            </div>
+
+            <div class="box">
+              <div class="box-title">■ 모재 치수 및 UT 비파괴 검사</div>
+              <div class="font-mono" style="line-height: 1.6;">
+                <div>• 치수: L ${displayLot.rawDimensions.length.actual} / W ${displayLot.rawDimensions.width.actual} / T ${displayLot.rawDimensions.thickness.actual}</div>
+                <div>• 진직도: <strong>${displayLot.rawDimensions.straightness.actual}</strong> (${displayLot.rawDimensions.straightness.spec})</div>
+                <div>• UT 탐상: <strong>${displayLot.utInspection.method}</strong> (${displayLot.utInspection.result})</div>
+                <div>• 표면상태: <strong>${displayLot.surfaceInspection.roughnessRa}</strong> (${displayLot.surfaceInspection.result})</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box" style="margin-top: 8px;">
+            <div class="box-title">■ 특이사항 및 용도 (Notes)</div>
+            <div style="font-size: 11px; color: #334155;">
+              ${displayLot.notes || '이상 없음. 진공 탈가스 정련 및 열처리 사양 합격품.'}
+            </div>
+          </div>
+
+          <div class="footer">
+            <span>(주)준성테크 품질보증팀 (JUNSUNG TECH QA TEAM) | 성적서 발행일: ${new Date().toISOString().slice(0, 10)}</span>
+            <span>KOLAS 공인 시험규격 준수 / 정밀 수입검사 인증</span>
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 250);
   };
 
   const displayLot = isEditMode && editLot ? editLot : currentLot;
@@ -631,6 +859,14 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                       <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 line-clamp-1">
                         {lot.materialType}
                       </h4>
+                      {lot.projectRef && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 truncate max-w-full">
+                            <span className="font-extrabold mr-1">프로젝트:</span>
+                            <span className="truncate">{lot.projectRef}</span>
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 font-mono">
                         <span className="line-clamp-1">{lot.supplier.split(' ')[0]}</span>
@@ -672,23 +908,109 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     </span>
                   </div>
 
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    {displayLot.materialType}
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    규격: {displayLot.standard} | 공급처: <strong>{displayLot.supplier}</strong>
-                  </p>
+                  {isEditMode && editLot ? (
+                    <div className="space-y-2 pt-1">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">재질명 (직접 입력 또는 선택)</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editLot.materialType}
+                            onChange={(e) => setEditLot({ ...editLot, materialType: e.target.value })}
+                            placeholder="예: STS630, SUS420J2, DLC 코팅 등"
+                            className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setEditLot({ ...editLot, materialType: e.target.value });
+                              }
+                            }}
+                            className="px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600"
+                          >
+                            <option value="">프리셋</option>
+                            <option value="STS630 (17-4PH 석출경화 스테인리스강)">STS630</option>
+                            <option value="SUS420J2 (고경도 마르텐사이트계)">SUS420J2</option>
+                            <option value="DLC (Diamond-Like Carbon) 초정밀 박막 코팅">DLC 코팅</option>
+                            <option value="Hastelloy C-276 (초내식 합금)">Hastelloy C-276</option>
+                            <option value="Inconel 625 (초내열/내식 특수합금)">Inconel 625</option>
+                            <option value="SUS304-CSP 초정밀 심 플레이트">SUS304 심재</option>
+                            <option value="Ti-6Al-4V (Grade 5 티타늄 합금)">Ti-6Al-4V</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">투입 프로젝트 (선택 또는 직접입력)</label>
+                          <div className="flex gap-1">
+                            <input
+                              type="text"
+                              list="project-edit-options"
+                              value={editLot.projectRef || ''}
+                              onChange={(e) => setEditLot({ ...editLot, projectRef: e.target.value })}
+                              placeholder="예: 세메스 1580mm 슬롯다이 바디"
+                              className="flex-1 px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                            />
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  setEditLot({ ...editLot, projectRef: e.target.value });
+                                }
+                              }}
+                              className="px-1.5 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 cursor-pointer"
+                              title="등록된 프로젝트에서 선택"
+                            >
+                              <option value="">선택</option>
+                              {effectiveProjects.map((p) => (
+                                <option key={p} value={p}>{p}</option>
+                              ))}
+                            </select>
+                            <datalist id="project-edit-options">
+                              {effectiveProjects.map((p) => (
+                                <option key={p} value={p} />
+                              ))}
+                            </datalist>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">공급업체</label>
+                          <input
+                            type="text"
+                            value={editLot.supplier}
+                            onChange={(e) => setEditLot({ ...editLot, supplier: e.target.value })}
+                            className="w-full px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center flex-wrap gap-2">
+                        <span>{displayLot.materialType}</span>
+                        {displayLot.projectRef && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 inline-flex items-center">
+                            <span className="font-extrabold mr-1">프로젝트:</span>
+                            <span>{displayLot.projectRef}</span>
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        규격: {displayLot.standard} | 공급처: <strong>{displayLot.supplier}</strong>
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-2.5 bg-slate-50/80 dark:bg-slate-800/80 p-2 sm:p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-2xs">
                     <div>
-                      <div className="text-[10px] font-bold text-slate-500 mb-0.5">검사원 (담당자)</div>
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 mb-1">검사원 (담당자)</div>
                       {isEditMode && editLot ? (
                         <select
-                          value={editLot.inspector}
+                          value={editLot.inspector || effectiveInspectors[0] || ''}
                           onChange={(e) => setEditLot({ ...editLot, inspector: e.target.value })}
-                          className="px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                         >
                           {effectiveInspectors.map((insp) => (
                             <option key={insp} value={insp}>{insp}</option>
@@ -696,7 +1018,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                         </select>
                       ) : (
                         <select
-                          value={displayLot.inspector}
+                          value={displayLot.inspector || effectiveInspectors[0] || ''}
                           onChange={(e) => {
                             const newInsp = e.target.value;
                             const updated = lots.map((l) =>
@@ -705,7 +1027,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                             updateLotsList(updated);
                             showToast(`검사원이 [${newInsp}]으로 변경되었습니다.`);
                           }}
-                          className="px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 cursor-pointer"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                         >
                           {effectiveInspectors.map((insp) => (
                             <option key={insp} value={insp}>{insp}</option>
@@ -715,12 +1037,12 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     </div>
 
                     <div>
-                      <div className="text-[10px] font-bold text-slate-500 mb-0.5">QA 승인자 (책임자)</div>
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 mb-1">QA 승인자 (책임자)</div>
                       {isEditMode && editLot ? (
                         <select
-                          value={editLot.approver || effectiveQaManagers[0] || '이준혁 품질보증총괄이사'}
+                          value={editLot.approver || effectiveQaManagers[0] || ''}
                           onChange={(e) => setEditLot({ ...editLot, approver: e.target.value })}
-                          className="px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                         >
                           {effectiveQaManagers.map((mgr) => (
                             <option key={mgr} value={mgr}>{mgr}</option>
@@ -728,7 +1050,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                         </select>
                       ) : (
                         <select
-                          value={displayLot.approver || effectiveQaManagers[0] || '이준혁 품질보증총괄이사'}
+                          value={displayLot.approver || effectiveQaManagers[0] || ''}
                           onChange={(e) => {
                             const newMgr = e.target.value;
                             const updated = lots.map((l) =>
@@ -737,7 +1059,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                             updateLotsList(updated);
                             showToast(`승인자가 [${newMgr}]으로 변경되었습니다.`);
                           }}
-                          className="px-2 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 cursor-pointer"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                         >
                           {effectiveQaManagers.map((mgr) => (
                             <option key={mgr} value={mgr}>{mgr}</option>
@@ -746,11 +1068,11 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                       )}
                     </div>
 
-                    {currentUser && (
+                    {currentUser && currentUser.role !== 'ADMIN' && (
                       <button
                         type="button"
                         onClick={() => {
-                          const myName = currentUserTitle || currentUserName;
+                          const myName = currentUserName;
                           if (isEditMode && editLot) {
                             setEditLot({ ...editLot, inspector: myName });
                           } else {
@@ -761,7 +1083,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                           }
                           showToast(`로그인 계정(${currentUser.name})이 검사원으로 지정되었습니다.`);
                         }}
-                        className="px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 text-[10px] font-bold border border-blue-200 dark:border-blue-800 transition cursor-pointer self-end"
+                        className="px-2 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-300 text-[10px] font-bold border border-blue-200 dark:border-blue-800 transition cursor-pointer self-end mb-0.5"
                         title="로그인 계정을 검사원으로 자동 설정"
                       >
                         내 계정 지정
@@ -1233,8 +1555,11 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                   >
                     <option value="STS630 (17-4PH 석출경화 스테인리스강)">STS630 (17-4PH)</option>
                     <option value="SUS420J2 (고경도 마르텐사이트계)">SUS420J2</option>
-                    <option value="DLC 초정밀 박막 코팅 외주품">DLC 코팅 외주품</option>
+                    <option value="DLC (Diamond-Like Carbon) 초정밀 박막 코팅">DLC 코팅 외주품</option>
+                    <option value="Hastelloy C-276 (초내식 합금)">Hastelloy C-276</option>
+                    <option value="Inconel 625 (초내열/내식 특수합금)">Inconel 625</option>
                     <option value="SUS304-CSP 초정밀 심 플레이트">SUS304 심 플레이트</option>
+                    <option value="Ti-6Al-4V (Grade 5 티타늄 합금)">Ti-6Al-4V</option>
                     <option value="커스텀 특수강 모재">커스텀 특수강</option>
                   </select>
                 </div>
@@ -1246,6 +1571,38 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     onChange={(e) => setNewLotForm({ ...newLotForm, supplier: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-bold mb-1">투입 프로젝트 (선택 또는 직접입력)</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    list="new-lot-project-options"
+                    value={newLotForm.projectRef}
+                    onChange={(e) => setNewLotForm({ ...newLotForm, projectRef: e.target.value })}
+                    placeholder="예: 세메스 1580mm 슬롯다이 바디"
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-xs"
+                  />
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setNewLotForm({ ...newLotForm, projectRef: e.target.value });
+                      }
+                    }}
+                    className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-xs cursor-pointer text-slate-600 dark:text-slate-300"
+                  >
+                    <option value="">선택</option>
+                    {effectiveProjects.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <datalist id="new-lot-project-options">
+                    {effectiveProjects.map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -1350,8 +1707,8 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer"
+                  onClick={handlePrintDocument}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
                 >
                   <Printer className="w-4 h-4" />
                   <span>지금 인쇄 (Print)</span>
@@ -1367,25 +1724,34 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
 
             {/* Official Printable Sheet Body */}
             <div className="border-2 border-slate-900 p-6 space-y-4 bg-white text-slate-950">
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3">
-                <div>
-                  <h1 className="text-xl font-black tracking-wider uppercase">
-                    원소재 수입 검사 성적서 (IQC Inspection Report)
-                  </h1>
-                  <p className="text-xs text-slate-600 mt-1 font-mono">
-                    성적서 관리번호: {displayLot.id} | 밀시트 No: {displayLot.millSheetNo}
-                  </p>
+              <div className="flex justify-between items-center border-b-2 border-slate-900 pb-3 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src="https://sign.mail.worksmobile.com/signature/logo/kr1/5ZbZaxUwKAgZaxUwBqM-aAM./SqbwKAgmKAuZFxKZKqg9aAJjaAuZaxEdKo2rKA2rFob."
+                    alt="JUN SUNG TECH"
+                    className="h-7 sm:h-8 w-auto object-contain select-none shrink-0"
+                    style={{ height: '30px', maxHeight: '30px' }}
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="min-w-0">
+                    <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight uppercase font-sans whitespace-nowrap">
+                      원소재 수입 검사 성적서 (IQC INSPECTION REPORT)
+                    </h1>
+                    <p className="text-xs text-slate-600 mt-0.5 font-mono">
+                      성적서 관리번호: {displayLot.id} | 밀시트 No: {displayLot.millSheetNo}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="border border-slate-900 text-center text-[10px]">
+                <div className="border border-slate-900 text-center text-[10px] shrink-0">
                   <div className="grid grid-cols-2 divide-x divide-slate-900 border-b border-slate-900 font-bold bg-slate-100">
                     <span className="px-3 py-1">작성 / 검사</span>
                     <span className="px-3 py-1">승인 / QA</span>
                   </div>
-                  <div className="grid grid-cols-2 divide-x divide-slate-900 h-12 items-center text-xs font-bold">
-                    <span className="px-3">{displayLot.inspector.split(' ')[0]}</span>
+                  <div className="grid grid-cols-2 divide-x divide-slate-900 h-11 items-center text-xs font-bold">
+                    <span className="px-3">{((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}</span>
                     <span className="px-3 relative flex items-center justify-center">
-                      <span>{(displayLot.approver || effectiveQaManagers[0] || '이준혁').split(' ')[0]}</span>
+                      <span>{((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
                       <span className="absolute w-8 h-8 rounded-full border border-rose-600 text-rose-600 font-bold text-[8px] flex items-center justify-center rotate-12 opacity-80">
                         인
                       </span>
@@ -1405,14 +1771,20 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                   <tr className="border-b border-slate-900 divide-x divide-slate-900">
                     <th className="p-2 bg-slate-100 text-left">규격 (Standard)</th>
                     <td className="p-2 font-mono">{displayLot.standard}</td>
+                    <th className="p-2 bg-slate-100 text-left">연계 프로젝트</th>
+                    <td className="p-2 font-bold text-blue-900">{displayLot.projectRef || '일반 입고 모재'}</td>
+                  </tr>
+                  <tr className="border-b border-slate-900 divide-x divide-slate-900">
                     <th className="p-2 bg-slate-100 text-left">공급처 / Heat No</th>
                     <td className="p-2">{displayLot.supplier} ({displayLot.heatNo})</td>
-                  </tr>
-                  <tr className="divide-x divide-slate-900">
                     <th className="p-2 bg-slate-100 text-left">입고일시</th>
                     <td className="p-2 font-mono">{displayLot.incomingDate}</td>
+                  </tr>
+                  <tr className="divide-x divide-slate-900">
+                    <th className="p-2 bg-slate-100 text-left">검사 / 승인자</th>
+                    <td className="p-2">{(isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || ''} / ${(isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || ''}</td>
                     <th className="p-2 bg-slate-100 text-left">종합 판정</th>
-                    <td className="p-2 font-black text-emerald-700">PASS (합격)</td>
+                    <td className="p-2 font-black text-emerald-700">PASS (전수 합격)</td>
                   </tr>
                 </tbody>
               </table>
@@ -1470,7 +1842,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
               </div>
 
               <div className="pt-2 border-t border-slate-900 text-[10px] text-slate-600 flex justify-between">
-                <span>(주)초정밀 슬롯다이 생산기술본부 품질보증팀</span>
+                <span>(주)준성테크 품질보증팀 (JUNSUNG TECH QA TEAM)</span>
                 <span>KOLAS 공인 시험 기준 준수</span>
               </div>
             </div>
