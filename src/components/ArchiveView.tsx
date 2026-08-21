@@ -34,13 +34,13 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
       {/* Header Card */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl shadow-2xs">
+          <div className="p-3 bg-[#FFF9EB] text-[#B45309] border border-[#FCD34D] rounded-2xl shadow-2xs">
             <Archive className="w-6 h-6" />
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span>완료 수주 보관함 (Archive Master)</span>
-              <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-extrabold border border-amber-200">
+              <span className="bg-[#FFF9EB] text-[#B45309] text-xs px-2.5 py-0.5 rounded-full font-extrabold border border-[#FCD34D] shadow-2xs">
                 총 {archivedList.length}건 보관 중
               </span>
             </h2>

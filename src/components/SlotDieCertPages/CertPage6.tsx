@@ -1,12 +1,27 @@
 import React from 'react';
 import { CertHeader } from './CertHeader';
 import { ProductSpecRecipe } from '../SlotDieCertificateView';
+import { Camera } from 'lucide-react';
 
 interface CertPage6Props {
   recipe: ProductSpecRecipe;
+  capturedSnapshot?: string;
+  pageNo?: number;
+  totalPages?: number;
+  isEditMode?: boolean;
+  onOpen3DModal?: () => void;
+  onUpdateRecipe?: (recipe: ProductSpecRecipe) => void;
 }
 
-export const CertPage6: React.FC<CertPage6Props> = ({ recipe }) => {
+export const CertPage6: React.FC<CertPage6Props> = ({
+  recipe,
+  capturedSnapshot,
+  pageNo = 6,
+  totalPages = 8,
+  isEditMode = false,
+  onOpen3DModal,
+  onUpdateRecipe
+}) => {
   const damperData = [
     { no: 1, front: 0.081, damper: 0.080, diff: 0.001 },
     { no: 2, front: 0.080, damper: 0.080, diff: 0.000 },
@@ -32,32 +47,54 @@ export const CertPage6: React.FC<CertPage6Props> = ({ recipe }) => {
           inspector={recipe.inspector}
           approver={recipe.approver}
           isPassed={true}
+          pageNo={pageNo}
+          totalPages={totalPages}
         />
 
-        {/* 1. GAP Step Measurement Section */}
+        {/* 1. GAP Step Measurement Section & 3D Snapshot */}
         <div className="border-[1.5px] border-slate-950">
-          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-1 px-3 text-center border-b-[1.5px] border-slate-950">
-            GAP 단차 측정 데이터_Measurement Point
+          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-1 px-3 flex items-center justify-between border-b-[1.5px] border-slate-950">
+            <span>GAP 단차 측정 데이터_Measurement Point (Slot Lip Gap Step)</span>
+            {onOpen3DModal && (
+              <button
+                type="button"
+                onClick={onOpen3DModal}
+                className="print:hidden text-[10px] bg-white text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-300 hover:bg-blue-50 flex items-center gap-1 cursor-pointer"
+              >
+                <Camera className="w-3 h-3" />
+                <span>3D 단차/댐퍼 시점 변경</span>
+              </button>
+            )}
           </div>
-          <div className="p-2 bg-white flex items-center justify-between h-[100px] px-6">
-            <div className="w-[300px]">
-              <svg viewBox="0 0 300 70" className="w-full h-full">
-                <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
-                  <polygon points="10,15 280,35 280,55 10,35" />
-                  <polygon points="10,15 280,35 270,30 5,10" fill="#e2e8f0" />
-                  {/* Point 1, 2, 3 */}
-                  <circle cx="50" cy="20" r="3" fill="#ef4444" />
-                  <text x="50" y="14" fontSize="8" fontWeight="bold" fill="#ef4444">①</text>
-                  <circle cx="150" cy="27" r="3" fill="#ef4444" />
-                  <text x="150" y="21" fontSize="8" fontWeight="bold" fill="#ef4444">②</text>
-                  <circle cx="250" cy="34" r="3" fill="#ef4444" />
-                  <text x="250" y="28" fontSize="8" fontWeight="bold" fill="#ef4444">③</text>
-                </g>
-              </svg>
-            </div>
-            <div className="text-[11px] font-mono font-bold text-slate-800 bg-slate-100 p-2 rounded border border-slate-300">
-              * GAP 단차 = ① - ② (Step Deviation)
-            </div>
+          <div className="p-2 bg-white flex items-center justify-between h-[100px] px-4">
+            {capturedSnapshot ? (
+              <img
+                src={capturedSnapshot}
+                alt="3D Gap View"
+                className="h-[90px] w-auto object-contain mx-auto rounded border border-slate-200"
+              />
+            ) : (
+              <>
+                <div className="w-[300px]">
+                  <svg viewBox="0 0 300 70" className="w-full h-full">
+                    <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
+                      <polygon points="10,15 280,35 280,55 10,35" />
+                      <polygon points="10,15 280,35 270,30 5,10" fill="#e2e8f0" />
+                      {/* Point 1, 2, 3 */}
+                      <circle cx="50" cy="20" r="3" fill="#ef4444" />
+                      <text x="50" y="14" fontSize="8" fontWeight="bold" fill="#ef4444">①</text>
+                      <circle cx="150" cy="27" r="3" fill="#ef4444" />
+                      <text x="150" y="21" fontSize="8" fontWeight="bold" fill="#ef4444">②</text>
+                      <circle cx="250" cy="34" r="3" fill="#ef4444" />
+                      <text x="250" y="28" fontSize="8" fontWeight="bold" fill="#ef4444">③</text>
+                    </g>
+                  </svg>
+                </div>
+                <div className="text-[11px] font-mono font-bold text-slate-800 bg-slate-100 p-2 rounded border border-slate-300">
+                  * GAP 단차 = ① - ② (Step Deviation)
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -154,7 +191,7 @@ export const CertPage6: React.FC<CertPage6Props> = ({ recipe }) => {
       <div className="pt-2 flex justify-between items-center text-[10.5px] font-mono text-slate-900 border-t border-transparent select-none">
         <div>JS-COA-01</div>
         <div className="font-sans font-bold">JUNSUNG TECH Co., Ltd</div>
-        <div className="w-16 text-right font-bold">Page 5/8</div>
+        <div className="w-24 text-right font-bold">Page {pageNo}/{totalPages}</div>
       </div>
     </div>
   );

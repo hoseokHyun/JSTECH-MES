@@ -71,6 +71,63 @@ export interface IqcLotItem {
   notes: string;
 }
 
+export function calculateIqcOverallResult(lot: IqcLotItem): 'PASS' | 'FAIL' {
+  if (!lot) return 'PASS';
+
+  // 1. 화학 성분 (Chemical Composition) 체크
+  if (lot.chemicalComposition && Array.isArray(lot.chemicalComposition)) {
+    const hasChemFail = lot.chemicalComposition.some((c) => {
+      if (c.result === 'NG') return true;
+      const val = Number(c.actual);
+      if (isNaN(val)) return false;
+      return val < c.specMin || val > c.specMax;
+    });
+    if (hasChemFail) return 'FAIL';
+  }
+
+  // 2. 외형 치수 (Raw Dimensions) 체크
+  if (lot.rawDimensions) {
+    const { length, width, thickness, straightness } = lot.rawDimensions;
+    if (
+      length?.result === 'NG' ||
+      width?.result === 'NG' ||
+      thickness?.result === 'NG' ||
+      straightness?.result === 'NG'
+    ) {
+      return 'FAIL';
+    }
+  }
+
+  // 3. 기계적 특성 (Mechanical Properties) 체크
+  if (lot.mechanicalProperties) {
+    const { hardness, tensileStrength, yieldStrength, elongation } = lot.mechanicalProperties;
+    if (
+      hardness?.result === 'NG' ||
+      tensileStrength?.result === 'NG' ||
+      yieldStrength?.result === 'NG' ||
+      elongation?.result === 'NG'
+    ) {
+      return 'FAIL';
+    }
+  }
+
+  // 4. UT 비파괴 검사 (UT Inspection)
+  if (lot.utInspection) {
+    if (lot.utInspection.result === 'FAIL' || lot.utInspection.defectFound) {
+      return 'FAIL';
+    }
+  }
+
+  // 5. 표면 검사 (Surface Inspection)
+  if (lot.surfaceInspection) {
+    if (lot.surfaceInspection.result === 'FAIL') {
+      return 'FAIL';
+    }
+  }
+
+  return 'PASS';
+}
+
 export const DEFAULT_IQC_LOTS: IqcLotItem[] = [
   {
     id: 'IQC-2026-0301',
@@ -390,10 +447,14 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
 
   const saveEdits = () => {
     if (!editLot) return;
-    const updated = lots.map((l) => (l.id === editLot.id ? editLot : l));
+    const finalLot: IqcLotItem = {
+      ...editLot,
+      inspectionResult: calculateIqcOverallResult(editLot)
+    };
+    const updated = lots.map((l) => (l.id === finalLot.id ? finalLot : l));
     updateLotsList(updated);
     setIsEditMode(false);
-    showToast(`LOT [${editLot.lotNo}] 검사 데이터가 저장되었습니다.`);
+    showToast(`LOT [${finalLot.lotNo}] 검사 데이터가 저장되었습니다. (판정: ${finalLot.inspectionResult})`);
   };
 
   const cancelEdits = () => {
@@ -432,7 +493,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
 
   const handleCreateLot = () => {
     const newId = `IQC-${Date.now()}`;
-    const newLot: IqcLotItem = {
+    let newLot: IqcLotItem = {
       id: newId,
       lotNo: newLotForm.lotNo,
       materialType: newLotForm.materialType,
@@ -484,6 +545,7 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
         result: 'PASS'
       }
     };
+    newLot.inspectionResult = calculateIqcOverallResult(newLot);
 
     updateLotsList([newLot, ...lots]);
     setSelectedLotId(newId);
@@ -532,13 +594,20 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
             .font-mono { font-family: monospace; }
             .font-bold { font-weight: 700; }
             .font-black { font-weight: 900; }
-            .header-wrap { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
-            .logo-img { height: 28px; max-height: 28px; width: auto; object-fit: contain; }
-            .title-main { font-size: 15px; font-weight: 900; letter-spacing: -0.2px; white-space: nowrap; }
-            .stamp-table { border: 1px solid #0f172a; text-align: center; font-size: 10px; width: 140px; }
-            .stamp-th { background: #f8fafc; font-weight: bold; padding: 3px 0; border-bottom: 1px solid #0f172a; }
-            .stamp-td { height: 44px; display: flex; align-items: center; justify-content: center; position: relative; font-weight: bold; }
-            .seal-stamp { position: absolute; width: 30px; height: 30px; border: 1.5px solid #e11d48; color: #e11d48; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 900; transform: rotate(12deg); opacity: 0.85; }
+            .header-wrap { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; gap: 12px; }
+            .logo-box { flex: 0 0 150px; display: flex; align-items: center; justify-content: flex-start; }
+            .logo-img { height: 32px; max-height: 32px; width: auto; object-fit: contain; }
+            .title-box { flex: 1 1 auto; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 8px; }
+            .title-main { font-size: 16px; font-weight: 900; letter-spacing: -0.2px; line-height: 1.25; color: #0f172a; white-space: nowrap; }
+            .title-sub { font-size: 11px; font-weight: 700; color: #334155; letter-spacing: 0.5px; margin-top: 1px; }
+            .title-meta { font-family: monospace; font-size: 9.5px; color: #64748b; margin-top: 3px; }
+            .stamp-box { flex: 0 0 150px; display: flex; justify-content: flex-end; }
+            .stamp-table-grid { width: 140px; border-collapse: collapse; border: 1.5px solid #0f172a; text-align: center; font-size: 10px; margin: 0; background: #fff; }
+            .stamp-table-grid th, .stamp-table-grid td { border: none; padding: 0; }
+            .stamp-table-grid th { background-color: #f8fafc; font-weight: bold; padding: 4px 0; border-bottom: 1.5px solid #0f172a; font-size: 10px; color: #0f172a; }
+            .stamp-table-grid .col-divider { border-right: 1.5px solid #0f172a; }
+            .stamp-table-grid td { height: 44px; vertical-align: middle; font-weight: bold; font-size: 11px; color: #0f172a; position: relative; }
+            .seal-stamp { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(12deg); width: 32px; height: 32px; border: 1.5px solid #e11d48; color: #e11d48; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 900; opacity: 0.85; }
             .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
             .box { border: 1px solid #1e293b; padding: 7px 9px; }
             .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 5px; }
@@ -547,29 +616,36 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
         </head>
         <body>
           <div class="header-wrap">
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="logo-box">
               <img src="https://sign.mail.worksmobile.com/signature/logo/kr1/5ZbZaxUwKAgZaxUwBqM-aAM./SqbwKAgmKAuZFxKZKqg9aAJjaAuZaxEdKo2rKA2rFob." class="logo-img" alt="준성테크" />
-              <div>
-                <div class="title-main">원소재 수입 검사 성적서 (IQC INSPECTION REPORT)</div>
-                <div class="font-mono" style="font-size: 10px; color: #64748b; margin-top: 2px;">
-                  성적서 관리번호: ${displayLot.id} | 밀시트 No: ${displayLot.millSheetNo}
-                </div>
+            </div>
+            <div class="title-box">
+              <div class="title-main">원소재 수입 검사 성적서</div>
+              <div class="title-sub">(IQC INSPECTION REPORT)</div>
+              <div class="title-meta">
+                성적서 관리번호: ${displayLot.id} &nbsp;|&nbsp; 밀시트 No: ${displayLot.millSheetNo}
               </div>
             </div>
-            <div class="stamp-table">
-              <div style="display: flex; border-bottom: 1px solid #0f172a;">
-                <div style="flex: 1; padding: 2px 0; border-right: 1px solid #0f172a; font-weight: bold; background: #f8fafc;">작성/검사</div>
-                <div style="flex: 1; padding: 2px 0; font-weight: bold; background: #f8fafc;">승인/QA</div>
-              </div>
-              <div style="display: flex; height: 42px;">
-                <div style="flex: 1; border-right: 1px solid #0f172a; display: flex; align-items: center; justify-content: center; font-weight: bold;">
-                  ${((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}
-                </div>
-                <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative;">
-                  <span>${((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
-                  <div class="seal-stamp">인</div>
-                </div>
-              </div>
+            <div class="stamp-box">
+              <table class="stamp-table-grid">
+                <thead>
+                  <tr>
+                    <th style="width: 50%;" class="col-divider">작성 / 검사</th>
+                    <th style="width: 50%;">승인 / QA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="width: 50%;" class="col-divider">
+                      ${((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}
+                    </td>
+                    <td style="width: 50%;">
+                      <span>${((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
+                      <div class="seal-stamp">인</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -781,11 +857,11 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                   onClick={() => setViewFilter('ARCHIVE')}
                   className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
                     viewFilter === 'ARCHIVE'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-700'
+                      ? 'bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs font-bold'
+                      : 'text-slate-500 hover:text-[#B45309]'
                   }`}
                 >
-                  <Archive className="w-3 h-3" />
+                  <Archive className="w-3 h-3 text-[#B45309] dark:text-amber-400" />
                   <span>보관함</span>
                 </button>
               </div>
@@ -824,6 +900,8 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
               ) : (
                 filteredLots.map((lot) => {
                   const isSelected = lot.id === displayLot?.id;
+                  const effectiveLot = (isEditMode && editLot && lot.id === editLot.id) ? editLot : lot;
+                  const lotResult = calculateIqcOverallResult(effectiveLot);
                   return (
                     <div
                       key={lot.id}
@@ -845,14 +923,12 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                         </span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                            lot.inspectionResult === 'PASS'
+                            lotResult === 'PASS'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                              : lot.inspectionResult === 'FAIL'
-                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                           }`}
                         >
-                          {lot.inspectionResult}
+                          {lotResult}
                         </span>
                       </div>
 
@@ -1094,13 +1170,13 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => toggleArchive(displayLot.id)}
-                      className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                      className="p-2 rounded-xl bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs transition cursor-pointer"
                       title={displayLot.isArchived ? '보관함에서 복원' : '보관함으로 이동'}
                     >
                       {displayLot.isArchived ? (
                         <ArchiveRestore className="w-4 h-4 text-blue-600" />
                       ) : (
-                        <Archive className="w-4 h-4 text-amber-600" />
+                        <Archive className="w-4 h-4 text-[#B45309] dark:text-amber-400" />
                       )}
                     </button>
                     <button
@@ -1164,7 +1240,9 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                                       actual: val,
                                       result: pass ? 'OK' : 'NG'
                                     };
-                                    return { ...prev, chemicalComposition: nextChem };
+                                    const updatedLot: IqcLotItem = { ...prev, chemicalComposition: nextChem };
+                                    updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                    return updatedLot;
                                   });
                                 }}
                                 className="w-20 px-1.5 py-0.5 text-center text-xs font-mono font-black rounded border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900"
@@ -1204,27 +1282,59 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">로크웰 경도 (Hardness):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.mechanicalProperties.hardness.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    mechanicalProperties: {
-                                      ...prev.mechanicalProperties,
-                                      hardness: {
-                                        ...prev.mechanicalProperties.hardness,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.mechanicalProperties.hardness.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    hardness: {
+                                      ...prev.mechanicalProperties.hardness,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.mechanicalProperties.hardness.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    hardness: {
+                                      ...prev.mechanicalProperties.hardness,
+                                      result: res
+                                    }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.mechanicalProperties.hardness.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.mechanicalProperties.hardness.actual}
@@ -1237,27 +1347,59 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">인장 강도 (Tensile):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.mechanicalProperties.tensileStrength.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    mechanicalProperties: {
-                                      ...prev.mechanicalProperties,
-                                      tensileStrength: {
-                                        ...prev.mechanicalProperties.tensileStrength,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.mechanicalProperties.tensileStrength.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    tensileStrength: {
+                                      ...prev.mechanicalProperties.tensileStrength,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.mechanicalProperties.tensileStrength.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    tensileStrength: {
+                                      ...prev.mechanicalProperties.tensileStrength,
+                                      result: res
+                                    }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.mechanicalProperties.tensileStrength.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.mechanicalProperties.tensileStrength.actual}
@@ -1270,27 +1412,59 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">항복 강도 (Yield):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.mechanicalProperties.yieldStrength.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    mechanicalProperties: {
-                                      ...prev.mechanicalProperties,
-                                      yieldStrength: {
-                                        ...prev.mechanicalProperties.yieldStrength,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.mechanicalProperties.yieldStrength.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    yieldStrength: {
+                                      ...prev.mechanicalProperties.yieldStrength,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.mechanicalProperties.yieldStrength.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    yieldStrength: {
+                                      ...prev.mechanicalProperties.yieldStrength,
+                                      result: res
+                                    }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.mechanicalProperties.yieldStrength.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.mechanicalProperties.yieldStrength.actual}
@@ -1303,27 +1477,59 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">연신율 (Elongation):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.mechanicalProperties.elongation.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    mechanicalProperties: {
-                                      ...prev.mechanicalProperties,
-                                      elongation: {
-                                        ...prev.mechanicalProperties.elongation,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.mechanicalProperties.elongation.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    elongation: {
+                                      ...prev.mechanicalProperties.elongation,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.mechanicalProperties.elongation.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  mechanicalProperties: {
+                                    ...prev.mechanicalProperties,
+                                    elongation: {
+                                      ...prev.mechanicalProperties.elongation,
+                                      result: res
+                                    }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.mechanicalProperties.elongation.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.mechanicalProperties.elongation.actual}
@@ -1346,24 +1552,53 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">길이 (Length):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.rawDimensions.length.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    rawDimensions: {
-                                      ...prev.rawDimensions,
-                                      length: { ...prev.rawDimensions.length, actual: e.target.value }
-                                    }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.rawDimensions.length.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    length: { ...prev.rawDimensions.length, actual: e.target.value }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.rawDimensions.length.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    length: { ...prev.rawDimensions.length, result: res }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.rawDimensions.length.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.rawDimensions.length.actual}
@@ -1376,24 +1611,53 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">폭 (Width):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.rawDimensions.width.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    rawDimensions: {
-                                      ...prev.rawDimensions,
-                                      width: { ...prev.rawDimensions.width, actual: e.target.value }
-                                    }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.rawDimensions.width.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    width: { ...prev.rawDimensions.width, actual: e.target.value }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.rawDimensions.width.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    width: { ...prev.rawDimensions.width, result: res }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.rawDimensions.width.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.rawDimensions.width.actual}
@@ -1406,27 +1670,56 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">두께 (Thickness):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.rawDimensions.thickness.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    rawDimensions: {
-                                      ...prev.rawDimensions,
-                                      thickness: {
-                                        ...prev.rawDimensions.thickness,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.rawDimensions.thickness.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    thickness: {
+                                      ...prev.rawDimensions.thickness,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.rawDimensions.thickness.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    thickness: { ...prev.rawDimensions.thickness, result: res }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.rawDimensions.thickness.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.rawDimensions.thickness.actual}
@@ -1439,27 +1732,56 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <div className="flex justify-between items-center p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                       <span className="text-slate-500">진직도 (Straightness):</span>
                       {isEditMode ? (
-                        <input
-                          type="text"
-                          value={displayLot.rawDimensions.straightness.actual}
-                          onChange={(e) =>
-                            setEditLot((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    rawDimensions: {
-                                      ...prev.rawDimensions,
-                                      straightness: {
-                                        ...prev.rawDimensions.straightness,
-                                        actual: e.target.value
-                                      }
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={displayLot.rawDimensions.straightness.actual}
+                            onChange={(e) =>
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    straightness: {
+                                      ...prev.rawDimensions.straightness,
+                                      actual: e.target.value
                                     }
                                   }
-                                : null
-                            )
-                          }
-                          className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
-                        />
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              })
+                            }
+                            className="w-24 px-1.5 py-0.5 text-right text-xs font-bold border rounded bg-white dark:bg-slate-900"
+                          />
+                          <select
+                            value={displayLot.rawDimensions.straightness.result}
+                            onChange={(e) => {
+                              const res = e.target.value as 'OK' | 'NG';
+                              setEditLot((prev) => {
+                                if (!prev) return null;
+                                const updatedLot: IqcLotItem = {
+                                  ...prev,
+                                  rawDimensions: {
+                                    ...prev.rawDimensions,
+                                    straightness: { ...prev.rawDimensions.straightness, result: res }
+                                  }
+                                };
+                                updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                                return updatedLot;
+                              });
+                            }}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              displayLot.rawDimensions.straightness.result === 'OK'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border-rose-300'
+                            }`}
+                          >
+                            <option value="OK">OK</option>
+                            <option value="NG">NG</option>
+                          </select>
+                        </div>
                       ) : (
                         <span className="font-bold text-slate-900 dark:text-white">
                           {displayLot.rawDimensions.straightness.actual}
@@ -1480,9 +1802,46 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
                     <ShieldCheck className="w-4 h-4 text-indigo-600" />
                     <span>4. 초음파 비파괴 검사(UT) 및 외관 품질 결과</span>
                   </h4>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    UT 판정: {displayLot.utInspection.result}
-                  </span>
+                  {isEditMode ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-500">UT 판정:</span>
+                      <select
+                        value={displayLot.utInspection.result}
+                        onChange={(e) => {
+                          const res = e.target.value as 'PASS' | 'FAIL';
+                          setEditLot((prev) => {
+                            if (!prev) return null;
+                            const updatedLot: IqcLotItem = {
+                              ...prev,
+                              utInspection: {
+                                ...prev.utInspection,
+                                result: res,
+                                defectFound: res === 'FAIL'
+                              }
+                            };
+                            updatedLot.inspectionResult = calculateIqcOverallResult(updatedLot);
+                            return updatedLot;
+                          });
+                        }}
+                        className={`text-[10px] font-black px-2 py-0.5 rounded border cursor-pointer ${
+                          displayLot.utInspection.result === 'PASS'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : 'bg-rose-100 text-rose-800 border-rose-300'
+                        }`}
+                      >
+                        <option value="PASS">PASS</option>
+                        <option value="FAIL">FAIL</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      displayLot.utInspection.result === 'PASS'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                    }`}>
+                      UT 판정: {displayLot.utInspection.result}
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -1724,39 +2083,58 @@ export const IqcDetailModal: React.FC<IqcDetailModalProps> = ({
 
             {/* Official Printable Sheet Body */}
             <div className="border-2 border-slate-900 p-6 space-y-4 bg-white text-slate-950">
-              <div className="flex justify-between items-center border-b-2 border-slate-900 pb-3 gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+              <div className="flex justify-between items-center border-b-2 border-slate-900 pb-3 gap-2">
+                {/* Left: Logo container */}
+                <div className="w-[150px] shrink-0 flex items-center justify-start">
                   <img
                     src="https://sign.mail.worksmobile.com/signature/logo/kr1/5ZbZaxUwKAgZaxUwBqM-aAM./SqbwKAgmKAuZFxKZKqg9aAJjaAuZaxEdKo2rKA2rFob."
                     alt="JUN SUNG TECH"
-                    className="h-7 sm:h-8 w-auto object-contain select-none shrink-0"
-                    style={{ height: '30px', maxHeight: '30px' }}
+                    className="h-8 w-auto object-contain select-none"
+                    style={{ height: '32px', maxHeight: '32px' }}
                     referrerPolicy="no-referrer"
                   />
-                  <div className="min-w-0">
-                    <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight uppercase font-sans whitespace-nowrap">
-                      원소재 수입 검사 성적서 (IQC INSPECTION REPORT)
-                    </h1>
-                    <p className="text-xs text-slate-600 mt-0.5 font-mono">
-                      성적서 관리번호: {displayLot.id} | 밀시트 No: {displayLot.millSheetNo}
-                    </p>
-                  </div>
                 </div>
 
-                <div className="border border-slate-900 text-center text-[10px] shrink-0">
-                  <div className="grid grid-cols-2 divide-x divide-slate-900 border-b border-slate-900 font-bold bg-slate-100">
-                    <span className="px-3 py-1">작성 / 검사</span>
-                    <span className="px-3 py-1">승인 / QA</span>
-                  </div>
-                  <div className="grid grid-cols-2 divide-x divide-slate-900 h-11 items-center text-xs font-bold">
-                    <span className="px-3">{((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}</span>
-                    <span className="px-3 relative flex items-center justify-center">
-                      <span>{((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
-                      <span className="absolute w-8 h-8 rounded-full border border-rose-600 text-rose-600 font-bold text-[8px] flex items-center justify-center rotate-12 opacity-80">
-                        인
-                      </span>
-                    </span>
-                  </div>
+                {/* Center: Centered Document Title */}
+                <div className="flex-1 text-center min-w-0 px-2 flex flex-col items-center justify-center">
+                  <h1 className="text-base sm:text-lg font-black tracking-tight uppercase font-sans text-slate-950 leading-tight whitespace-nowrap">
+                    원소재 수입 검사 성적서
+                  </h1>
+                  <h2 className="text-xs font-bold text-slate-700 tracking-wider">
+                    (IQC INSPECTION REPORT)
+                  </h2>
+                  <p className="text-[10px] text-slate-600 mt-0.5 font-mono">
+                    성적서 관리번호: {displayLot.id} &nbsp;|&nbsp; 밀시트 No: {displayLot.millSheetNo}
+                  </p>
+                </div>
+
+                {/* Right: Approval Stamp Table */}
+                <div className="w-[150px] shrink-0 flex justify-end">
+                  <table className="w-[140px] border-collapse border-[1.5px] border-slate-900 text-center text-[10px] bg-white">
+                    <thead>
+                      <tr className="bg-slate-100 border-b-[1.5px] border-slate-900 font-bold text-slate-950">
+                        <th className="w-1/2 py-1 border-r-[1.5px] border-slate-900 text-center font-bold">
+                          작성 / 검사
+                        </th>
+                        <th className="w-1/2 py-1 text-center font-bold">
+                          승인 / QA
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="h-11 text-xs font-bold text-slate-950">
+                        <td className="w-1/2 border-r-[1.5px] border-slate-900 align-middle text-center">
+                          {((isEditMode && editLot ? editLot.inspector : displayLot.inspector) || effectiveInspectors[0] || '검사원').split(' ')[0]}
+                        </td>
+                        <td className="w-1/2 align-middle text-center relative">
+                          <span>{((isEditMode && editLot ? editLot.approver : displayLot.approver) || effectiveQaManagers[0] || '관리자').split(' ')[0]}</span>
+                          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border border-rose-600 text-rose-600 font-bold text-[8px] flex items-center justify-center rotate-12 opacity-80 pointer-events-none">
+                            인
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 

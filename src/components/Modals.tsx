@@ -69,7 +69,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+            <div className="p-1.5 rounded-xl bg-[#FFF9EB] text-[#B45309] border border-[#FCD34D] shadow-2xs">
               <Archive className="w-4 h-4" />
             </div>
             <div>
@@ -1926,9 +1926,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               <button
                 type="button"
                 onClick={handleMoveToArchive}
-                className="flex-1 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                className="flex-1 py-1.5 bg-[#FFF9EB] text-[#B45309] border border-[#FCD34D] hover:bg-[#FEF3D6] font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
               >
-                <Archive className="w-3.5 h-3.5 text-amber-600" />
+                <Archive className="w-3.5 h-3.5 text-[#B45309]" />
                 <span>완료 보관함 이동</span>
               </button>
             </div>

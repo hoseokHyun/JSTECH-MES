@@ -1,12 +1,27 @@
 import React from 'react';
 import { CertHeader } from './CertHeader';
 import { ProductSpecRecipe } from '../SlotDieCertificateView';
+import { Camera } from 'lucide-react';
 
 interface CertPage5Props {
   recipe: ProductSpecRecipe;
+  capturedSnapshot?: string;
+  pageNo?: number;
+  totalPages?: number;
+  isEditMode?: boolean;
+  onOpen3DModal?: () => void;
+  onUpdateRecipe?: (recipe: ProductSpecRecipe) => void;
 }
 
-export const CertPage5: React.FC<CertPage5Props> = ({ recipe }) => {
+export const CertPage5: React.FC<CertPage5Props> = ({
+  recipe,
+  capturedSnapshot,
+  pageNo = 5,
+  totalPages = 8,
+  isEditMode = false,
+  onOpen3DModal,
+  onUpdateRecipe
+}) => {
   const frontOpticals = [
     { id: '①', val: 0.298 },
     { id: '②', val: 0.297 },
@@ -86,29 +101,49 @@ export const CertPage5: React.FC<CertPage5Props> = ({ recipe }) => {
           inspector={recipe.inspector}
           approver={recipe.approver}
           isPassed={true}
+          pageNo={pageNo}
+          totalPages={totalPages}
         />
 
-        {/* Measurement Point Diagram */}
+        {/* Measurement Point Diagram & 3D Snapshot */}
         <div className="border-[1.5px] border-slate-950">
-          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-0.5 px-3 text-center border-b-[1.5px] border-slate-950">
-            광학검사 데이터_Measurement Point
+          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-0.5 px-3 flex items-center justify-between border-b-[1.5px] border-slate-950">
+            <span>광학검사 데이터_Measurement Point (Lip Section Inspection)</span>
+            {onOpen3DModal && (
+              <button
+                type="button"
+                onClick={onOpen3DModal}
+                className="print:hidden text-[10px] bg-white text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-300 hover:bg-blue-50 flex items-center gap-1 cursor-pointer"
+              >
+                <Camera className="w-3 h-3" />
+                <span>3D 광학 단면 시점 변경</span>
+              </button>
+            )}
           </div>
           <div className="p-2 bg-white flex items-center justify-around h-[85px]">
-            <svg viewBox="0 0 540 65" className="w-full h-full max-h-[65px] mx-auto">
-              <g stroke="#334155" strokeWidth="1" fill="#f1f5f9">
-                <polygon points="40,15 480,35 480,50 40,30" />
-                <polygon points="40,15 480,35 470,32 30,12" fill="#e2e8f0" />
-                {/* 6 Inspection Points with red dots */}
-                {[...Array(6)].map((_, i) => (
-                  <g key={i}>
-                    <circle cx={70 + i * 78} cy={17 + i * 3.4} r="3" fill="#ef4444" />
-                    <text x={70 + i * 78} y={11 + i * 3.4} textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#ef4444">
-                      {['①', '②', '③', '④', '⑤', '⑥'][i]}
-                    </text>
-                  </g>
-                ))}
-              </g>
-            </svg>
+            {capturedSnapshot ? (
+              <img
+                src={capturedSnapshot}
+                alt="3D Optical View"
+                className="h-[75px] w-auto object-contain mx-auto rounded border border-slate-200"
+              />
+            ) : (
+              <svg viewBox="0 0 540 65" className="w-full h-full max-h-[65px] mx-auto">
+                <g stroke="#334155" strokeWidth="1" fill="#f1f5f9">
+                  <polygon points="40,15 480,35 480,50 40,30" />
+                  <polygon points="40,15 480,35 470,32 30,12" fill="#e2e8f0" />
+                  {/* 6 Inspection Points with red dots */}
+                  {[...Array(6)].map((_, i) => (
+                    <g key={i}>
+                      <circle cx={70 + i * 78} cy={17 + i * 3.4} r="3" fill="#ef4444" />
+                      <text x={70 + i * 78} y={11 + i * 3.4} textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#ef4444">
+                        {['①', '②', '③', '④', '⑤', '⑥'][i]}
+                      </text>
+                    </g>
+                  ))}
+                </g>
+              </svg>
+            )}
           </div>
         </div>
 
@@ -173,7 +208,7 @@ export const CertPage5: React.FC<CertPage5Props> = ({ recipe }) => {
       <div className="pt-2 flex justify-between items-center text-[10.5px] font-mono text-slate-900 border-t border-transparent select-none">
         <div>JS-COA-01</div>
         <div className="font-sans font-bold">JUNSUNG TECH Co., Ltd</div>
-        <div className="w-16 text-right font-bold">Page 4/8</div>
+        <div className="w-24 text-right font-bold">Page {pageNo}/{totalPages}</div>
       </div>
     </div>
   );

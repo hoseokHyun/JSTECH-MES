@@ -1,12 +1,27 @@
 import React from 'react';
 import { CertHeader } from './CertHeader';
 import { ProductSpecRecipe } from '../SlotDieCertificateView';
+import { Camera } from 'lucide-react';
 
 interface CertPage8Props {
   recipe: ProductSpecRecipe;
+  capturedSnapshot?: string;
+  pageNo?: number;
+  totalPages?: number;
+  isEditMode?: boolean;
+  onOpen3DModal?: () => void;
+  onUpdateRecipe?: (recipe: ProductSpecRecipe) => void;
 }
 
-export const CertPage8: React.FC<CertPage8Props> = ({ recipe }) => {
+export const CertPage8: React.FC<CertPage8Props> = ({
+  recipe,
+  capturedSnapshot,
+  pageNo = 8,
+  totalPages = 8,
+  isEditMode = false,
+  onOpen3DModal,
+  onUpdateRecipe
+}) => {
   // Generate 43 bolts data (split into 2 columns for clean dense table)
   const bolts = Array.from({ length: 43 }, (_, i) => ({
     no: i + 1,
@@ -30,30 +45,50 @@ export const CertPage8: React.FC<CertPage8Props> = ({ recipe }) => {
           inspector={recipe.inspector}
           approver={recipe.approver}
           isPassed={true}
+          pageNo={pageNo}
+          totalPages={totalPages}
         />
 
-        {/* Measurement Point Diagram */}
+        {/* Measurement Point Diagram & 3D Snapshot */}
         <div className="border-[1.5px] border-slate-950">
-          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-0.5 px-3 text-center border-b-[1.5px] border-slate-950">
-            조절볼트 검사 데이터_Measurement Point (Lip Differential Adjusting Bolts No. 1 ~ 43)
+          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-0.5 px-3 flex items-center justify-between border-b-[1.5px] border-slate-950">
+            <span>조절볼트 검사 데이터_Measurement Point (Lip Differential Adjusting Bolts No. 1 ~ 43)</span>
+            {onOpen3DModal && (
+              <button
+                type="button"
+                onClick={onOpen3DModal}
+                className="print:hidden text-[10px] bg-white text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-300 hover:bg-blue-50 flex items-center gap-1 cursor-pointer"
+              >
+                <Camera className="w-3 h-3" />
+                <span>3D 볼트 시점 변경</span>
+              </button>
+            )}
           </div>
           <div className="p-2 bg-white flex items-center justify-around h-[85px]">
-            <svg viewBox="0 0 680 70" className="w-full h-full max-h-[70px] mx-auto">
-              <g stroke="#334155" strokeWidth="1" fill="#f1f5f9">
-                <rect x="20" y="20" width="640" height="30" rx="3" fill="#e2e8f0" />
-                {/* 43 bolt circles with numbers */}
-                {[...Array(43)].map((_, i) => (
-                  <g key={i}>
-                    <circle cx={32 + i * 14.6} cy={35} r="4" fill="#38bdf8" stroke="#0284c7" strokeWidth="0.8" />
-                    {i % 4 === 0 && (
-                      <text x={32 + i * 14.6} y={15} textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#0f172a">
-                        #{i + 1}
-                      </text>
-                    )}
-                  </g>
-                ))}
-              </g>
-            </svg>
+            {capturedSnapshot ? (
+              <img
+                src={capturedSnapshot}
+                alt="3D Bolts View"
+                className="h-[75px] w-auto object-contain mx-auto rounded border border-slate-200"
+              />
+            ) : (
+              <svg viewBox="0 0 680 70" className="w-full h-full max-h-[70px] mx-auto">
+                <g stroke="#334155" strokeWidth="1" fill="#f1f5f9">
+                  <rect x="20" y="20" width="640" height="30" rx="3" fill="#e2e8f0" />
+                  {/* 43 bolt circles with numbers */}
+                  {[...Array(43)].map((_, i) => (
+                    <g key={i}>
+                      <circle cx={32 + i * 14.6} cy={35} r="4" fill="#38bdf8" stroke="#0284c7" strokeWidth="0.8" />
+                      {i % 4 === 0 && (
+                        <text x={32 + i * 14.6} y={15} textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#0f172a">
+                          #{i + 1}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+                </g>
+              </svg>
+            )}
           </div>
         </div>
 
@@ -116,7 +151,7 @@ export const CertPage8: React.FC<CertPage8Props> = ({ recipe }) => {
       <div className="pt-2 flex justify-between items-center text-[10.5px] font-mono text-slate-900 border-t border-transparent select-none">
         <div>JS-COA-01</div>
         <div className="font-sans font-bold">JUNSUNG TECH Co., Ltd</div>
-        <div className="w-16 text-right font-bold">Page 6/8</div>
+        <div className="w-24 text-right font-bold">Page {pageNo}/{totalPages}</div>
       </div>
     </div>
   );

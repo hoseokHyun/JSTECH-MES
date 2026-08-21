@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       sublabel: '완료 수주 아카이브 & 사양 복사',
       icon: Archive,
       badge: archivedCount > 0 ? `${archivedCount}건` : null,
-      badgeColor: 'bg-amber-600 text-white',
+      badgeColor: 'bg-[#FFF9EB] text-[#B45309] border border-[#FCD34D] shadow-2xs font-black',
     },
   ];
 

@@ -658,10 +658,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               type="button"
               onClick={() => setIsArchiveModalOpen(true)}
               disabled={!canEditOrder}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+              className="bg-[#FFF9EB] hover:bg-[#FEF3D6] text-[#B45309] border border-[#FCD34D] font-extrabold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
               title="완료보관함 수주건의 공정 단계별 설비 및 담당자 정보를 복사하여 신규 수주에 적용합니다."
             >
-              <Copy className="w-3.5 h-3.5 text-amber-600" />
+              <Copy className="w-3.5 h-3.5 text-[#B45309]" />
               <span>완료보관함 사양 복사</span>
             </button>
 
@@ -1134,13 +1134,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             {/* Modal Header */}
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+                <div className="p-2 rounded-xl bg-[#FFF9EB] text-[#B45309] border border-[#FCD34D] shadow-2xs">
                   <Archive className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                     <span>완료 보관함 공정/설비/담당자 사양 복사</span>
-                    <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-amber-200">
+                    <span className="bg-[#FFF9EB] text-[#B45309] text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-[#FCD34D] shadow-2xs">
                       {completedOrArchivedOrders.length}건 보관 중
                     </span>
                   </h3>

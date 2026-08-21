@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { Order, ScheduledTaskItem, User } from '../types';
 import { SlotDieCertificateView } from './SlotDieCertificateView';
-import { IqcDetailModal, IqcLotItem, DEFAULT_IQC_LOTS } from './IqcDetailModal';
+import { IqcDetailModal, IqcLotItem, DEFAULT_IQC_LOTS, calculateIqcOverallResult } from './IqcDetailModal';
 import { IpqcPrintModal } from './IpqcPrintModal';
 import { NewIpqcModal } from './NewIpqcModal';
 import { ShippingCoaPrintModal } from './ShippingCoaPrintModal';
@@ -75,6 +75,15 @@ export interface MeasurementPoint {
   pos3D: { x: number; y: number; z: number }; // 3D coordinate for viewer mapping
 }
 
+export interface CapaLifeCycle {
+  step: number; // 1 to 5
+  defectOccurred: { id: string; type: string; time: string; desc: string };
+  causeAnalysis: { reason: string; toolOrJig: string; details: string; time: string };
+  correctiveAction: { action: string; changeDetails: string; time: string };
+  reinspection: { id: string; time: string; result: string };
+  finalVerdict: { result: string; time: string; approver: string };
+}
+
 export interface InspectionItem {
   id: string;
   orderId?: string;
@@ -91,14 +100,7 @@ export interface InspectionItem {
   lipWidthMm: number; // Slot Die Width e.g. 1200mm
   isArchived?: boolean;
   measurements: MeasurementPoint[];
-  capa: {
-    step: number; // 1 to 5
-    defectOccurred: { id: string; type: string; time: string; desc: string };
-    causeAnalysis: { reason: string; toolOrJig: string; details: string; time: string };
-    correctiveAction: { action: string; changeDetails: string; time: string };
-    reinspection: { id: string; time: string; result: string };
-    finalVerdict: { result: string; time: string; approver: string };
-  };
+  capa: CapaLifeCycle;
 }
 
 export interface CmmMachineInfo {
@@ -116,12 +118,47 @@ export interface CmmMachineInfo {
 export interface SpcDataPoint {
   batch: string;
   date: string;
-  value: number; // measured deviation in um
+  value: number; // measured value or deviation in um
   ucl: number;
   cl: number;
   lcl: number;
   sampleCount: number;
   isOutlier: boolean;
+}
+
+export type SpcMetricType = 'FLATNESS' | 'STRAIGHTNESS' | 'PARALLELISM';
+
+export interface ProductSpcMetricConfig {
+  name: string;
+  unit: string;
+  nominal: number;
+  ucl: number;
+  cl: number;
+  lcl: number;
+  cp: string;
+  cpk: string;
+  maxRange: number;
+  data: SpcDataPoint[];
+}
+
+export interface ProductSpcData {
+  productId: string;
+  productName: string;
+  shortName: string;
+  orderId?: string;
+  orderStatus?: 'IN_PROGRESS' | 'COMPLETED';
+  orderQty?: number;
+  customer?: string;
+  mctMachine?: string;
+  startDate?: string;
+  isOrderLinked?: boolean;
+  matchedInspectionCount?: number;
+  latestCmmResult?: string;
+  metrics: {
+    FLATNESS: ProductSpcMetricConfig;
+    STRAIGHTNESS: ProductSpcMetricConfig;
+    PARALLELISM: ProductSpcMetricConfig;
+  };
 }
 
 export interface ShippingProjectItem {
@@ -155,6 +192,43 @@ export interface ShippingProjectItem {
 }
 
 // ============================================================================
+// HELPER: Accurate Tolerance & Status Evaluation
+// ============================================================================
+export const evaluateMeasurementStatus = (
+  actual: number,
+  nominal: number,
+  tolerance: string
+): { deviation: string; status: 'OK' | 'NG' } => {
+  const dev = actual - nominal;
+  const devStr = (dev >= 0 ? '+' : '') + dev.toFixed(Math.abs(dev) < 0.1 ? 3 : 2);
+  const cleanTol = tolerance.trim();
+
+  if (cleanTol.startsWith('≤') || cleanTol.startsWith('<=')) {
+    const limit = parseFloat(cleanTol.replace(/[^0-9.]/g, ''));
+    if (!isNaN(limit)) {
+      return { deviation: devStr, status: actual <= limit ? 'OK' : 'NG' };
+    }
+  }
+  if (cleanTol.startsWith('≥') || cleanTol.startsWith('>=')) {
+    const limit = parseFloat(cleanTol.replace(/[^0-9.]/g, ''));
+    if (!isNaN(limit)) {
+      return { deviation: devStr, status: actual >= limit ? 'OK' : 'NG' };
+    }
+  }
+  if (cleanTol.includes('±')) {
+    const tolVal = parseFloat(cleanTol.replace(/[^0-9.]/g, ''));
+    if (!isNaN(tolVal)) {
+      return { deviation: devStr, status: Math.abs(dev) <= tolVal + 0.00001 ? 'OK' : 'NG' };
+    }
+  }
+  const tolVal = parseFloat(cleanTol.replace(/[^0-9.]/g, ''));
+  if (!isNaN(tolVal)) {
+    return { deviation: devStr, status: Math.abs(dev) <= tolVal + 0.00001 ? 'OK' : 'NG' };
+  }
+  return { deviation: devStr, status: 'OK' };
+};
+
+// ============================================================================
 // 2. MOCK DATA FOR ULTRA-PRECISION SLOT DIE QUALITY SYSTEM
 // ============================================================================
 
@@ -167,7 +241,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
     line: 'LINE 1 (클린룸 #1)',
     lotNo: 'LOT-260519-SDI01',
     inspectTime: '2026-08-18 10:28',
-    cmmDevice: 'CMM-01 (Zeiss Prismo)',
+    cmmDevice: 'CMM-01 (Zeiss Prismo Ultra)',
     programName: 'SLOT_DIE_1200_UPPER_V4',
     inspector: '김준성 책임연구원',
     result: 'FAIL',
@@ -178,7 +252,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
       { no: 2, code: 'P2', item: '립 좌측 엔드 갭 (Left Lip Gap)', nominal: 50.00, actual: 51.45, deviation: '+1.45', tolerance: '±0.80', unit: '㎛', status: 'NG', pos3D: { x: -80, y: 15, z: 0 } },
       { no: 3, code: 'P3', item: '립 우측 엔드 갭 (Right Lip Gap)', nominal: 50.00, actual: 50.32, deviation: '+0.32', tolerance: '±0.80', unit: '㎛', status: 'OK', pos3D: { x: 80, y: 15, z: 0 } },
       { no: 4, code: 'P4', item: '경면부 진직도/평면도 (Flatness)', nominal: 0.00, actual: 0.85, deviation: '+0.85', tolerance: '≤ 1.00', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 20 } },
-      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole H7)', nominal: 45.00, actual: 45.028, deviation: '+0.028', tolerance: '±0.015', unit: 'mm', status: 'NG', pos3D: { x: -40, y: -20, z: 10 } },
+      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole Pitch)', nominal: 45.00, actual: 45.028, deviation: '+0.028', tolerance: '±0.015', unit: 'mm', status: 'NG', pos3D: { x: -40, y: -20, z: 10 } },
       { no: 6, code: 'P6', item: '매니폴드 유로 깊이 (Manifold Deep)', nominal: 18.50, actual: 18.504, deviation: '+0.004', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 40, y: -10, z: -10 } },
       { no: 7, code: 'P7', item: '조절볼트 시트 단차 (Adjustment Seat)', nominal: 12.00, actual: 12.008, deviation: '+0.008', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 0, y: -30, z: 0 } },
       { no: 8, code: 'P8', item: '경면부 표면 조도 (Mirror Roughness)', nominal: 0.020, actual: 0.016, deviation: '-0.004', tolerance: '≤ 0.020', unit: '㎛ Ra', status: 'OK', pos3D: { x: 0, y: 10, z: -20 } }
@@ -222,7 +296,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
     line: 'LINE 2 (클린룸 #2)',
     lotNo: 'LOT-260519-LGD02',
     inspectTime: '2026-08-18 09:45',
-    cmmDevice: 'CMM-02 (Mitutoyo Crysta)',
+    cmmDevice: 'CMM-02 (Mitutoyo Crysta-Apex V)',
     programName: 'SLOT_DIE_1600_LOWER_V2',
     inspector: '이영희 선임연구원',
     result: 'PASS',
@@ -232,7 +306,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
       { no: 2, code: 'P2', item: '립 좌측 엔드 갭 (Left Lip Gap)', nominal: 35.00, actual: 35.18, deviation: '+0.18', tolerance: '±0.60', unit: '㎛', status: 'OK', pos3D: { x: -80, y: 15, z: 0 } },
       { no: 3, code: 'P3', item: '립 우측 엔드 갭 (Right Lip Gap)', nominal: 35.00, actual: 34.92, deviation: '-0.08', tolerance: '±0.60', unit: '㎛', status: 'OK', pos3D: { x: 80, y: 15, z: 0 } },
       { no: 4, code: 'P4', item: '경면부 진직도/평면도 (Flatness)', nominal: 0.00, actual: 0.52, deviation: '+0.52', tolerance: '≤ 0.80', unit: '㎛', status: 'OK', pos3D: { x: 0, y: 0, z: 20 } },
-      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole H7)', nominal: 45.00, actual: 45.004, deviation: '+0.004', tolerance: '±0.015', unit: 'mm', status: 'OK', pos3D: { x: -40, y: -20, z: 10 } },
+      { no: 5, code: 'P5', item: '볼트 체결 홀 피치 (M8 Hole Pitch)', nominal: 45.00, actual: 45.004, deviation: '+0.004', tolerance: '±0.015', unit: 'mm', status: 'OK', pos3D: { x: -40, y: -20, z: 10 } },
       { no: 6, code: 'P6', item: '매니폴드 유로 깊이 (Manifold Deep)', nominal: 22.00, actual: 22.003, deviation: '+0.003', tolerance: '±0.020', unit: 'mm', status: 'OK', pos3D: { x: 40, y: -10, z: -10 } },
       { no: 7, code: 'P7', item: '경면부 표면 조도 (Mirror Roughness)', nominal: 0.020, actual: 0.014, deviation: '-0.006', tolerance: '≤ 0.020', unit: '㎛ Ra', status: 'OK', pos3D: { x: 0, y: 10, z: -20 } }
     ],
@@ -253,7 +327,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
     line: 'LINE 3 (클린룸 #1)',
     lotNo: 'LOT-260519-HM03',
     inspectTime: '2026-08-18 09:12',
-    cmmDevice: 'CMM-03 (덕인 Horizon)',
+    cmmDevice: 'CMM-02 (Mitutoyo Crysta-Apex V)',
     programName: 'SHIM_PLATE_HYDROGEN_V1',
     inspector: '박철수 주임연구원',
     result: 'REINSPECT',
@@ -270,7 +344,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
       defectOccurred: { id: 'CAPA-260818-03', type: '심 좌측 두께 편차 +0.62㎛', time: '2026-08-18 09:15', desc: '초박판 와이어 커팅 후 잔여 버 및 미세 단차' },
       causeAnalysis: { reason: '초음파 세척 불충분으로 미세 슬러지 잔존', toolOrJig: 'CLEAN-US-03', details: '세척액 탈포 미흡', time: '2026-08-18 09:40' },
       correctiveAction: { action: '3단계 메가소닉 정밀 세척 및 30분 핫에어 건조', changeDetails: '진공 탈포 세척기 적용', time: '2026-08-18 10:20' },
-      reinspection: { id: 'CMM-260521-003-R1', time: '2026-08-18 11:00', result: '재검사 진행중 (CMM-03)' },
+      reinspection: { id: 'CMM-260521-003-R1', time: '2026-08-18 11:00', result: '재검사 진행중 (CMM-02)' },
       finalVerdict: { result: '재검사 판정 대기', time: '-', approver: '품질보증팀장 이준혁' }
     }
   },
@@ -282,7 +356,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
     line: 'LINE 1 (클린룸 #1)',
     lotNo: 'LOT-260519-SK04',
     inspectTime: '2026-08-18 08:50',
-    cmmDevice: 'CMM-01 (Zeiss Prismo)',
+    cmmDevice: 'CMM-01 (Zeiss Prismo Ultra)',
     programName: 'SEMI_NOZZLE_PREC_V5',
     inspector: '최민지 선임연구원',
     result: 'PASS',
@@ -302,6 +376,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
   }
 ];
 
+// CMM 장비 2대 현황 (CMM-01, CMM-02)
 const CMM_MACHINES_STATUS: CmmMachineInfo[] = [
   {
     id: 'CMM-01',
@@ -327,57 +402,499 @@ const CMM_MACHINES_STATUS: CmmMachineInfo[] = [
   }
 ];
 
-const SPC_TREND_DATA: Record<string, SpcDataPoint[]> = {
-  LIP_FLATNESS: [
-    { batch: 'B-0812-1', date: '08/12', value: 0.42, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0812-2', date: '08/12', value: 0.58, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0813-1', date: '08/13', value: 0.35, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0813-2', date: '08/13', value: 0.48, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0814-1', date: '08/14', value: 0.65, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0814-2', date: '08/14', value: 0.72, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0815-1', date: '08/15', value: 0.88, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0815-2', date: '08/15', value: 0.95, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0816-1', date: '08/16', value: 1.15, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0816-2', date: '08/16', value: 1.45, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: true },
-    { batch: 'B-0817-1', date: '08/17', value: 0.62, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0817-2', date: '08/17', value: 0.54, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0818-1', date: '08/18', value: 0.48, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false },
-    { batch: 'B-0818-2', date: '08/18', value: 0.40, ucl: 1.50, cl: 0.00, lcl: -1.50, sampleCount: 24, isOutlier: false }
-  ],
-  H7_TOLERANCE: [
-    { batch: 'B-0812-1', date: '08/12', value: 4.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
-    { batch: 'B-0813-1', date: '08/13', value: 5.5, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
-    { batch: 'B-0814-1', date: '08/14', value: 3.8, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
-    { batch: 'B-0815-1', date: '08/15', value: 6.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
-    { batch: 'B-0816-1', date: '08/16', value: 16.8, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: true },
-    { batch: 'B-0817-1', date: '08/17', value: 4.5, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false },
-    { batch: 'B-0818-1', date: '08/18', value: 3.2, ucl: 15.0, cl: 0.0, lcl: -15.0, sampleCount: 16, isOutlier: false }
-  ]
-};
-
-const PARETO_DEFECTS = [
-  { type: '립 토출구 간격 편차', count: 38, percent: 42.2, cumPercent: 42.2, color: '#f43f5e' },
-  { type: '경면부 진직도/평면도 초과', count: 24, percent: 26.7, cumPercent: 68.9, color: '#fb923c' },
-  { type: '볼트 체결 홀 H7 공차 불량', count: 14, percent: 15.6, cumPercent: 84.5, color: '#facc15' },
-  { type: '경면부 표면 조도 미달 (Ra>0.02)', count: 9, percent: 10.0, cumPercent: 94.5, color: '#38bdf8' },
-  { type: '열처리 후 잔류응력 휨', count: 5, percent: 5.5, cumPercent: 100.0, color: '#a855f7' }
+// 제품별 기하공차 변동 관리도 (평면도, 진직도, 평행도)
+const PRODUCT_SPC_DATASET: ProductSpcData[] = [
+  {
+    productId: 'PROD-1200L-UPPER',
+    productName: '2차전지 양극재 코팅용 슬롯다이 상부 바디 (1200L)',
+    shortName: '1200L 상부 바디',
+    metrics: {
+      FLATNESS: {
+        name: '평면도 (Flatness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 1.00,
+        cl: 0.00,
+        lcl: -1.00,
+        cp: '1.82',
+        cpk: '1.74 (6-Sigma)',
+        maxRange: 1.60,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.42, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.58, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.35, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.48, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.65, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.72, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.88, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-2', date: '08/16', value: 1.15, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: true },
+          { batch: 'B-0817-1', date: '08/17', value: 0.62, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0817-2', date: '08/17', value: 0.54, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.48, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.40, ucl: 1.00, cl: 0.00, lcl: -1.00, sampleCount: 24, isOutlier: false }
+        ]
+      },
+      STRAIGHTNESS: {
+        name: '진직도 (Straightness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.80,
+        cl: 0.00,
+        lcl: -0.80,
+        cp: '1.76',
+        cpk: '1.68 (5.8-Sigma)',
+        maxRange: 1.20,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.28, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.32, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.41, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.38, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.45, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.52, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.68, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-2', date: '08/16', value: 0.85, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: true },
+          { batch: 'B-0817-1', date: '08/17', value: 0.39, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0817-2', date: '08/17', value: 0.34, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.30, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.25, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 24, isOutlier: false }
+        ]
+      },
+      PARALLELISM: {
+        name: '평행도 (Parallelism)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.60,
+        cl: 0.00,
+        lcl: -0.60,
+        cp: '1.91',
+        cpk: '1.83 (6.2-Sigma)',
+        maxRange: 0.90,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.22, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.25, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.30, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.28, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.34, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.42, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.51, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0816-2', date: '08/16', value: 0.58, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.45, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0817-2', date: '08/17', value: 0.33, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.29, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.24, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 24, isOutlier: false }
+        ]
+      }
+    }
+  },
+  {
+    productId: 'PROD-1600L-LOWER',
+    productName: '디스플레이 OCA 광학 코팅용 슬롯다이 하부 바디 (1600L)',
+    shortName: '1600L 하부 바디',
+    metrics: {
+      FLATNESS: {
+        name: '평면도 (Flatness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.80,
+        cl: 0.00,
+        lcl: -0.80,
+        cp: '1.88',
+        cpk: '1.79 (6-Sigma)',
+        maxRange: 1.20,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.35, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.42, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.48, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.52, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.55, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.61, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.68, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.72, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0817-2', date: '08/17', value: 0.64, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.50, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.44, ucl: 0.80, cl: 0.00, lcl: -0.80, sampleCount: 20, isOutlier: false }
+        ]
+      },
+      STRAIGHTNESS: {
+        name: '진직도 (Straightness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.60,
+        cl: 0.00,
+        lcl: -0.60,
+        cp: '1.79',
+        cpk: '1.71 (5.9-Sigma)',
+        maxRange: 0.90,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.20, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.24, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.31, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.36, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.40, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.44, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.48, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.52, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.38, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.26, ucl: 0.60, cl: 0.00, lcl: -0.60, sampleCount: 20, isOutlier: false }
+        ]
+      },
+      PARALLELISM: {
+        name: '평행도 (Parallelism)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.50,
+        cl: 0.00,
+        lcl: -0.50,
+        cp: '1.95',
+        cpk: '1.87 (6.3-Sigma)',
+        maxRange: 0.80,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.18, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.22, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.26, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.30, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.35, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.38, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.42, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.46, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.33, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false },
+          { batch: 'B-0818-2', date: '08/18', value: 0.24, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 20, isOutlier: false }
+        ]
+      }
+    }
+  },
+  {
+    productId: 'PROD-800L-SHIM',
+    productName: '수소연료전지 분리막 코터 슬롯노즐 심 플레이트 (800L)',
+    shortName: '800L 심 플레이트',
+    metrics: {
+      FLATNESS: {
+        name: '평면도 (Flatness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.50,
+        cl: 0.00,
+        lcl: -0.50,
+        cp: '1.74',
+        cpk: '1.65 (5.7-Sigma)',
+        maxRange: 0.80,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.15, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.18, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.22, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.26, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.31, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.35, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.42, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0816-2', date: '08/16', value: 0.58, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: true },
+          { batch: 'B-0817-1', date: '08/17', value: 0.25, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.16, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false }
+        ]
+      },
+      STRAIGHTNESS: {
+        name: '진직도 (Straightness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.40,
+        cl: 0.00,
+        lcl: -0.40,
+        cp: '1.81',
+        cpk: '1.73 (5.9-Sigma)',
+        maxRange: 0.60,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.12, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.15, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.18, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.22, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.25, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.28, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.32, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.24, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.14, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 16, isOutlier: false }
+        ]
+      },
+      PARALLELISM: {
+        name: '평행도 (Parallelism)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.50,
+        cl: 0.00,
+        lcl: -0.50,
+        cp: '1.69',
+        cpk: '1.58 (5.5-Sigma)',
+        maxRange: 0.80,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.20, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.25, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.28, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.32, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.38, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.42, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.62, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: true },
+          { batch: 'B-0817-1', date: '08/17', value: 0.30, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.18, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 16, isOutlier: false }
+        ]
+      }
+    }
+  },
+  {
+    productId: 'PROD-600L-NOZZLE',
+    productName: '반도체 패키징용 초정밀 디스펜서 슬릿 노즐 바디 (600L)',
+    shortName: '600L 디스펜서 노즐',
+    metrics: {
+      FLATNESS: {
+        name: '평면도 (Flatness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.50,
+        cl: 0.00,
+        lcl: -0.50,
+        cp: '1.92',
+        cpk: '1.85 (6.3-Sigma)',
+        maxRange: 0.80,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.14, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.18, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.21, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.25, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.29, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.32, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.36, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.30, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.16, ucl: 0.50, cl: 0.00, lcl: -0.50, sampleCount: 12, isOutlier: false }
+        ]
+      },
+      STRAIGHTNESS: {
+        name: '진직도 (Straightness)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.40,
+        cl: 0.00,
+        lcl: -0.40,
+        cp: '1.96',
+        cpk: '1.89 (6.4-Sigma)',
+        maxRange: 0.60,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.10, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.12, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.15, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.18, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.21, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.24, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.27, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.22, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.11, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false }
+        ]
+      },
+      PARALLELISM: {
+        name: '평행도 (Parallelism)',
+        unit: '㎛',
+        nominal: 0.00,
+        ucl: 0.40,
+        cl: 0.00,
+        lcl: -0.40,
+        cp: '1.98',
+        cpk: '1.92 (6.5-Sigma)',
+        maxRange: 0.60,
+        data: [
+          { batch: 'B-0810-1', date: '08/10', value: 0.11, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0811-1', date: '08/11', value: 0.14, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0812-1', date: '08/12', value: 0.16, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0813-1', date: '08/13', value: 0.19, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0814-1', date: '08/14', value: 0.22, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0815-1', date: '08/15', value: 0.26, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0816-1', date: '08/16', value: 0.28, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0817-1', date: '08/17', value: 0.25, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false },
+          { batch: 'B-0818-1', date: '08/18', value: 0.12, ucl: 0.40, cl: 0.00, lcl: -0.40, sampleCount: 12, isOutlier: false }
+        ]
+      }
+    }
+  }
 ];
 
-const MACHINE_PRECISION_LIST = [
-  { machine: '5축 초정밀 MCT 5호기 #1', avgDeviation: '0.42㎛', cp: 1.84, cpk: 1.72, passRate: 99.8, count: 148 },
-  { machine: '5축 초정밀 MCT 5호기 #2', avgDeviation: '0.51㎛', cp: 1.75, cpk: 1.63, passRate: 99.4, count: 152 },
-  { machine: '초정밀 3M 연마기 #1 (경면용)', avgDeviation: '0.28㎛', cp: 2.05, cpk: 1.96, passRate: 100.0, count: 96 },
-  { machine: '초정밀 3M 연마기 #2 (립전용)', avgDeviation: '0.68㎛', cp: 1.48, cpk: 1.34, passRate: 97.2, count: 110 },
-  { machine: 'MCT 6.5호기 #3 (유로가공)', avgDeviation: '1.12㎛', cp: 1.62, cpk: 1.50, passRate: 98.9, count: 88 }
-];
+// Helper: Dynamically build precision geometric tolerance SPC dataset linked to an active Order
+export function buildProductSpcFromOrder(
+  order: Order,
+  inspections: InspectionItem[]
+): ProductSpcData {
+  const nameLower = (order.name || '').toLowerCase();
+  let lengthMm = 1200;
+  if (nameLower.includes('2000') || nameLower.includes('2m') || nameLower.includes('3p')) {
+    lengthMm = 2000;
+  } else if (nameLower.includes('1600') || nameLower.includes('2p')) {
+    lengthMm = 1600;
+  } else if (nameLower.includes('600') || nameLower.includes('디스펜서') || nameLower.includes('노즐')) {
+    lengthMm = 600;
+  } else if (nameLower.includes('800') || nameLower.includes('심')) {
+    lengthMm = 800;
+  } else if (nameLower.includes('1200')) {
+    lengthMm = 1200;
+  }
 
-const TOP_DEFECT_CAUSES = [
-  { rank: 1, cause: '슬롯다이 지그 체결 볼트 토크 불균일', count: 34, percent: 37.8, action: '디지털 토크렌치 의무화 및 실시간 체결 로그 기록' },
-  { rank: 2, cause: '3M 정밀 연마 래핑 플레이트 마모', count: 22, percent: 24.4, action: '24시간 주기 광학 간섭 평면도 교정 실시' },
-  { rank: 3, cause: 'SUS420J2 소재 열처리 잔류응력 이완', count: 16, percent: 17.8, action: '3차 서브제로(-196℃) 심냉 열처리 시간 12h 연장' },
-  { rank: 4, cause: '가공 절삭유 온도 미세 편차 (±1.5℃)', count: 11, percent: 12.2, action: '절삭유 쿨러 고정밀 인버터 PID 제어(±0.2℃) 교체' },
-  { rank: 5, cause: '엔드밀 공구 미세 치핑 및 마모', count: 7, percent: 7.8, action: '공구 수명 한도 80% 시점 선제적 자동 교체 시스템 적용' }
-];
+  // 1. Find matching inspection records
+  const matched = inspections.filter(
+    (insp) =>
+      (insp.orderId && insp.orderId === order.id) ||
+      (order.name && insp.productName && (insp.productName.includes(order.name) || order.name.includes(insp.productName)))
+  );
+
+  // Extract CMM measured deviations if any
+  let realFlatnessDev: number | null = null;
+  let realStraightnessDev: number | null = null;
+  let realParallelismDev: number | null = null;
+
+  matched.forEach((m) => {
+    m.measurements.forEach((item) => {
+      const itemTitle = item.item.toLowerCase();
+      const numVal = Math.abs(parseFloat(item.deviation) || (item.actual - item.nominal));
+      if (itemTitle.includes('평면도') || itemTitle.includes('flatness')) {
+        realFlatnessDev = numVal;
+      } else if (itemTitle.includes('진직도') || itemTitle.includes('straightness') || itemTitle.includes('립')) {
+        realStraightnessDev = numVal;
+      } else if (itemTitle.includes('평행도') || itemTitle.includes('두께') || itemTitle.includes('parallelism')) {
+        realParallelismDev = numVal;
+      }
+    });
+  });
+
+  // Calculate limits based on size
+  const getLimits = (metric: SpcMetricType) => {
+    if (metric === 'FLATNESS') {
+      const ucl = lengthMm >= 1800 ? 1.50 : lengthMm >= 1400 ? 1.00 : lengthMm >= 1000 ? 0.80 : 0.50;
+      return { ucl, cl: 0.00, lcl: -ucl, unit: '㎛', name: '평면도 (Flatness)' };
+    } else if (metric === 'STRAIGHTNESS') {
+      const ucl = lengthMm >= 1800 ? 1.20 : lengthMm >= 1400 ? 0.80 : lengthMm >= 1000 ? 0.60 : 0.40;
+      return { ucl, cl: 0.00, lcl: -ucl, unit: '㎛', name: '진직도 (Straightness)' };
+    } else {
+      const ucl = lengthMm >= 1800 ? 0.80 : lengthMm >= 1400 ? 0.60 : lengthMm >= 1000 ? 0.50 : 0.40;
+      return { ucl, cl: 0.00, lcl: -ucl, unit: '㎛', name: '평행도 (Parallelism)' };
+    }
+  };
+
+  // Helper to build metric config
+  const buildMetric = (metric: SpcMetricType): ProductSpcMetricConfig => {
+    const limits = getLimits(metric);
+    const ucl = limits.ucl;
+    const lcl = limits.lcl;
+    const cl = limits.cl;
+
+    // Deterministic pseudo-random seed based on order ID & metric
+    const seed = (order.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * (metric.length + 3)) % 100;
+    
+    // 12 chronological batches
+    const batchDates = [
+      { batch: 'B-0810-1', date: '08/10' },
+      { batch: 'B-0811-1', date: '08/11' },
+      { batch: 'B-0812-1', date: '08/12' },
+      { batch: 'B-0813-1', date: '08/13' },
+      { batch: 'B-0814-1', date: '08/14' },
+      { batch: 'B-0815-1', date: '08/15' },
+      { batch: 'B-0816-1', date: '08/16' },
+      { batch: 'B-0816-2', date: '08/16' },
+      { batch: 'B-0817-1', date: '08/17' },
+      { batch: 'B-0817-2', date: '08/17' },
+      { batch: 'B-0818-1', date: '08/18' },
+      { batch: 'B-0818-2', date: '08/18' }
+    ];
+
+    const realDev = metric === 'FLATNESS' ? realFlatnessDev : metric === 'STRAIGHTNESS' ? realStraightnessDev : realParallelismDev;
+
+    const data: SpcDataPoint[] = batchDates.map((b, idx) => {
+      // Last 2 data points incorporate the real live measurement if available
+      if (idx >= batchDates.length - 2 && realDev !== null) {
+        const val = idx === batchDates.length - 1 ? Number(realDev.toFixed(2)) : Number((realDev * (0.95 + (seed % 10) * 0.01)).toFixed(2));
+        const isOutlier = val > ucl || val < lcl;
+        return {
+          batch: b.batch,
+          date: b.date,
+          value: val,
+          ucl,
+          cl,
+          lcl,
+          sampleCount: 20 + (seed % 5),
+          isOutlier
+        };
+      }
+
+      // Realistic variation between 30% and 85% of UCL with one occasional outlier on batch 7 if seed > 70
+      const factor = 0.35 + (((seed + idx * 7) % 45) / 100);
+      let val = Number((ucl * factor).toFixed(2));
+      let isOutlier = false;
+      if (idx === 7 && (seed % 3 === 0)) {
+        val = Number((ucl * 1.18).toFixed(2));
+        isOutlier = true;
+      }
+      return {
+        batch: b.batch,
+        date: b.date,
+        value: val,
+        ucl,
+        cl,
+        lcl,
+        sampleCount: 20 + (seed % 5),
+        isOutlier
+      };
+    });
+
+    // Compute Cp, Cpk
+    const values = data.map((d) => d.value);
+    const mean = values.reduce((acc, v) => acc + v, 0) / values.length;
+    const variance = values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / (values.length - 1 || 1);
+    const stdDev = Math.max(0.02, Math.sqrt(variance));
+
+    const cpNum = (ucl - lcl) / (6 * stdDev);
+    const cpkNum = Math.min((ucl - mean) / (3 * stdDev), (mean - lcl) / (3 * stdDev));
+
+    const cp = cpNum.toFixed(2);
+    const cpk = `${cpkNum.toFixed(2)} (${cpkNum >= 1.67 ? '6-Sigma' : cpkNum >= 1.33 ? '5.5-Sigma' : '4-Sigma'})`;
+    const maxRange = Math.max(ucl * 1.4, ...values.map((v) => Math.abs(v) * 1.15), 1.0);
+
+    return {
+      name: limits.name,
+      unit: limits.unit,
+      nominal: 0.00,
+      ucl,
+      cl,
+      lcl,
+      cp,
+      cpk,
+      maxRange,
+      data
+    };
+  };
+
+  // Derive customer name if mentioned in order name
+  let customerName = '고객사 협의 수주건';
+  if (order.name.includes('삼성SDI')) customerName = '삼성SDI 천안사업장';
+  else if (order.name.includes('LG디스플레이')) customerName = 'LG디스플레이 파주사업장';
+  else if (order.name.includes('SK온')) customerName = 'SK온 서산공장';
+  else if (order.name.includes('현대모비스')) customerName = '현대모비스 의왕연구소';
+  else if (order.name.includes('SK하이닉스')) customerName = 'SK하이닉스 이천캠퍼스';
+
+  const latestResult = matched.length > 0
+    ? (matched[0].result === 'PASS' ? '합격 (PASS)' : matched[0].result === 'FAIL' ? '불합격 (FAIL)' : '재검사 (REINSPECT)')
+    : 'CMM 검사 대기중';
+
+  return {
+    productId: order.id,
+    productName: `[${order.status === 'COMPLETED' ? '완료' : '진행중'}] ${order.id}: ${order.name}`,
+    shortName: order.name,
+    orderId: order.id,
+    orderStatus: order.status || 'IN_PROGRESS',
+    orderQty: order.qty || 1,
+    customer: customerName,
+    mctMachine: order.mctMachine || 'MCT 가공라인',
+    startDate: order.startDate ? order.startDate.slice(0, 10) : '2026-03-01',
+    isOrderLinked: true,
+    matchedInspectionCount: matched.length,
+    latestCmmResult: latestResult,
+    metrics: {
+      FLATNESS: buildMetric('FLATNESS'),
+      STRAIGHTNESS: buildMetric('STRAIGHTNESS'),
+      PARALLELISM: buildMetric('PARALLELISM')
+    }
+  };
+}
 
 const CERTIFIED_INSPECTORS = [
   '김준성 책임연구원 (KOLAS 공인)',
@@ -675,8 +1192,52 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
     showToast('info', '3D 뷰어가 기본 시점으로 초기화되었습니다.');
   };
 
-  // TAB 2 SPC State
-  const [spcMetric, setSpcMetric] = useState<'LIP_FLATNESS' | 'H7_TOLERANCE'>('LIP_FLATNESS');
+  // Dynamic Product SPC Dataset linked with real customer active orders (orders prop) & inspections
+  const productSpcList = useMemo<ProductSpcData[]>(() => {
+    if (orders && Object.keys(orders).length > 0) {
+      const orderItems = Object.values(orders);
+      const sortedOrders = [...orderItems].sort((a, b) => {
+        if (!a.archived && b.archived) return -1;
+        if (a.archived && !b.archived) return 1;
+        if (a.status !== 'COMPLETED' && b.status === 'COMPLETED') return -1;
+        if (a.status === 'COMPLETED' && b.status !== 'COMPLETED') return 1;
+        return a.id.localeCompare(b.id);
+      });
+
+      const generated = sortedOrders.map((ord) => buildProductSpcFromOrder(ord, inspections));
+      if (generated.length > 0) {
+        return generated;
+      }
+    }
+    return PRODUCT_SPC_DATASET;
+  }, [orders, inspections]);
+
+  // TAB 2 SPC State (Product-based & Geometric tolerances)
+  const [selectedSpcProductId, setSelectedSpcProductId] = useState<string>(() => {
+    if (orders && Object.keys(orders).length > 0) {
+      const firstActive =
+        Object.values(orders).find((o) => !o.archived && o.status !== 'COMPLETED') ||
+        Object.values(orders)[0];
+      if (firstActive) return firstActive.id;
+    }
+    return 'PROD-1200L-UPPER';
+  });
+  const [spcMetric, setSpcMetric] = useState<SpcMetricType>('FLATNESS');
+
+  // Keep selectedSpcProductId in sync with available products
+  useEffect(() => {
+    if (productSpcList.length > 0) {
+      const exists = productSpcList.some((p) => p.productId === selectedSpcProductId);
+      if (!exists) {
+        setSelectedSpcProductId(productSpcList[0].productId);
+      }
+    }
+  }, [productSpcList, selectedSpcProductId]);
+
+  // CAPA Interactivity state
+  const [activeCapaStep, setActiveCapaStep] = useState<number>(3);
+  const [isCapaEditMode, setIsCapaEditMode] = useState<boolean>(false);
+  const [capaBuffer, setCapaBuffer] = useState<CapaLifeCycle | null>(null);
 
   // TAB 3 Shipping & COA State
   const [shippingProjects, setShippingProjects] = useState<ShippingProjectItem[]>(SHIPPING_PROJECTS);
@@ -696,6 +1257,65 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
       setToast(null);
     }, 4000);
   };
+
+  // Dynamic Pareto Defects calculation based on actual inspections data & quality metrics
+  const paretoDefectStats = useMemo(() => {
+    const counts: Record<string, number> = {
+      '립 토출구 간격 편차 (Lip Gap)': 0,
+      '경면부 진직도/평면도 초과 (Flatness/Straightness)': 0,
+      '볼트 체결 홀 피치 공차 초과 (Hole Pitch)': 0,
+      '경면부 표면 조도 미달 (Roughness)': 0,
+      '열처리 후 잔류응력 휨 (Thermal Deflection)': 0
+    };
+
+    // Historical base count + real live inspection items
+    counts['립 토출구 간격 편차 (Lip Gap)'] = 22;
+    counts['경면부 진직도/평면도 초과 (Flatness/Straightness)'] = 15;
+    counts['볼트 체결 홀 피치 공차 초과 (Hole Pitch)'] = 8;
+    counts['경면부 표면 조도 미달 (Roughness)'] = 5;
+    counts['열처리 후 잔류응력 휨 (Thermal Deflection)'] = 3;
+
+    inspections.forEach((insp) => {
+      if (insp.result === 'FAIL' || insp.result === 'REINSPECT') {
+        insp.measurements.forEach((m) => {
+          if (m.status === 'NG') {
+            const itemLower = m.item.toLowerCase();
+            if (itemLower.includes('립') || itemLower.includes('gap') || itemLower.includes('토출') || itemLower.includes('간격')) {
+              counts['립 토출구 간격 편차 (Lip Gap)'] += 1;
+            } else if (itemLower.includes('평면도') || itemLower.includes('진직도') || itemLower.includes('flatness') || itemLower.includes('심 두께')) {
+              counts['경면부 진직도/평면도 초과 (Flatness/Straightness)'] += 1;
+            } else if (itemLower.includes('홀') || itemLower.includes('pitch') || itemLower.includes('볼트') || itemLower.includes('단차')) {
+              counts['볼트 체결 홀 피치 공차 초과 (Hole Pitch)'] += 1;
+            } else if (itemLower.includes('조도') || itemLower.includes('roughness')) {
+              counts['경면부 표면 조도 미달 (Roughness)'] += 1;
+            } else {
+              counts['열처리 후 잔류응력 휨 (Thermal Deflection)'] += 1;
+            }
+          }
+        });
+      }
+    });
+
+    const colors = ['#f43f5e', '#fb923c', '#facc15', '#38bdf8', '#a855f7'];
+    const total = Object.values(counts).reduce((acc, c) => acc + c, 0) || 1;
+    const sorted = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count], idx) => {
+        const percent = Number(((count / total) * 100).toFixed(1));
+        return { type, count, percent, color: colors[idx % colors.length], cumPercent: 0 };
+      });
+
+    let runningCum = 0;
+    sorted.forEach((item) => {
+      runningCum += item.percent;
+      item.cumPercent = Number(Math.min(100, runningCum).toFixed(1));
+    });
+
+    return {
+      items: sorted,
+      totalDefects: total
+    };
+  }, [inspections]);
 
   // Filtered IPQC Inspection List for Tab 1
   const filteredInspections = useMemo(() => {
@@ -748,11 +1368,23 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
 
   const currentIpqcDisplay = isIpqcEditMode && ipqcEditBuffer ? ipqcEditBuffer : selectedInspection;
 
+  // Selection Handler for IPQC
+  const handleSelectInspection = (item: InspectionItem) => {
+    setSelectedInspection(item);
+    setSelectedPointIndex(null);
+    setIsIpqcEditMode(false);
+    setIpqcEditBuffer(null);
+    setIsCapaEditMode(false);
+    setCapaBuffer(null);
+    setActiveCapaStep(item.capa?.step || 1);
+  };
+
   // --- IPQC Handlers ---
   const handleAddIpqc = (newItem: InspectionItem) => {
     setInspections((prev) => [newItem, ...prev]);
     setSelectedInspection(newItem);
     setSelectedPointIndex(null);
+    setActiveCapaStep(newItem.capa?.step || 1);
     showToast('success', '✅ 신규 공정검사 등록 완료', `검사 ID [${newItem.id}] 가 큐에 추가되었습니다.`);
   };
 
@@ -762,6 +1394,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
         const remaining = prev.filter((i) => i.id !== itemId);
         if (selectedInspection.id === itemId && remaining.length > 0) {
           setSelectedInspection(remaining[0]);
+          setActiveCapaStep(remaining[0].capa?.step || 1);
         }
         return remaining;
       });
@@ -796,12 +1429,26 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
 
   const handleSaveIpqcEdit = () => {
     if (!ipqcEditBuffer) return;
+    const hasNg = ipqcEditBuffer.measurements.some((m) => m.status === 'NG');
+    const finalResult = hasNg ? 'FAIL' : 'PASS';
+    const finalItem: InspectionItem = {
+      ...ipqcEditBuffer,
+      result: finalResult,
+      defectType: finalResult === 'PASS' ? undefined : (ipqcEditBuffer.defectType || '규격 공차 초과')
+    };
+
     setInspections((prev) =>
-      prev.map((i) => (i.id === ipqcEditBuffer.id ? ipqcEditBuffer : i))
+      prev.map((i) => (i.id === finalItem.id ? finalItem : i))
     );
-    setSelectedInspection(ipqcEditBuffer);
+    setSelectedInspection(finalItem);
     setIsIpqcEditMode(false);
-    showToast('success', '💾 공정검사 데이터 수정 저장 완료', `검사 [${ipqcEditBuffer.id}] 측정값 및 규격이 업데이트되었습니다.`);
+    setIpqcEditBuffer(null);
+
+    if (finalResult === 'PASS') {
+      showToast('success', '🎉 공정검사 판정: [PASS] 합격 갱신 완료', `검사 [${finalItem.id}] 모든 측정값이 허용 공차 범위 내에 진입하여 PASS로 즉시 갱신되었습니다.`);
+    } else {
+      showToast('warning', '⚠️ 공정검사 판정: [FAIL] 불합격 유지', `검사 [${finalItem.id}] 에 허용 공차를 벗어난 포인트(NG)가 존재합니다.`);
+    }
   };
 
   const handleCancelIpqcEdit = () => {
@@ -814,24 +1461,23 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
     const nextMeasurements = [...ipqcEditBuffer.measurements];
     const target = { ...nextMeasurements[index], [field]: val };
 
-    if (field === 'actual' || field === 'nominal') {
+    if (field === 'actual' || field === 'nominal' || field === 'tolerance') {
       const nom = field === 'nominal' ? Number(val) : target.nominal;
       const act = field === 'actual' ? Number(val) : target.actual;
-      const dev = act - nom;
-      const isMicron = target.unit.includes('㎛');
-      target.deviation = (dev >= 0 ? '+' : '') + dev.toFixed(isMicron ? 2 : 3);
-
-      // Simple tolerance status calculation
-      const tolStr = target.tolerance.replace(/[^\d.]/g, '');
-      const tolVal = parseFloat(tolStr);
-      if (!isNaN(tolVal)) {
-        target.status = Math.abs(dev) <= tolVal ? 'OK' : 'NG';
-      }
+      const tol = field === 'tolerance' ? String(val) : target.tolerance;
+      const { deviation, status } = evaluateMeasurementStatus(act, nom, tol);
+      target.deviation = deviation;
+      target.status = status;
     }
 
     nextMeasurements[index] = target;
+    const hasNg = nextMeasurements.some((m) => m.status === 'NG');
+    const updatedResult = hasNg ? 'FAIL' : 'PASS';
+
     setIpqcEditBuffer({
       ...ipqcEditBuffer,
+      result: updatedResult,
+      defectType: updatedResult === 'PASS' ? undefined : (ipqcEditBuffer.defectType || '규격 공차 초과'),
       measurements: nextMeasurements
     });
   };
@@ -851,18 +1497,70 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
       status: 'OK',
       pos3D: { x: 0, y: 0, z: 0 }
     };
+    const nextMeasurements = [...ipqcEditBuffer.measurements, newPoint];
+    const hasNg = nextMeasurements.some((m) => m.status === 'NG');
+    const updatedResult = hasNg ? 'FAIL' : 'PASS';
+
     setIpqcEditBuffer({
       ...ipqcEditBuffer,
-      measurements: [...ipqcEditBuffer.measurements, newPoint]
+      result: updatedResult,
+      measurements: nextMeasurements
     });
   };
 
   const handleDeleteIpqcMeasurementPoint = (index: number) => {
     if (!ipqcEditBuffer) return;
     const next = ipqcEditBuffer.measurements.filter((_, idx) => idx !== index);
+    const hasNg = next.some((m) => m.status === 'NG');
+    const updatedResult = hasNg ? 'FAIL' : 'PASS';
+
     setIpqcEditBuffer({
       ...ipqcEditBuffer,
+      result: updatedResult,
       measurements: next
+    });
+  };
+
+  // --- CAPA Interactivity Handlers ---
+  const handleStartCapaEdit = () => {
+    setCapaBuffer(JSON.parse(JSON.stringify(selectedInspection.capa)));
+    setIsCapaEditMode(true);
+  };
+
+  const handleSaveCapaEdit = () => {
+    if (!capaBuffer) return;
+    const updatedInspection: InspectionItem = {
+      ...selectedInspection,
+      capa: capaBuffer
+    };
+    setInspections((prev) =>
+      prev.map((i) => (i.id === updatedInspection.id ? updatedInspection : i))
+    );
+    setSelectedInspection(updatedInspection);
+    setActiveCapaStep(capaBuffer.step);
+    setIsCapaEditMode(false);
+    setCapaBuffer(null);
+    showToast('success', '💾 CAPA 시정 조치 내역 저장 완료', `검사 [${updatedInspection.id}] CAPA 단계 및 기록이 저장되었습니다.`);
+  };
+
+  const handleCancelCapaEdit = () => {
+    setCapaBuffer(null);
+    setIsCapaEditMode(false);
+  };
+
+  const handleUpdateCapaField = (stageKey: keyof CapaLifeCycle, fieldKey: string, value: any) => {
+    if (!capaBuffer) return;
+    if (stageKey === 'step') {
+      setCapaBuffer({ ...capaBuffer, step: Number(value) });
+      return;
+    }
+    const currentStageObj = (capaBuffer as any)[stageKey] || {};
+    setCapaBuffer({
+      ...capaBuffer,
+      [stageKey]: {
+        ...currentStageObj,
+        [fieldKey]: value
+      }
     });
   };
 
@@ -1250,7 +1948,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <Activity className="w-4 h-4" />
-                <span>[탭 1] 실시간 CMM 검사 현황</span>
+                <span>실시간 CMM 검사 현황</span>
               </button>
 
               <button
@@ -1263,7 +1961,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <BarChart3 className="w-4 h-4" />
-                <span>[탭 2] 품질 데이터 분석</span>
+                <span>품질 데이터 분석</span>
               </button>
             </>
           )}
@@ -1280,9 +1978,9 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 }`}
               >
                 <FileCheck className="w-4 h-4 text-amber-300" />
-                <span>[성적서 관리] 세메스 1580mm 슬롯다이 성적서 (8-Page COA Editor)</span>
+                <span>성적서 관리</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 text-white font-mono">
-                  8-Page COA
+                  COA Editor
                 </span>
               </button>
 
@@ -1322,9 +2020,8 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                     </div>
                     <div>
                       <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                        실시간 CMM 공정검사 대기열
+                        실시간 CMM 공정검사 목록
                       </h3>
-                      <p className="text-[11px] text-slate-500">슬롯다이 초정밀 검사 진행 목록</p>
                     </div>
                   </div>
 
@@ -1420,14 +2117,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                       return (
                         <div
                           key={item.id}
-                          onClick={() => {
-                            setSelectedInspection(item);
-                            setSelectedPointIndex(null);
-                            if (isIpqcEditMode) {
-                              setIsIpqcEditMode(false);
-                              setIpqcEditBuffer(null);
-                            }
-                          }}
+                          onClick={() => handleSelectInspection(item)}
                           className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-1.5 ${
                             isSelected
                               ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 shadow-xs ring-1 ring-blue-500'
@@ -1980,7 +2670,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Left: 5-Step CAPA Tracking Bar (7 Cols) */}
             <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
                     <ShieldCheck className="w-4 h-4" />
@@ -1995,142 +2685,191 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   </div>
                 </div>
 
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                  현재: <strong className="text-blue-600">{currentIpqcDisplay.capa.step}단계 진행중</strong>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                    현재: <strong className="text-blue-600">{(capaBuffer ? capaBuffer.step : currentIpqcDisplay.capa.step)}단계 진행중</strong>
+                  </span>
+
+                  {isCapaEditMode ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        id="btn-save-capa"
+                        onClick={handleSaveCapaEdit}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>저장</span>
+                      </button>
+                      <button
+                        id="btn-cancel-capa"
+                        onClick={handleCancelCapaEdit}
+                        className="px-2 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>취소</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      id="btn-start-capa-edit"
+                      onClick={handleStartCapaEdit}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-xs cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>CAPA 작성/수정</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* 5-Step Stepper Bar */}
-              <div className="grid grid-cols-5 gap-1.5 py-2">
+              {/* 5-Step Stepper Bar with interactive click */}
+              <div className="grid grid-cols-5 gap-1.5 py-1.5">
                 {[
-                  { step: 1, label: '1. 불량 발생/감지' },
-                  { step: 2, label: '2. 원인 분석' },
-                  { step: 3, label: '3. 시정 조치' },
-                  { step: 4, label: '4. CMM 재검사' },
-                  { step: 5, label: '5. 최종 합격 판정' }
+                  { step: 1, label: '1. 불량 감지', desc: '초기 이상 감지' },
+                  { step: 2, label: '2. 원인 분석', desc: '5-Why / 원인' },
+                  { step: 3, label: '3. 시정 조치', desc: '지그/가공 보정' },
+                  { step: 4, label: '4. CMM 재검사', desc: '정밀 실측 재검' },
+                  { step: 5, label: '5. 합격 판정', desc: '최종 승인/출하' }
                 ].map((s) => {
-                  const isPassed = currentIpqcDisplay.capa.step > s.step;
-                  const isCurrent = currentIpqcDisplay.capa.step === s.step;
+                  const effectiveStep = capaBuffer ? capaBuffer.step : currentIpqcDisplay.capa.step;
+                  const isPassed = effectiveStep > s.step;
+                  const isCurrent = effectiveStep === s.step;
+                  const isViewing = activeCapaStep === s.step;
+
                   return (
                     <div
                       key={s.step}
                       onClick={() => {
-                        if (isIpqcEditMode && ipqcEditBuffer) {
-                          setIpqcEditBuffer({
-                            ...ipqcEditBuffer,
-                            capa: {
-                              ...ipqcEditBuffer.capa,
-                              step: s.step
-                            }
-                          });
+                        setActiveCapaStep(s.step);
+                        if (isCapaEditMode && capaBuffer) {
+                          setCapaBuffer({ ...capaBuffer, step: s.step });
                         }
                       }}
-                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-between ${
-                        isIpqcEditMode ? 'cursor-pointer hover:ring-2 hover:ring-amber-400' : ''
+                      className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-between cursor-pointer ${
+                        isViewing ? 'ring-2 ring-blue-500' : ''
                       } ${
                         isPassed
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
                           : isCurrent
-                          ? 'bg-blue-600 text-white border-blue-700 shadow-md font-black ring-2 ring-blue-300'
-                          : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400'
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-md font-black'
+                          : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-100'
                       }`}
                     >
                       <span className="text-[10px] font-bold">
-                        {isPassed ? '✓ 완료' : isCurrent ? '▶ 진행중' : '대기'}
+                        {isPassed ? '✓ 완료' : isCurrent ? '▶ 진행' : '대기'}
                       </span>
-                      <span className="text-[11px] font-black mt-1 leading-tight">{s.label}</span>
+                      <span className="text-[11px] font-black mt-0.5 leading-tight">{s.label}</span>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Detailed CAPA History Box */}
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-slate-500 font-bold">불량 감지:</span>{' '}
-                    {isIpqcEditMode && ipqcEditBuffer ? (
-                      <input
-                        type="text"
-                        value={ipqcEditBuffer.capa.defectOccurred.type}
-                        onChange={(e) =>
-                          setIpqcEditBuffer({
-                            ...ipqcEditBuffer,
-                            capa: {
-                              ...ipqcEditBuffer.capa,
-                              defectOccurred: {
-                                ...ipqcEditBuffer.capa.defectOccurred,
-                                type: e.target.value
-                              }
-                            }
-                          })
-                        }
-                        className="w-full mt-1 px-2 py-1 border rounded text-xs font-bold"
-                      />
-                    ) : (
-                      <strong className="text-slate-800 dark:text-slate-200">
-                        {currentIpqcDisplay.capa.defectOccurred.type}
-                      </strong>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-bold">원인 분석:</span>{' '}
-                    {isIpqcEditMode && ipqcEditBuffer ? (
-                      <input
-                        type="text"
-                        value={ipqcEditBuffer.capa.causeAnalysis.reason}
-                        onChange={(e) =>
-                          setIpqcEditBuffer({
-                            ...ipqcEditBuffer,
-                            capa: {
-                              ...ipqcEditBuffer.capa,
-                              causeAnalysis: {
-                                ...ipqcEditBuffer.capa.causeAnalysis,
-                                reason: e.target.value
-                              }
-                            }
-                          })
-                        }
-                        className="w-full mt-1 px-2 py-1 border rounded text-xs font-medium"
-                      />
-                    ) : (
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">
-                        {currentIpqcDisplay.capa.causeAnalysis.reason}
+              {/* Interactive Step-specific & Master CAPA Details Box */}
+              {(() => {
+                const activeCapa = isCapaEditMode && capaBuffer ? capaBuffer : currentIpqcDisplay.capa;
+                return (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs space-y-2.5">
+                    {/* Header info bar */}
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/80 dark:border-slate-700/80 text-[11px]">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">
+                        {activeCapaStep === 1 && '📌 1단계: 불량 감지 및 부적합 내역'}
+                        {activeCapaStep === 2 && '🔍 2단계: 근본 원인 분석 (5-Why)'}
+                        {activeCapaStep === 3 && '🛠️ 3단계: 시정 조치 및 지그/툴 보정'}
+                        {activeCapaStep === 4 && '🔬 4단계: CMM 초정밀 재검사 확인'}
+                        {activeCapaStep === 5 && '✅ 5단계: 품질보증 최종 합격 승인'}
                       </span>
-                    )}
+                      <span className="text-slate-500 font-mono">
+                        {isCapaEditMode ? '✏️ 수정 모드 활성화됨' : '조회 모드 (클릭하여 단계 확인)'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Step 1 & 2 Block */}
+                      <div className="space-y-2 bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                            불량 감지 유형 & 시각 (1단계)
+                          </label>
+                          {isCapaEditMode ? (
+                            <input
+                              type="text"
+                              value={activeCapa.defectOccurred?.type || ''}
+                              onChange={(e) => handleUpdateCapaField('defectOccurred', 'type', e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                            />
+                          ) : (
+                            <p className="font-bold text-rose-600 dark:text-rose-400">
+                              {activeCapa.defectOccurred?.type || '정상 (특이사항 없음)'}
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                            근본 원인 분석 (2단계)
+                          </label>
+                          {isCapaEditMode ? (
+                            <textarea
+                              rows={2}
+                              value={activeCapa.causeAnalysis?.reason || ''}
+                              onChange={(e) => handleUpdateCapaField('causeAnalysis', 'reason', e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                            />
+                          ) : (
+                            <p className="text-slate-700 dark:text-slate-300 font-medium">
+                              {activeCapa.causeAnalysis?.reason || '분석 진행중'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Step 3 & 4 Block */}
+                      <div className="space-y-2 bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                            시정 조치 및 변경사항 (3단계)
+                          </label>
+                          {isCapaEditMode ? (
+                            <input
+                              type="text"
+                              value={activeCapa.correctiveAction?.action || ''}
+                              onChange={(e) => handleUpdateCapaField('correctiveAction', 'action', e.target.value)}
+                              placeholder="시정 조치 내용 입력..."
+                              className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-blue-600 bg-white dark:bg-slate-950"
+                            />
+                          ) : (
+                            <p className="text-blue-600 dark:text-blue-400 font-bold">
+                              {activeCapa.correctiveAction?.action || '조치 대기중'}
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                            CMM 재검사 결과 & 판정 (4~5단계)
+                          </label>
+                          {isCapaEditMode ? (
+                            <input
+                              type="text"
+                              value={activeCapa.reinspection?.result || ''}
+                              onChange={(e) => handleUpdateCapaField('reinspection', 'result', e.target.value)}
+                              placeholder="재검사 실측치 및 최종 승인..."
+                              className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                            />
+                          ) : (
+                            <p className="text-emerald-700 dark:text-emerald-400 font-bold">
+                              {activeCapa.reinspection?.result || '재검사 대기'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-500 font-bold">시정 조치 내역:</span>{' '}
-                  {isIpqcEditMode && ipqcEditBuffer ? (
-                    <input
-                      type="text"
-                      value={ipqcEditBuffer.capa.correctiveAction.action}
-                      onChange={(e) =>
-                        setIpqcEditBuffer({
-                          ...ipqcEditBuffer,
-                          capa: {
-                            ...ipqcEditBuffer.capa,
-                            correctiveAction: {
-                              ...ipqcEditBuffer.capa.correctiveAction,
-                              action: e.target.value
-                            }
-                          }
-                        })
-                      }
-                      className="w-full mt-1 px-2 py-1 border rounded text-xs font-bold text-blue-600"
-                    />
-                  ) : (
-                    <span className="text-blue-700 dark:text-blue-400 font-bold">
-                      {currentIpqcDisplay.capa.correctiveAction.action} (
-                      {currentIpqcDisplay.capa.correctiveAction.changeDetails})
-                    </span>
-                  )}
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
-            {/* Right: CMM 4-Machines Real-time Monitor (5 Cols) */}
+            {/* Right: CMM 2-Machines Real-time Monitor (5 Cols) */}
             <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
@@ -2139,12 +2878,12 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   </div>
                   <div>
                     <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                      CMM 장비 현황 (CMM-01 ~ CMM-04)
+                      CMM 장비 현황 (CMM-01 ~ CMM-02)
                     </h3>
-                    <p className="text-[11px] text-slate-500">20.0℃ 항온항습실 실시간 상태</p>
+                    <p className="text-[11px] text-slate-500">20.0℃ 항온항습실 실시간 상태 (2대 가동)</p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-600">클린룸 #1/2 연동</span>
+                <span className="text-xs font-mono font-bold text-emerald-600">클린룸 2대 연동</span>
               </div>
 
               <div className="space-y-2">
@@ -2204,17 +2943,19 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   </div>
                   <div>
                     <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                      부품별 불량 유형 파레토(Pareto) 분포
+                      실시간 불량 유형 파레토(Pareto) 분포
                     </h3>
-                    <p className="text-[11px] text-slate-500">누적 점유율 분석 (80:20 법칙)</p>
+                    <p className="text-[11px] text-slate-500">실측 공정검사 데이터 연동 누적 점유율 분석</p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-rose-600">총 90건 분석</span>
+                <span className="text-xs font-mono font-bold text-rose-600">
+                  총 {paretoDefectStats.totalDefects}건 불량 감지
+                </span>
               </div>
 
               {/* Pareto Bars */}
               <div className="space-y-2.5 pt-1">
-                {PARETO_DEFECTS.map((item, idx) => (
+                {paretoDefectStats.items.map((item, idx) => (
                   <div key={item.type} className="space-y-1">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -2224,9 +2965,14 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                         />
                         <span>#{idx + 1} {item.type}</span>
                       </span>
-                      <span className="font-mono text-slate-600 dark:text-slate-400">
-                        {item.count}건 ({item.percent}%)
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-slate-600 dark:text-slate-400">
+                          {item.count}건 ({item.percent}%)
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono">
+                          누적 {item.cumPercent}%
+                        </span>
+                      </div>
                     </div>
 
                     <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
@@ -2247,21 +2993,27 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   ※ 파레토 핵심 중점 관리 공정:
                 </span>
                 <p className="text-slate-600 dark:text-slate-400 text-[11px]">
-                  '립 토출구 간격 편차'와 '진직도/평면도' 2개 항목이 전체 불량의 <strong>68.9%</strong>를 차지하므로, 초정밀 연마 지그 토크 제어 집중 개선이 요구됩니다.
+                  {paretoDefectStats.items.length >= 2 ? (
+                    <>
+                      '{paretoDefectStats.items[0]?.type}'와 '{paretoDefectStats.items[1]?.type}' 2개 항목이 누적 <strong>{paretoDefectStats.items[1]?.cumPercent}%</strong>를 차지하므로, 해당 가공 공정의 지그 정밀도 및 가공 부하 제어 개선이 우선적으로 요구됩니다.
+                    </>
+                  ) : (
+                    '공정검사 실측치 기반 불량 유형이 실시간으로 집계 및 분석됩니다.'
+                  )}
                 </p>
               </div>
             </div>
 
-            {/* Right: 7-Day Trend / X-bar R Control Chart (7 Cols) */}
+            {/* Right: Product-based SPC Trend / X-bar R Control Chart (7 Cols) */}
             <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
                     <TrendingUp className="w-4 h-4" />
                   </div>
                   <div>
                     <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                      최근 7일간 립 평면도 및 H7 공차 변동 관리도 (X-bar R Chart)
+                      제품별 정밀 기하공차 변동 관리도 (X-bar R Chart)
                     </h3>
                     <p className="text-[11px] text-slate-500">
                       UCL/LCL 상·하한 관리선 및 이상점(Outlier) 실시간 모니터링
@@ -2269,78 +3021,165 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   </div>
                 </div>
 
-                {/* Metric Switch */}
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setSpcMetric('LIP_FLATNESS')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-                      spcMetric === 'LIP_FLATNESS'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                    }`}
+                <div className="flex items-center gap-2">
+                  {/* Product Selector */}
+                  <select
+                    value={selectedSpcProductId}
+                    onChange={(e) => setSelectedSpcProductId(e.target.value)}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white max-w-[260px] sm:max-w-[340px] truncate shadow-2xs"
                   >
-                    립 평면도 (㎛)
-                  </button>
-                  <button
-                    onClick={() => setSpcMetric('H7_TOLERANCE')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-                      spcMetric === 'H7_TOLERANCE'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    볼트 홀 H7 (㎛)
-                  </button>
+                    {productSpcList.map((p) => (
+                      <option key={p.productId} value={p.productId}>
+                        {p.isOrderLinked
+                          ? `${p.orderStatus === 'COMPLETED' ? '⚪ [완료]' : '🟢 [진행중]'} ${p.orderId}: ${p.shortName}`
+                          : p.productName}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Metric Switch: Flatness, Straightness, Parallelism */}
+                  <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
+                    <button
+                      onClick={() => setSpcMetric('FLATNESS')}
+                      className={`px-2 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                        spcMetric === 'FLATNESS'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-blue-600'
+                      }`}
+                    >
+                      평면도
+                    </button>
+                    <button
+                      onClick={() => setSpcMetric('STRAIGHTNESS')}
+                      className={`px-2 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                        spcMetric === 'STRAIGHTNESS'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-blue-600'
+                      }`}
+                    >
+                      진직도
+                    </button>
+                    <button
+                      onClick={() => setSpcMetric('PARALLELISM')}
+                      className={`px-2 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                        spcMetric === 'PARALLELISM'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-blue-600'
+                      }`}
+                    >
+                      평행도
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Custom SVG Control Chart */}
+              {/* Custom SVG Control Chart for Selected Product & Metric */}
               {(() => {
-                const isLip = spcMetric === 'LIP_FLATNESS';
-                const uclVal = isLip ? 1.5 : 15.0;
-                const lclVal = isLip ? -1.5 : -15.0;
-                const maxRange = isLip ? 2.0 : 22.0; // Ample range to accommodate 16.8um without clipping
-                const data = SPC_TREND_DATA[spcMetric];
-                const spcSummary = isLip
-                  ? {
-                      cp: '1.84',
-                      cpk: '1.72 (6-Sigma)',
-                      outliers: '0건 (정상 관리 상태)',
-                      outlierColor: 'text-blue-600 dark:text-blue-400'
-                    }
-                  : {
-                      cp: '1.78',
-                      cpk: '1.62 (5.8-Sigma)',
-                      outliers: '1건 (08/16 가공부하 이상 조치완료)',
-                      outlierColor: 'text-amber-600 dark:text-amber-400'
-                    };
+                const currentProductSpc =
+                  productSpcList.find((p) => p.productId === selectedSpcProductId) ||
+                  productSpcList[0] ||
+                  PRODUCT_SPC_DATASET[0];
+                const metricConfig = currentProductSpc.metrics[spcMetric];
+                const uclVal = metricConfig.ucl;
+                const lclVal = metricConfig.lcl;
+                const clVal = metricConfig.cl;
+                const data = metricConfig.data;
+                const maxRange = Math.max(uclVal * 1.35, ...data.map((d) => Math.abs(d.value) * 1.15), 1.0);
 
-                // SVG coordinate conversion: chart height = 140, center = 75, range ±maxRange
+                // Correctly detect outliers: value outside [lclVal, uclVal] or marked isOutlier
+                const outlierCount = data.filter((d) => d.value > uclVal || d.value < lclVal || d.isOutlier).length;
+
+                // SVG coordinate conversion: chart height = 150, center = 75, range ±maxRange
                 const getY = (val: number) => {
                   const clamped = Math.max(-maxRange, Math.min(maxRange, val));
                   return 75 - (clamped / maxRange) * 55;
                 };
 
                 const uclY = getY(uclVal);
-                const clY = getY(0);
+                const clY = getY(clVal);
                 const lclY = getY(lclVal);
 
                 return (
                   <>
+                    {/* Live Order Linkage & Traceability Banner */}
+                    {currentProductSpc.isOrderLinked && (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 ${
+                              currentProductSpc.orderStatus === 'COMPLETED'
+                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                : 'bg-emerald-500 text-white shadow-2xs'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                currentProductSpc.orderStatus === 'COMPLETED'
+                                  ? 'bg-slate-400'
+                                  : 'bg-white animate-ping'
+                              }`}
+                            />
+                            {currentProductSpc.orderStatus === 'COMPLETED'
+                              ? '수주 완료건'
+                              : '실시간 수주 진행건'}
+                          </span>
+                          <strong className="text-slate-900 dark:text-white font-black">
+                            {currentProductSpc.customer}
+                          </strong>
+                          <span className="text-slate-300 dark:text-slate-600">|</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">
+                            {currentProductSpc.orderId}
+                          </span>
+                          <span className="text-slate-300 dark:text-slate-600">|</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-medium">
+                            수량:{' '}
+                            <strong className="text-slate-800 dark:text-slate-100">
+                              {currentProductSpc.orderQty}대
+                            </strong>
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                            <span>가공설비:</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-200">
+                              {currentProductSpc.mctMachine}
+                            </span>
+                          </div>
+                          <span className="text-slate-300 dark:text-slate-600">|</span>
+                          <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                            <span>CMM 연계:</span>
+                            <span
+                              className={`font-bold ${
+                                currentProductSpc.latestCmmResult?.includes('합격')
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : currentProductSpc.latestCmmResult?.includes('불합격') ||
+                                    currentProductSpc.latestCmmResult?.includes('재검사')
+                                  ? 'text-rose-600 dark:text-rose-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                              }`}
+                            >
+                              {currentProductSpc.latestCmmResult}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="relative h-64 w-full bg-slate-50 dark:bg-slate-950 rounded-xl p-3 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
                       {/* Legend & Limits Header */}
                       <div className="flex justify-between items-center text-[10px] font-mono px-2">
                         <span className="text-rose-600 font-bold flex items-center gap-1">
                           <span className="inline-block w-3 h-0.5 bg-rose-500 border-b border-dashed" />
-                          UCL (상한선: +{isLip ? '1.50' : '15.00'}㎛)
+                          UCL (상한선: +{uclVal.toFixed(2)}㎛)
                         </span>
                         <span className="text-blue-600 font-bold flex items-center gap-1">
                           <span className="inline-block w-3 h-0.5 bg-blue-500" />
-                          CL (중심선: 0.00㎛)
+                          CL (중심선: {clVal.toFixed(2)}㎛)
                         </span>
                         <span className="text-rose-600 font-bold flex items-center gap-1">
                           <span className="inline-block w-3 h-0.5 bg-rose-500 border-b border-dashed" />
-                          LCL (하한선: -{isLip ? '1.50' : '15.00'}㎛)
+                          LCL (하한선: {lclVal.toFixed(2)}㎛)
                         </span>
                       </div>
 
@@ -2350,11 +3189,11 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                           {/* Shaded In-Control Zone (Between UCL and LCL) */}
                           <rect
                             x="40"
-                            y={uclY}
+                            y={Math.min(uclY, lclY)}
                             width="440"
-                            height={lclY - uclY}
+                            height={Math.abs(lclY - uclY)}
                             fill="#3b82f6"
-                            fillOpacity="0.04"
+                            fillOpacity="0.05"
                           />
 
                           {/* Horizontal Reference Lines */}
@@ -2364,7 +3203,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
 
                           {/* Y-Axis Scale Marks */}
                           <text x="35" y={uclY + 3} textAnchor="end" fontSize="9" fontWeight="bold" fill="#f43f5e">+{uclVal}</text>
-                          <text x="35" y={clY + 3} textAnchor="end" fontSize="9" fontWeight="bold" fill="#3b82f6">0.0</text>
+                          <text x="35" y={clY + 3} textAnchor="end" fontSize="9" fontWeight="bold" fill="#3b82f6">{clVal}</text>
                           <text x="35" y={lclY + 3} textAnchor="end" fontSize="9" fontWeight="bold" fill="#f43f5e">{lclVal}</text>
 
                           {/* Polyline of Data Points */}
@@ -2383,7 +3222,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                                 {data.map((d, i) => {
                                   const x = 50 + (i / (data.length - 1)) * 420;
                                   const y = getY(d.value);
-                                  // Determine text placement: if near top or high outlier, place above/below safely
+                                  const isOutlier = d.value > uclVal || d.value < lclVal || d.isOutlier;
                                   const isHigh = y < 35;
                                   const textY = isHigh ? y - 9 : y - 8;
                                   return (
@@ -2391,19 +3230,19 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                                       <circle
                                         cx={x}
                                         cy={y}
-                                        r={d.isOutlier ? 6 : 4}
-                                        fill={d.isOutlier ? '#e11d48' : '#2563eb'}
+                                        r={isOutlier ? 6 : 4}
+                                        fill={isOutlier ? '#e11d48' : '#2563eb'}
                                         stroke="#ffffff"
                                         strokeWidth="2"
-                                        className={d.isOutlier ? 'animate-pulse' : ''}
+                                        className={isOutlier ? 'animate-pulse' : ''}
                                       />
                                       {/* Value Label Box for Outliers */}
-                                      {d.isOutlier ? (
+                                      {isOutlier ? (
                                         <g>
                                           <rect
-                                            x={x - 22}
+                                            x={x - 24}
                                             y={textY - 10}
-                                            width="44"
+                                            width="48"
                                             height="14"
                                             rx="4"
                                             fill="#e11d48"
@@ -2441,137 +3280,62 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                         </svg>
                       </div>
 
-                      {/* Dynamic X Axis Date Labels matching exact data points */}
+                      {/* Dynamic X Axis Batch / Date Labels */}
                       <div className="flex justify-between text-[10px] font-mono text-slate-500 px-6 border-t border-slate-200 dark:border-slate-800 pt-1">
-                        {data.map((d, idx) => (
-                          <span
-                            key={d.batch + idx}
-                            className={
-                              d.isOutlier
-                                ? 'text-rose-600 font-bold'
-                                : idx === data.length - 1
-                                ? 'text-emerald-600 font-bold'
-                                : ''
-                            }
-                          >
-                            {d.date}
-                          </span>
-                        ))}
+                        {data.map((d, idx) => {
+                          const isOutlier = d.value > uclVal || d.value < lclVal || d.isOutlier;
+                          return (
+                            <span
+                              key={d.batch + idx}
+                              className={
+                                isOutlier
+                                  ? 'text-rose-600 font-bold'
+                                  : idx === data.length - 1
+                                  ? 'text-emerald-600 font-bold'
+                                  : ''
+                              }
+                            >
+                              {d.date}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    {/* Capability Metrics Cpk */}
+                    {/* Capability Metrics Cp / Cpk */}
                     <div className="grid grid-cols-3 gap-2 text-center text-xs">
                       <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                         <span className="text-slate-500 font-bold text-[10px]">공정능력지수 Cp</span>
-                        <p className="text-base font-black text-slate-900 dark:text-white mt-0.5">{spcSummary.cp}</p>
+                        <p className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                          {metricConfig.cp}
+                        </p>
                       </div>
                       <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
                         <span className="text-emerald-700 dark:text-emerald-400 font-bold text-[10px]">
                           편향계수 고려 Cpk
                         </span>
                         <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                          {spcSummary.cpk}
+                          {metricConfig.cpk}
                         </p>
                       </div>
                       <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
                         <span className="text-blue-700 dark:text-blue-400 font-bold text-[10px]">
                           이상점 검출(Run rule)
                         </span>
-                        <p className={`text-base font-black ${spcSummary.outlierColor} mt-0.5`}>
-                          {spcSummary.outliers}
+                        <p
+                          className={`text-base font-black ${
+                            outlierCount > 0
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          } mt-0.5`}
+                        >
+                          {outlierCount > 0 ? `${outlierCount}건 감지 (NG 판정)` : '0건 (정상 관리 상태)'}
                         </p>
                       </div>
                     </div>
                   </>
                 );
               })()}
-            </div>
-          </div>
-
-          {/* Bottom Row: Machine Precision Comparison & TOP 5 Defect Causes */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* Machine Precision Comparison (6 Cols) */}
-            <div className="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
-                    <Cpu className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                      가공 설비별 CMM 정밀도 & 공정능력(Cpk) 비교
-                    </h3>
-                    <p className="text-[11px] text-slate-500">MCT 및 3M 연마기별 정밀도 순위</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {MACHINE_PRECISION_LIST.map((m) => (
-                  <div
-                    key={m.machine}
-                    className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <h4 className="font-black text-slate-800 dark:text-slate-200">{m.machine}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        평균 가공 편차: <strong className="text-blue-600">{m.avgDeviation}</strong> | 누적 측정 {m.count}회
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-xs font-mono font-black px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
-                        Cpk {m.cpk}
-                      </span>
-                      <p className="text-[10px] text-slate-500 font-bold mt-1">
-                        합격률 {m.passRate}%
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* TOP 5 Defect Causes (6 Cols) */}
-            <div className="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
-                    <AlertTriangle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                      주요 불량 원인 TOP 5 통계 및 방지 대책
-                    </h3>
-                    <p className="text-[11px] text-slate-500">현장 발생 빈도순 예방 조치 매뉴얼</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {TOP_DEFECT_CAUSES.map((c) => (
-                  <div
-                    key={c.rank}
-                    className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px]">
-                          {c.rank}
-                        </span>
-                        <span>{c.cause}</span>
-                      </span>
-                      <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-                        {c.count}건 ({c.percent}%)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium pl-5.5">
-                      ↳ 조치: {c.action}
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
@@ -2689,7 +3453,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                                   e.stopPropagation();
                                   handleToggleArchiveShipping(p.id);
                                 }}
-                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                                className="p-1 rounded-md text-[#B45309] dark:text-amber-300 bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs transition cursor-pointer"
                               >
                                 {p.isArchived ? (
                                   <ArchiveRestore className="w-3.5 h-3.5 text-blue-600" />
@@ -3299,10 +4063,21 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
                     수입검사 (IQC) - 원소재(STS630 / SUS420J2) 및 외주 가공품 입고 검사대장
                   </h3>
-                  <span className="text-sm font-black font-sans px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap shadow-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    전수 합격 ({iqcLots.filter((l) => l.inspectionResult === 'PASS').length}/{iqcLots.length} PASS)
-                  </span>
+                  {(() => {
+                    const passCount = iqcLots.filter((l) => calculateIqcOverallResult(l) === 'PASS').length;
+                    const failCount = iqcLots.length - passCount;
+                    return failCount === 0 ? (
+                      <span className="text-sm font-black font-sans px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap shadow-xs">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        전수 합격 ({passCount}/{iqcLots.length} PASS)
+                      </span>
+                    ) : (
+                      <span className="text-sm font-black font-sans px-3 py-1 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap shadow-xs">
+                        <AlertTriangle className="w-4 h-4 text-rose-600" />
+                        부적합 검출 ({passCount}/{iqcLots.length} 합격, {failCount}건 NG)
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   밀시트(Mill Sheet) 화학 성분 분석, 초음파 비파괴 탐상(UT), 열처리 경도(HRC), 모재 표면 결함 및 치수 검증
@@ -3337,11 +4112,11 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                 onClick={() => setIqcFilterArchive('ARCHIVED')}
                 className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   iqcFilterArchive === 'ARCHIVED'
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs'
+                    : 'text-slate-500 hover:text-[#B45309] dark:hover:text-amber-300'
                 }`}
               >
-                <Archive className="w-3.5 h-3.5" />
+                <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
                 <span>IQC 보관함 ({archivedIqcCount})</span>
               </button>
             </div>
@@ -3360,7 +4135,9 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {filteredIqcLots.map((lot) => (
+              {filteredIqcLots.map((lot) => {
+                const overallResult = calculateIqcOverallResult(lot);
+                return (
                 <div
                   key={lot.id}
                   id={`card-iqc-lot-${lot.id}`}
@@ -3374,12 +4151,18 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                     {/* Top Row: Supplier name + Result badge & Archive toggle */}
                     <div className="flex justify-between items-center text-xs font-bold">
                       <span className="text-slate-700 dark:text-slate-200 flex items-center gap-1.5 font-bold">
-                        <span className={`w-2.5 h-2.5 rounded-full ${lot.inspectionResult === 'PASS' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span className={`w-2.5 h-2.5 rounded-full ${overallResult === 'PASS' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
                         <span>{lot.supplier}</span>
                       </span>
                       <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
-                          {lot.inspectionResult}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            overallResult === 'PASS'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300'
+                          }`}
+                        >
+                          {overallResult}
                         </span>
                         {/* Archive Toggle */}
                         <button
@@ -3392,7 +4175,7 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                             );
                             showToast('info', lot.isArchived ? '입고 LOT가 복원되었습니다.' : '입고 LOT가 보관함으로 이동되었습니다.');
                           }}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                          className="p-1 rounded-md text-[#B45309] dark:text-amber-300 bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs transition cursor-pointer"
                         >
                           {lot.isArchived ? (
                             <ArchiveRestore className="w-3.5 h-3.5 text-blue-600" />
@@ -3461,7 +4244,8 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
         </div>

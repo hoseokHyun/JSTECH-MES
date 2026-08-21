@@ -1,12 +1,33 @@
 import React from 'react';
 import { CertHeader } from './CertHeader';
 import { ProductSpecRecipe } from '../SlotDieCertificateView';
+import { Camera } from 'lucide-react';
 
 interface CertPage4Props {
   recipe: ProductSpecRecipe;
+  capturedSnapshot?: string;
+  pageNo?: number;
+  totalPages?: number;
+  isEditMode?: boolean;
+  onOpen3DModal?: () => void;
+  onUpdateRecipe?: (recipe: ProductSpecRecipe) => void;
 }
 
-export const CertPage4: React.FC<CertPage4Props> = ({ recipe }) => {
+export const CertPage4: React.FC<CertPage4Props> = ({
+  recipe,
+  capturedSnapshot,
+  pageNo = 4,
+  totalPages = 8,
+  isEditMode = false,
+  onOpen3DModal,
+  onUpdateRecipe
+}) => {
+  const handleRoughnessChange = (field: 'frontRoughnessActual' | 'rearRoughnessActual', val: string) => {
+    if (!onUpdateRecipe) return;
+    const num = parseFloat(val) || 0;
+    onUpdateRecipe({ ...recipe, [field]: num });
+  };
+
   return (
     <div className="a4-page bg-white text-slate-950 w-[794px] min-h-[1123px] mx-auto p-[28px] flex flex-col justify-between box-border border border-slate-300 print:border-none print:shadow-none shadow-xl print:m-0 print:p-[24px]">
       <div className="space-y-3">
@@ -19,53 +40,75 @@ export const CertPage4: React.FC<CertPage4Props> = ({ recipe }) => {
           inspector={recipe.inspector}
           approver={recipe.approver}
           isPassed={true}
+          pageNo={pageNo}
+          totalPages={totalPages}
         />
 
-        {/* Measurement Point Diagram */}
+        {/* Measurement Point Diagram & 3D Snapshot */}
         <div className="border-[1.5px] border-slate-950">
-          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-1 px-3 text-center border-b-[1.5px] border-slate-950">
-            표면조도 측정 데이터_Measurement Point
+          <div className="bg-[#D9F2E6] text-slate-950 text-[11px] font-black py-1 px-3 flex items-center justify-between border-b-[1.5px] border-slate-950">
+            <span>표면조도 측정 데이터_Measurement Point (Lip Mirror Finish)</span>
+            {onOpen3DModal && (
+              <button
+                type="button"
+                onClick={onOpen3DModal}
+                className="print:hidden text-[10px] bg-white text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-300 hover:bg-blue-50 flex items-center gap-1 cursor-pointer"
+              >
+                <Camera className="w-3 h-3" />
+                <span>3D 조도 시점 변경</span>
+              </button>
+            )}
           </div>
           <div className="p-3 bg-white flex items-center justify-around h-[160px]">
-            {/* FRONT Diagram with (a) and (b) points */}
-            <div className="text-center flex-1">
-              <svg viewBox="0 0 280 110" className="w-full h-full max-h-[110px] mx-auto">
-                <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
-                  <polygon points="20,25 250,60 250,85 20,50" />
-                  <polygon points="20,25 250,60 240,55 10,20" fill="#e2e8f0" />
-                  <polygon points="250,60 260,63 260,88 250,85" fill="#cbd5e1" />
-                  {/* Point (a) */}
-                  <circle cx="80" cy="34" r="4" fill="#ef4444" stroke="#b91c1c" />
-                  <text x="80" y="24" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(a)</text>
-                  {/* Point (b) */}
-                  <circle cx="190" cy="51" r="4" fill="#ef4444" stroke="#b91c1c" />
-                  <text x="190" y="41" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(b)</text>
-                </g>
-                <text x="140" y="102" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0f172a">
-                  FRONT PLATE
-                </text>
-              </svg>
-            </div>
+            {capturedSnapshot ? (
+              <img
+                src={capturedSnapshot}
+                alt="3D Roughness View"
+                className="h-[145px] w-auto object-contain mx-auto rounded border border-slate-200"
+              />
+            ) : (
+              <>
+                {/* FRONT Diagram with (a) and (b) points */}
+                <div className="text-center flex-1">
+                  <svg viewBox="0 0 280 110" className="w-full h-full max-h-[110px] mx-auto">
+                    <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
+                      <polygon points="20,25 250,60 250,85 20,50" />
+                      <polygon points="20,25 250,60 240,55 10,20" fill="#e2e8f0" />
+                      <polygon points="250,60 260,63 260,88 250,85" fill="#cbd5e1" />
+                      {/* Point (a) */}
+                      <circle cx="80" cy="34" r="4" fill="#ef4444" stroke="#b91c1c" />
+                      <text x="80" y="24" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(a)</text>
+                      {/* Point (b) */}
+                      <circle cx="190" cy="51" r="4" fill="#ef4444" stroke="#b91c1c" />
+                      <text x="190" y="41" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(b)</text>
+                    </g>
+                    <text x="140" y="102" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0f172a">
+                      FRONT PLATE
+                    </text>
+                  </svg>
+                </div>
 
-            {/* REAR Diagram with (a) and (b) points */}
-            <div className="text-center flex-1">
-              <svg viewBox="0 0 280 110" className="w-full h-full max-h-[110px] mx-auto">
-                <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
-                  <polygon points="20,25 250,60 250,85 20,50" />
-                  <polygon points="20,25 250,60 240,55 10,20" fill="#e2e8f0" />
-                  <polygon points="250,60 260,63 260,88 250,85" fill="#cbd5e1" />
-                  {/* Point (a) */}
-                  <circle cx="80" cy="34" r="4" fill="#ef4444" stroke="#b91c1c" />
-                  <text x="80" y="24" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(a)</text>
-                  {/* Point (b) */}
-                  <circle cx="190" cy="51" r="4" fill="#ef4444" stroke="#b91c1c" />
-                  <text x="190" y="41" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(b)</text>
-                </g>
-                <text x="140" y="102" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0f172a">
-                  REAR PLATE
-                </text>
-              </svg>
-            </div>
+                {/* REAR Diagram with (a) and (b) points */}
+                <div className="text-center flex-1">
+                  <svg viewBox="0 0 280 110" className="w-full h-full max-h-[110px] mx-auto">
+                    <g stroke="#334155" strokeWidth="1.2" fill="#f1f5f9">
+                      <polygon points="20,25 250,60 250,85 20,50" />
+                      <polygon points="20,25 250,60 240,55 10,20" fill="#e2e8f0" />
+                      <polygon points="250,60 260,63 260,88 250,85" fill="#cbd5e1" />
+                      {/* Point (a) */}
+                      <circle cx="80" cy="34" r="4" fill="#ef4444" stroke="#b91c1c" />
+                      <text x="80" y="24" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(a)</text>
+                      {/* Point (b) */}
+                      <circle cx="190" cy="51" r="4" fill="#ef4444" stroke="#b91c1c" />
+                      <text x="190" y="41" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#ef4444">(b)</text>
+                    </g>
+                    <text x="140" y="102" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0f172a">
+                      REAR PLATE
+                    </text>
+                  </svg>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -99,13 +142,37 @@ export const CertPage4: React.FC<CertPage4Props> = ({ recipe }) => {
             <tr className="divide-x-[1.5px] divide-slate-950">
               <td className="py-1.5 font-bold">1</td>
               <td className="font-sans font-bold">(a) Point</td>
-              <td className="font-bold">0.177</td>
+              <td className="font-bold">
+                {isEditMode ? (
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={recipe.frontRoughnessActual}
+                    onChange={(e) => handleRoughnessChange('frontRoughnessActual', e.target.value)}
+                    className="w-16 text-center bg-blue-50 border border-blue-300 rounded font-mono"
+                  />
+                ) : (
+                  recipe.frontRoughnessActual.toFixed(3)
+                )}
+              </td>
               <td className="font-sans">Rmax ≤ 0.2</td>
               <td className="font-sans font-bold text-blue-600">합격</td>
 
               <td className="py-1.5 font-bold">1</td>
               <td className="font-sans font-bold">(a) Point</td>
-              <td className="font-bold">0.170</td>
+              <td className="font-bold">
+                {isEditMode ? (
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={recipe.rearRoughnessActual}
+                    onChange={(e) => handleRoughnessChange('rearRoughnessActual', e.target.value)}
+                    className="w-16 text-center bg-blue-50 border border-blue-300 rounded font-mono"
+                  />
+                ) : (
+                  recipe.rearRoughnessActual.toFixed(3)
+                )}
+              </td>
               <td className="font-sans">Rmax ≤ 0.2</td>
               <td className="font-sans font-bold text-blue-600">합격</td>
             </tr>
@@ -114,13 +181,13 @@ export const CertPage4: React.FC<CertPage4Props> = ({ recipe }) => {
             <tr className="divide-x-[1.5px] divide-slate-950">
               <td className="py-1.5 font-bold">2</td>
               <td className="font-sans font-bold">(b) Point</td>
-              <td className="font-bold">0.163</td>
+              <td className="font-bold">{(recipe.frontRoughnessActual - 0.008).toFixed(3)}</td>
               <td className="font-sans">Rmax ≤ 0.2</td>
               <td className="font-sans font-bold text-blue-600">합격</td>
 
               <td className="py-1.5 font-bold">2</td>
               <td className="font-sans font-bold">(b) Point</td>
-              <td className="font-bold">0.167</td>
+              <td className="font-bold">{(recipe.rearRoughnessActual - 0.003).toFixed(3)}</td>
               <td className="font-sans">Rmax ≤ 0.2</td>
               <td className="font-sans font-bold text-blue-600">합격</td>
             </tr>
@@ -187,7 +254,7 @@ export const CertPage4: React.FC<CertPage4Props> = ({ recipe }) => {
       <div className="pt-2 flex justify-between items-center text-[10.5px] font-mono text-slate-900 border-t border-transparent select-none">
         <div>JS-COA-01</div>
         <div className="font-sans font-bold">JUNSUNG TECH Co., Ltd</div>
-        <div className="w-16 text-right font-bold">Page 3/8</div>
+        <div className="w-24 text-right font-bold">Page {pageNo}/{totalPages}</div>
       </div>
     </div>
   );

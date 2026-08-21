@@ -8,6 +8,8 @@ interface CertHeaderProps {
   inspector: string;
   approver: string;
   isPassed?: boolean;
+  pageNo?: number;
+  totalPages?: number;
 }
 
 export const CertHeader: React.FC<CertHeaderProps> = ({
@@ -17,13 +19,22 @@ export const CertHeader: React.FC<CertHeaderProps> = ({
   inspectionDate,
   inspector,
   approver,
-  isPassed = true
+  isPassed = true,
+  pageNo,
+  totalPages
 }) => {
   return (
     <div className="w-full select-none">
       {/* Top Document Title Bar */}
       <div className="flex justify-between items-end text-[13px] font-sans font-bold text-slate-900 pb-1">
-        <div>JUNSUNG TECH Co., Ltd</div>
+        <div className="flex items-center gap-3">
+          <span>JUNSUNG TECH Co., Ltd</span>
+          {pageNo && totalPages && (
+            <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.2 rounded border border-blue-200">
+              PAGE {pageNo} OF {totalPages}
+            </span>
+          )}
+        </div>
         <div className="font-mono text-[12px] font-normal">
           Document number : <span className="font-bold">{docNo}</span>
         </div>
