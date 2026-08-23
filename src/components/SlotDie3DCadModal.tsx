@@ -38,9 +38,10 @@ interface SlotDie3DCadModalProps {
   targetPlate: 'ASSEMBLY' | 'FRONT' | 'REAR' | 'ALL';
   onCaptureSnapshot: (
     dataUrl: string,
-    targetPageOrPlate: string,
+    targetPageOrPlate?: string,
     batchMap?: Record<string, string>
   ) => void;
+  onBatchCaptureAllPages?: (snapshots: Record<number, string>) => void;
   availablePages?: Array<{ id: string; num: number; name: string; type: string }>;
   currentSnapshots?: Record<string, string>;
 }
@@ -50,6 +51,7 @@ export const SlotDie3DCadModal: React.FC<SlotDie3DCadModalProps> = ({
   onClose,
   targetPlate: initialTargetPlate,
   onCaptureSnapshot,
+  onBatchCaptureAllPages,
   availablePages,
   currentSnapshots
 }) => {
@@ -615,6 +617,14 @@ export const SlotDie3DCadModal: React.FC<SlotDie3DCadModalProps> = ({
     if (grid) grid.visible = true;
 
     // Send batch map to parent
+    if (onBatchCaptureAllPages) {
+      const numMap: Record<number, string> = {};
+      Object.entries(batchSnapshots).forEach(([k, v]) => {
+        const pageNum = parseInt(k.replace('PAGE_', ''), 10);
+        if (!isNaN(pageNum)) numMap[pageNum] = v;
+      });
+      onBatchCaptureAllPages(numMap);
+    }
     onCaptureSnapshot(batchSnapshots['PAGE_1'], 'ALL_AUTO', batchSnapshots);
     setIsCapturing(false);
     showToast('✨ 모든 성적서 페이지에 최적의 3D 도면 방향 시점이 일괄 자동 생성 및 매핑되었습니다!');

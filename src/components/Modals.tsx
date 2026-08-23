@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderStatus, ProductType, User, UserPermissions, ProcessCategory, ProcessStep } from '../types';
+import { Order, OrderStatus, ProductType, User, UserPermissions, UserDepartment, ProcessCategory, ProcessStep } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
 import {
   Archive,
@@ -27,7 +27,12 @@ import {
   Settings,
   CheckSquare,
   Square,
-  Sliders
+  Sliders,
+  Sparkles,
+  Building2,
+  Microscope,
+  FileCheck2,
+  BarChart3
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -161,7 +166,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
         <div className="p-3 border-t border-slate-100 flex justify-end bg-slate-50">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition"
+            className="px-4 py-2 text-xs bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             닫기
           </button>
@@ -192,7 +197,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [signUpPasswordConfirm, setSignUpPasswordConfirm] = useState('');
-  const [signUpRole, setSignUpRole] = useState<'USER' | 'ADMIN'>('USER');
 
   // State
   const [loading, setLoading] = useState(false);
@@ -204,7 +208,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
     e.preventDefault();
     setErrorMsg('');
     if (!email.trim() || !password) {
-      setErrorMsg('이메일과 비밀번호를 모두 입력해주세요.');
+      setErrorMsg('아이디(이메일)와 비밀번호를 모두 입력해주세요.');
       return;
     }
     setLoading(true);
@@ -215,9 +219,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
     } catch (err: any) {
       console.error('Login error:', err);
       if (err.message === 'PENDING_APPROVAL') {
-        setErrorMsg('⏳ 회원가입 승인 대기 중입니다.\n관리자가 승인한 후 로그인하실 수 있습니다.');
+        setErrorMsg('⏳ 회원가입 승인 대기 중입니다.\n관리자가 부서 및 권한을 지정하여 승인한 후 로그인하실 수 있습니다.');
       } else {
-        setErrorMsg('이메일 또는 비밀번호가 올바르지 않습니다.');
+        setErrorMsg('아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
       }
     } finally {
       setLoading(false);
@@ -246,12 +250,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
         signUpEmail.trim(),
         signUpPassword,
         signUpName.trim(),
-        signUpRole
+        'USER'
       );
       if (newUser.isApproved) {
-        alert('🎉 첫 번째 가입자로서 시스템 관리자로 자동 승인되었습니다!\n로그인해 주세요.');
+        alert('🎉 시스템 관리자로 자동 승인되었습니다!\n로그인해 주세요.');
       } else {
-        alert('✅ 회원가입 신청이 성공적으로 완료되었습니다!\n관리자 승인 후 로그인하실 수 있습니다.');
+        alert('✅ 회원가입 신청이 성공적으로 완료되었습니다!\n관리자가 부서 및 권한을 지정하여 승인한 후 로그인하실 수 있습니다.');
       }
       setTab('LOGIN');
       setEmail(signUpEmail.trim());
@@ -268,32 +272,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
     }
   };
 
-  // Quick Demo Admin Login helper
-  const handleQuickDemoLogin = (role: 'ADMIN' | 'USER') => {
-    const demoUser: User = {
-      name: role === 'ADMIN' ? '관리자 (데모)' : '작업자 A1 (데모)',
-      role,
-      email: role === 'ADMIN' ? 'admin@jstech.co.kr' : 'worker1@jstech.co.kr',
-      isApproved: true,
-      loginAt: new Date().toISOString()
-    };
-    onLoginSuccess(demoUser);
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
         {/* Header */}
-        <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
+            <div className="p-1.5 rounded-lg bg-blue-50 text-[#0066FF] border border-blue-200">
               <UserIcon className="w-4 h-4" />
             </div>
-            <h3 className="text-sm font-extrabold text-slate-900">시스템 사용자 로그인 / 회원가입</h3>
+            <h3 className="text-sm font-extrabold text-slate-900">준성테크 스마트 MES 로그인</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -301,16 +292,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
           <button
             onClick={() => { setTab('LOGIN'); setErrorMsg(''); }}
-            className={`flex-1 py-1.5 rounded-lg transition ${
-              tab === 'LOGIN' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${
+              tab === 'LOGIN' ? 'bg-white text-[#0066FF] shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             🔑 로그인 (Sign In)
           </button>
           <button
             onClick={() => { setTab('SIGNUP'); setErrorMsg(''); }}
-            className={`flex-1 py-1.5 rounded-lg transition ${
-              tab === 'SIGNUP' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${
+              tab === 'SIGNUP' ? 'bg-white text-[#0066FF] shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             📝 회원가입 신청 (Sign Up)
@@ -330,14 +321,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
           <form onSubmit={handleLoginSubmit} className="space-y-3 text-xs">
             <div>
               <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5 text-slate-500" /> 이메일 주소
+                <Mail className="w-3.5 h-3.5 text-slate-500" /> 아이디 또는 이메일
               </label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="예: user@jstech.co.kr"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                placeholder="예: admin@jstech.co.kr"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                 required
                 autoFocus
               />
@@ -352,43 +343,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                 required
               />
             </div>
 
             <div className="pt-2 flex justify-between items-center border-t border-slate-100">
               <span className="text-[11px] text-slate-500 font-medium">
-                계정이 없으신가요? <button type="button" onClick={() => setTab('SIGNUP')} className="text-blue-600 font-bold underline">회원가입 신청</button>
+                계정이 없으신가요? <button type="button" onClick={() => setTab('SIGNUP')} className="text-[#0066FF] font-bold underline cursor-pointer">회원가입 신청</button>
               </span>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-extrabold shadow-sm transition disabled:opacity-50"
+                className="px-4 py-2 bg-[#0066FF] hover:bg-[#0052CC] text-white rounded-xl font-extrabold shadow-sm transition disabled:opacity-50 cursor-pointer"
               >
                 {loading ? '인증 중...' : '로그인'}
               </button>
-            </div>
-
-            {/* Quick Demo Login Option */}
-            <div className="mt-3 pt-3 border-t border-slate-200 bg-slate-50 p-2.5 rounded-lg text-center space-y-1.5">
-              <p className="text-[10px] text-slate-500 font-bold">⚡ 테스트용 빠른 원클릭 계정 접속</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin('ADMIN')}
-                  className="flex-1 py-1 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded"
-                >
-                  👑 관리자 접속
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin('USER')}
-                  className="flex-1 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold rounded"
-                >
-                  👷 현장담당자 접속
-                </button>
-              </div>
             </div>
           </form>
         ) : (
@@ -400,8 +370,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                 type="text"
                 value={signUpName}
                 onChange={(e) => setSignUpName(e.target.value)}
-                placeholder="예: 홍길동 (또는 A1~A30)"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                placeholder="예: 홍길동"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                 required
               />
             </div>
@@ -413,7 +383,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                 value={signUpEmail}
                 onChange={(e) => setSignUpEmail(e.target.value)}
                 placeholder="예: hong@jstech.co.kr"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                 required
               />
             </div>
@@ -426,7 +396,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                   value={signUpPassword}
                   onChange={(e) => setSignUpPassword(e.target.value)}
                   placeholder="최소 6자"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                   required
                 />
               </div>
@@ -437,42 +407,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                   value={signUpPasswordConfirm}
                   onChange={(e) => setSignUpPasswordConfirm(e.target.value)}
                   placeholder="비밀번호 재입력"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
                   required
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-amber-500" /> 신청 권한 구분
-              </label>
-              <select
-                value={signUpRole}
-                onChange={(e) => setSignUpRole(e.target.value as 'USER' | 'ADMIN')}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold bg-white focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="USER">현장 담당자 (현장 공정 완료/취소 및 실적 등록 권한)</option>
-                <option value="ADMIN">관리자 (레퍼런스 공정 수정 & 수주 삭제 가능)</option>
-              </select>
-            </div>
-
-            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800 font-medium">
-              💡 회원가입 신청 후 <strong>관리자 승인</strong>을 받으셔야 정식 로그인이 가능합니다.
+            <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-slate-700 font-medium">
+              💡 회원가입 신청 후 관리자가 <strong>[가공팀/연마팀/품질팀/생산 관리/시스템 관리자]</strong> 중 적합한 부서 및 세부 권한을 지정하여 최종 승인합니다.
             </div>
 
             <div className="pt-2 flex justify-between items-center border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setTab('LOGIN')}
-                className="text-slate-600 font-bold hover:underline"
+                className="text-slate-600 font-bold hover:underline cursor-pointer"
               >
                 로그인으로 돌아가기
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-extrabold shadow-sm transition disabled:opacity-50 flex items-center gap-1"
+                className="px-4 py-2 bg-[#0066FF] hover:bg-[#0052CC] text-white rounded-xl font-extrabold shadow-sm transition disabled:opacity-50 flex items-center gap-1 cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>{loading ? '신청 처리 중...' : '회원가입 신청'}</span>
@@ -488,6 +444,98 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
 /* ==================================================================== */
 /* 2-B. Admin User Approval & Permissions Management Modal              */
 /* ==================================================================== */
+const DEPARTMENT_OPTIONS: UserDepartment[] = ['가공팀', '연마팀', '품질팀', '생산 관리', '시스템 관리자'];
+
+const DEPARTMENT_PRESETS: Record<UserDepartment, {
+  role: 'USER' | 'ADMIN';
+  permissions: UserPermissions;
+  label: string;
+  badgeClass: string;
+  desc: string;
+  icon: string;
+}> = {
+  '가공팀': {
+    role: 'USER',
+    label: '가공팀',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
+    desc: 'MCT/가공 MES 공정완료 및 현장작업',
+    icon: '⚙️',
+    permissions: {
+      canEditOrder: false,
+      canExecuteMES: true,
+      canManageUsers: false,
+      canEditMaster: false,
+      canArchive: false,
+      canQualityInspection: false,
+      canShipmentControl: false,
+    }
+  },
+  '연마팀': {
+    role: 'USER',
+    label: '연마팀',
+    badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+    desc: '평면/성형 연마 MES 공정완료 및 현장작업',
+    icon: '✨',
+    permissions: {
+      canEditOrder: false,
+      canExecuteMES: true,
+      canManageUsers: false,
+      canEditMaster: false,
+      canArchive: false,
+      canQualityInspection: false,
+      canShipmentControl: false,
+    }
+  },
+  '품질팀': {
+    role: 'USER',
+    label: '품질팀',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    desc: '수입/공정/출하검사 및 성적서 발행',
+    icon: '🔬',
+    permissions: {
+      canEditOrder: false,
+      canExecuteMES: true,
+      canManageUsers: false,
+      canEditMaster: false,
+      canArchive: false,
+      canQualityInspection: true,
+      canShipmentControl: true,
+    }
+  },
+  '생산 관리': {
+    role: 'USER',
+    label: '생산 관리',
+    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
+    desc: '수주/공정 일정 제어, 스케줄러 편집, 마스터 관리',
+    icon: '📊',
+    permissions: {
+      canEditOrder: true,
+      canExecuteMES: true,
+      canManageUsers: false,
+      canEditMaster: true,
+      canArchive: true,
+      canQualityInspection: true,
+      canShipmentControl: true,
+    }
+  },
+  '시스템 관리자': {
+    role: 'ADMIN',
+    label: '시스템 관리자',
+    badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
+    desc: '마스터 총괄, 회원 승인/삭제, 7종 전 기능 권한',
+    icon: '👑',
+    permissions: {
+      canEditOrder: true,
+      canExecuteMES: true,
+      canManageUsers: true,
+      canEditMaster: true,
+      canArchive: true,
+      canQualityInspection: true,
+      canShipmentControl: true,
+    }
+  }
+};
+
 interface UserApprovalModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -500,7 +548,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   currentUser,
 }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [filterTab, setFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'ADMIN'>('ALL');
+  const [filterTab, setFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | UserDepartment>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -515,87 +563,92 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
 
   const pendingUsers = users.filter((u) => !u.isApproved);
   const approvedUsers = users.filter((u) => u.isApproved);
-  const adminUsers = users.filter((u) => u.role === 'ADMIN');
 
   // Filter users list based on tab and search
   const filteredUsers = users.filter((u) => {
-    const matchesTab =
-      filterTab === 'ALL'
-        ? true
-        : filterTab === 'PENDING'
-        ? !u.isApproved
-        : filterTab === 'APPROVED'
-        ? u.isApproved
-        : u.role === 'ADMIN';
+    let matchesTab = true;
+    if (filterTab === 'PENDING') {
+      matchesTab = !u.isApproved;
+    } else if (filterTab === 'APPROVED') {
+      matchesTab = Boolean(u.isApproved);
+    } else if (filterTab !== 'ALL') {
+      matchesTab = u.department === filterTab;
+    }
 
     const query = searchQuery.trim().toLowerCase();
     const matchesSearch =
       !query ||
       u.name.toLowerCase().includes(query) ||
-      (u.email && u.email.toLowerCase().includes(query));
+      (u.email && u.email.toLowerCase().includes(query)) ||
+      (u.department && u.department.toLowerCase().includes(query));
 
     return matchesTab && matchesSearch;
   });
 
-  const updateLocalPermissions = (uidOrEmail: string, newPerms: UserPermissions, newRole?: 'USER' | 'ADMIN') => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if ((u.uid && u.uid === uidOrEmail) || u.email === uidOrEmail) {
-          return {
-            ...u,
-            role: newRole || u.role,
-            permissions: newPerms,
-          };
-        }
-        return u;
-      })
-    );
-  };
-
   const getUserPermissions = (u: User): UserPermissions => {
-    const isAdmin = u.role === 'ADMIN';
+    const isAdmin = u.role === 'ADMIN' || u.department === '시스템 관리자';
     return {
       canEditOrder: u.permissions?.canEditOrder ?? isAdmin,
       canExecuteMES: u.permissions?.canExecuteMES ?? true,
       canManageUsers: u.permissions?.canManageUsers ?? isAdmin,
       canEditMaster: u.permissions?.canEditMaster ?? isAdmin,
       canArchive: u.permissions?.canArchive ?? isAdmin,
+      canQualityInspection: u.permissions?.canQualityInspection ?? (isAdmin || u.department === '품질팀' || u.department === '생산 관리'),
+      canShipmentControl: u.permissions?.canShipmentControl ?? (isAdmin || u.department === '품질팀' || u.department === '생산 관리'),
     };
+  };
+
+  const updateLocalUser = (uidOrEmail: string, patch: Partial<User>) => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if ((u.uid && u.uid === uidOrEmail) || u.email === uidOrEmail) {
+          return { ...u, ...patch };
+        }
+        return u;
+      })
+    );
   };
 
   const handleToggleApproval = async (user: User) => {
     const targetId = user.uid || user.email;
     if (!targetId) return;
     const nextApproved = !user.isApproved;
-    setUsers((prev) =>
-      prev.map((u) => ((u.uid || u.email) === targetId ? { ...u, isApproved: nextApproved } : u))
-    );
-    if (user.uid) await updateUserApprovalStatus(user.uid, nextApproved);
+    
+    // If approving for first time without department, default to '가공팀'
+    const dept = user.department || '가공팀';
+    const perms = getUserPermissions(user);
+
+    updateLocalUser(targetId, { isApproved: nextApproved, department: dept });
+    if (user.uid) {
+      await updateUserApprovalStatus(user.uid, nextApproved, dept, perms);
+    }
   };
 
-  const handleRoleSelect = async (user: User, newRole: 'USER' | 'ADMIN') => {
+  const handleDepartmentChange = async (user: User, newDept: UserDepartment) => {
     const targetId = user.uid || user.email;
     if (!targetId) return;
-    let newPerms = getUserPermissions(user);
-    if (newRole === 'ADMIN') {
-      newPerms = {
-        canEditOrder: true,
-        canExecuteMES: true,
-        canManageUsers: true,
-        canEditMaster: true,
-        canArchive: true,
-      };
-    } else {
-      newPerms = {
-        canEditOrder: false,
-        canExecuteMES: true,
-        canManageUsers: false,
-        canEditMaster: false,
-        canArchive: false,
-      };
+
+    const preset = DEPARTMENT_PRESETS[newDept];
+    if (!preset) return;
+
+    updateLocalUser(targetId, {
+      department: newDept,
+      role: preset.role,
+      permissions: preset.permissions,
+    });
+
+    if (user.uid) {
+      await updateUserPermissionsInFirestore(
+        user.uid,
+        preset.permissions,
+        preset.role,
+        newDept
+      );
     }
-    updateLocalPermissions(targetId, newPerms, newRole);
-    if (user.uid) await updateUserPermissionsInFirestore(user.uid, newPerms, newRole);
+  };
+
+  const handleApplyPreset = async (user: User, deptPreset: UserDepartment) => {
+    await handleDepartmentChange(user, deptPreset);
   };
 
   const handlePermissionToggle = async (user: User, permKey: keyof UserPermissions) => {
@@ -606,51 +659,15 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
       ...currentPerms,
       [permKey]: !currentPerms[permKey],
     };
-    updateLocalPermissions(targetId, updatedPerms);
-    if (user.uid) await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role);
-  };
-
-  const handleSetOperatorOnly = async (user: User) => {
-    const targetId = user.uid || user.email;
-    if (!targetId) return;
-    const operatorPerms: UserPermissions = {
-      canEditOrder: false,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: false,
-      canArchive: false,
-    };
-    updateLocalPermissions(targetId, operatorPerms, 'USER');
-    if (user.uid) await updateUserPermissionsInFirestore(user.uid, operatorPerms, 'USER');
-  };
-
-  const handleGrantAll = async (user: User) => {
-    const targetId = user.uid || user.email;
-    if (!targetId) return;
-    const allPerms: UserPermissions = {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: true,
-      canEditMaster: true,
-      canArchive: true,
-    };
-    updateLocalPermissions(targetId, allPerms);
-    if (user.uid) await updateUserPermissionsInFirestore(user.uid, allPerms, user.role);
-  };
-
-  const handleResetDefaults = async (user: User) => {
-    const targetId = user.uid || user.email;
-    if (!targetId) return;
-    const isAdmin = user.role === 'ADMIN';
-    const defaultPerms: UserPermissions = {
-      canEditOrder: isAdmin,
-      canExecuteMES: true,
-      canManageUsers: isAdmin,
-      canEditMaster: isAdmin,
-      canArchive: isAdmin,
-    };
-    updateLocalPermissions(targetId, defaultPerms);
-    if (user.uid) await updateUserPermissionsInFirestore(user.uid, defaultPerms, user.role);
+    updateLocalUser(targetId, { permissions: updatedPerms });
+    if (user.uid) {
+      await updateUserPermissionsInFirestore(
+        user.uid,
+        updatedPerms,
+        user.role,
+        user.department
+      );
+    }
   };
 
   const handleDeleteUser = async (user: User) => {
@@ -662,24 +679,24 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl p-5 space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl p-5 space-y-4 max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 shadow-xs">
-              <ShieldCheck className="w-6 h-6 text-amber-600" />
+            <div className="p-2.5 rounded-xl bg-blue-50 text-[#0066FF] border border-blue-200 shadow-xs">
+              <ShieldCheck className="w-6 h-6 text-[#0066FF]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
-                  회원가입 승인 & 사용자 세부 권한 관리
+                <h3 className="text-base sm:text-lg font-black text-slate-900">
+                  회원가입 승인 & 부서별 권한 관리 시스템
                 </h3>
-                <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-bold">
-                  대표/관리자 전용 RBAC
+                <span className="text-[10px] bg-blue-100 text-[#0066FF] border border-blue-200 px-2.5 py-0.5 rounded-full font-extrabold">
+                  관리자 전용 RBAC
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                신규 가입 사용자의 승인 처리 및 관리자/담당자 역할 지정, 세부 기능 접근 권한을 체크박스로 부여/취소합니다.
+                신규 가입 사용자의 부서(가공팀, 연마팀, 품질팀, 생산 관리, 시스템 관리자)를 지정하고 One-Click 프리셋 및 세부 권한을 즉시 동기화합니다.
               </p>
             </div>
           </div>
@@ -691,58 +708,48 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
           </button>
         </div>
 
-        {/* Representative Admin Notice Banner */}
-        <div className="bg-gradient-to-r from-amber-50/90 to-blue-50/90 border border-amber-200/80 rounded-xl p-3 text-xs text-slate-700 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-base shrink-0">💡</span>
-            <div>
-              <span className="font-extrabold text-amber-900">대표 관리자 권한 안내: </span>
-              <span className="text-slate-700">
-                대표관리자 계정은 1개로 단일화되어 유지되며, 신규 가입 사용자를 [👑 관리자] 또는 [👷 일반사원]으로 지정 후 세부 권한을 제어할 수 있습니다.
-              </span>
-            </div>
-          </div>
-          {currentUser && (
-            <div className="text-[11px] font-bold bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-800 shrink-0 flex items-center gap-1 shadow-2xs">
-              <UserIcon className="w-3.5 h-3.5 text-blue-600" />
-              <span>접근 계정: {currentUser.name} ({currentUser.role === 'ADMIN' ? '대표/관리자' : '일반사원'})</span>
-            </div>
-          )}
-        </div>
-
-        {/* Operator Approval Quick Guide Box */}
-        <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 text-xs text-slate-800 flex items-start gap-2.5 shrink-0">
-          <div className="p-1 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 font-extrabold text-xs">
-            💡 담당자 승인 안내
-          </div>
-          <div className="space-y-1">
-            <p className="font-extrabold text-emerald-950">
-              현장 작업자(담당자) 승인 시 하단의 <span className="bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black">[👷 현장담당자 (MES전용)]</span> 원클릭 버튼을 누르시면 됩니다!
-            </p>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              • <strong className="text-emerald-800">[MES 공정완료]</strong> 체크박스만 켜지며, 작업자가 현장 터미널 및 타임라인에서 자기 공정을 완료/취소할 수 있습니다.<br />
-              • 수주/공정 스펙을 수정하거나 공정을 추가해야 하는 관리자/설계 담당자는 <strong className="text-blue-800">[수주/공정 편집]</strong>을 추가 체크해주세요.
-            </p>
-          </div>
+        {/* 5-Department Quick Info Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 shrink-0">
+          {DEPARTMENT_OPTIONS.map((dept) => {
+            const p = DEPARTMENT_PRESETS[dept];
+            return (
+              <div
+                key={dept}
+                className="bg-slate-50 border border-slate-200/90 rounded-xl p-2.5 space-y-1 hover:border-blue-300 transition"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 flex items-center gap-1">
+                    <span>{p.icon}</span> {dept}
+                  </span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-black border ${p.badgeClass}`}>
+                    {p.role === 'ADMIN' ? '관리자' : '담당자'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 line-clamp-2 leading-tight">
+                  {p.desc}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
         {/* Filter Controls & Stats Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
           {/* Tab Filter Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               onClick={() => setFilterTab('ALL')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
                 filterTab === 'ALL'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              전체 사용자 ({users.length})
+              전체 ({users.length})
             </button>
             <button
               onClick={() => setFilterTab('PENDING')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
                 filterTab === 'PENDING'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-amber-800 hover:bg-amber-100/60'
@@ -752,7 +759,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
             </button>
             <button
               onClick={() => setFilterTab('APPROVED')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
                 filterTab === 'APPROVED'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-emerald-800 hover:bg-emerald-100/60'
@@ -760,16 +767,19 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
             >
               ✅ 승인 완료 ({approvedUsers.length})
             </button>
-            <button
-              onClick={() => setFilterTab('ADMIN')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
-                filterTab === 'ADMIN'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-indigo-800 hover:bg-indigo-100/60'
-              }`}
-            >
-              👑 관리자 ({adminUsers.length})
-            </button>
+            {DEPARTMENT_OPTIONS.map((d) => (
+              <button
+                key={d}
+                onClick={() => setFilterTab(d)}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer text-[11px] ${
+                  filterTab === d
+                    ? 'bg-[#0066FF] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
           </div>
 
           {/* Search Input */}
@@ -778,13 +788,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="성명 또는 이메일 검색..."
-              className="w-full text-xs px-3 py-1.5 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              placeholder="성명, 이메일, 부서 검색..."
+              className="w-full text-xs px-3 py-1.5 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -794,13 +804,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
 
         {/* User List & Permission Matrix Table */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl flex-1 overflow-y-auto">
-          <table className="w-full text-left text-xs min-w-[850px]">
-            <thead className="bg-slate-100/90 text-slate-700 font-extrabold sticky top-0 border-b border-slate-200 z-10">
+          <table className="w-full text-left text-xs min-w-[950px]">
+            <thead className="bg-slate-100/90 text-slate-700 font-black sticky top-0 border-b border-slate-200 z-10">
               <tr>
                 <th className="p-3 w-44">성명 / 이메일</th>
-                <th className="p-3 w-32 text-center">직책 (역할)</th>
-                <th className="p-3 text-center min-w-[340px]">
-                  <span>세부 기능 권한 (체크박스 클릭으로 부여/취소)</span>
+                <th className="p-3 w-36 text-center">직책 (부서/역할)</th>
+                <th className="p-3 text-center min-w-[420px]">
+                  <span>세부 기능 권한 & 원클릭 프리셋</span>
                 </th>
                 <th className="p-3 w-28 text-center">승인 상태</th>
                 <th className="p-3 w-32 text-center">관리 액션</th>
@@ -819,12 +829,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                   const isSuperAdmin =
                     u.email === 'noworriesmate01@gmail.com' || u.name.includes('대표');
                   const isCurrent = currentUser?.email && u.email && currentUser.email === u.email;
+                  const currentDept = (u.department as UserDepartment) || '가공팀';
 
                   return (
                     <tr
                       key={u.uid || u.email}
                       className={`hover:bg-slate-50 transition ${
-                        !u.isApproved ? 'bg-amber-50/30' : ''
+                        !u.isApproved ? 'bg-amber-50/40' : ''
                       }`}
                     >
                       {/* Name & Email */}
@@ -833,7 +844,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                           <span className="font-extrabold text-slate-900 text-sm">{u.name}</span>
                           {isSuperAdmin && (
                             <span className="text-[10px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded font-black">
-                              👑 대표관리자
+                              👑 대표
                             </span>
                           )}
                           {isCurrent && (
@@ -850,34 +861,39 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                         </div>
                       </td>
 
-                      {/* Role Selection */}
+                      {/* Department / Role Dropdown Selection */}
                       <td className="p-3 text-center">
                         <select
-                          value={u.role}
-                          onChange={(e) => handleRoleSelect(u, e.target.value as 'USER' | 'ADMIN')}
-                          className={`text-xs px-2.5 py-1.5 rounded-lg font-black border focus:ring-2 focus:ring-amber-500 cursor-pointer ${
-                            u.role === 'ADMIN'
-                              ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                              : 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200'
-                          }`}
+                          value={currentDept}
+                          onChange={(e) => handleDepartmentChange(u, e.target.value as UserDepartment)}
+                          className="w-full text-xs px-2.5 py-1.5 rounded-xl font-black border border-slate-300 bg-white hover:border-[#0066FF] focus:ring-2 focus:ring-[#0066FF] cursor-pointer shadow-2xs"
                         >
-                          <option value="ADMIN">👑 관리자</option>
-                          <option value="USER">👷 담당자 (일반사원)</option>
+                          {DEPARTMENT_OPTIONS.map((dept) => (
+                            <option key={dept} value={dept}>
+                              {DEPARTMENT_PRESETS[dept].icon} {dept}
+                            </option>
+                          ))}
                         </select>
+                        <div className="mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${DEPARTMENT_PRESETS[currentDept]?.badgeClass || 'bg-slate-100 text-slate-700'}`}>
+                            {u.role === 'ADMIN' ? '👑 관리자' : '👷 담당자'}
+                          </span>
+                        </div>
                       </td>
 
-                      {/* Granular Permissions Checkboxes */}
+                      {/* Granular Permissions Checkboxes & Presets */}
                       <td className="p-3">
-                        <div className="space-y-1.5">
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
-                            {/* Checkbox 1: Order Edit */}
+                        <div className="space-y-2">
+                          {/* 7 Checkboxes Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                            {/* 1. canEditOrder */}
                             <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded border transition cursor-pointer select-none ${
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
                                 perms.canEditOrder
                                   ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold'
                                   : 'bg-slate-50 border-slate-200 text-slate-400'
                               }`}
-                              title="수주 등록 및 공정 스펙/라우팅 편집 권한"
+                              title="수주 등록 및 공정 스펙/스케줄러 편집 권한"
                             >
                               <input
                                 type="checkbox"
@@ -888,9 +904,9 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                               <span>수주/공정 편집</span>
                             </label>
 
-                            {/* Checkbox 2: MES Completion */}
+                            {/* 2. canExecuteMES */}
                             <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded border transition cursor-pointer select-none ${
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
                                 perms.canExecuteMES
                                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
                                   : 'bg-slate-50 border-slate-200 text-slate-400'
@@ -906,9 +922,63 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                               <span>MES 공정완료</span>
                             </label>
 
-                            {/* Checkbox 3: User Approval Management */}
+                            {/* 3. canQualityInspection */}
                             <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded border transition cursor-pointer select-none ${
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
+                                perms.canQualityInspection
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400'
+                              }`}
+                              title="수입/공정/출하검사 및 성적서 발행 권한"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={perms.canQualityInspection}
+                                onChange={() => handlePermissionToggle(u, 'canQualityInspection')}
+                                className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span>품질 검사</span>
+                            </label>
+
+                            {/* 4. canShipmentControl */}
+                            <label
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
+                                perms.canShipmentControl
+                                  ? 'bg-teal-50 border-teal-300 text-teal-900 font-bold'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400'
+                              }`}
+                              title="출하 검사 및 출하 승인 권한"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={perms.canShipmentControl}
+                                onChange={() => handlePermissionToggle(u, 'canShipmentControl')}
+                                className="w-3.5 h-3.5 text-teal-600 rounded focus:ring-teal-500 cursor-pointer"
+                              />
+                              <span>출하 관리</span>
+                            </label>
+
+                            {/* 5. canEditMaster */}
+                            <label
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
+                                perms.canEditMaster
+                                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400'
+                              }`}
+                              title="BOP 표준 공정, 설비 및 마스터 데이터 관리"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={perms.canEditMaster}
+                                onChange={() => handlePermissionToggle(u, 'canEditMaster')}
+                                className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <span>마스터 관리</span>
+                            </label>
+
+                            {/* 6. canManageUsers */}
+                            <label
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
                                 perms.canManageUsers
                                   ? 'bg-amber-50 border-amber-300 text-amber-900 font-bold'
                                   : 'bg-slate-50 border-slate-200 text-slate-400'
@@ -924,27 +994,9 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                               <span>회원/권한 승인</span>
                             </label>
 
-                            {/* Checkbox 4: Master Data Edit */}
+                            {/* 7. canArchive */}
                             <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded border transition cursor-pointer select-none ${
-                                perms.canEditMaster
-                                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="BOP 표준 공정, 설비 및 담당자 마스터 관리 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canEditMaster}
-                                onChange={() => handlePermissionToggle(u, 'canEditMaster')}
-                                className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span>마스터 관리</span>
-                            </label>
-
-                            {/* Checkbox 5: Archive & Delete */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded border transition cursor-pointer select-none ${
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none col-span-2 ${
                                 perms.canArchive
                                   ? 'bg-purple-50 border-purple-300 text-purple-900 font-bold'
                                   : 'bg-slate-50 border-slate-200 text-slate-400'
@@ -959,47 +1011,31 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                               />
                               <span>보관함/수주삭제</span>
                             </label>
+                          </div>
 
-                            {/* Quick Presets Bar */}
-                            <div className="col-span-2 sm:col-span-3 flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-100">
-                              <span className="text-[10px] font-extrabold text-slate-500">원클릭 설정:</span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleSetOperatorOnly(u);
-                                }}
-                                className="text-[11px] font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="현장 작업자 표준 권한: MES 공정완료 체크박스만 선택합니다"
-                              >
-                                <span>👷 현장담당자 (MES전용)</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleGrantAll(u);
-                                }}
-                                className="text-[11px] font-extrabold bg-blue-100 hover:bg-blue-200 text-blue-900 px-2 py-0.5 rounded-md border border-blue-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="5가지 모든 권한 체크박스를 한번에 부여합니다"
-                              >
-                                <span>👑 전체 부여</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleResetDefaults(u);
-                                }}
-                                className="text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="기본 역할 권한으로 초기화합니다"
-                              >
-                                <span>🔄 초기화</span>
-                              </button>
-                            </div>
+                          {/* Quick 5-Department Preset Buttons */}
+                          <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-slate-100">
+                            <span className="text-[10px] font-black text-slate-500">원클릭 프리셋:</span>
+                            {DEPARTMENT_OPTIONS.map((dept) => {
+                              const p = DEPARTMENT_PRESETS[dept];
+                              const isCurrentDept = currentDept === dept;
+                              return (
+                                <button
+                                  key={dept}
+                                  type="button"
+                                  onClick={() => handleApplyPreset(u, dept)}
+                                  className={`text-[10px] font-black px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 shadow-2xs ${
+                                    isCurrentDept
+                                      ? 'bg-blue-600 text-white border-blue-700 ring-1 ring-blue-400'
+                                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}
+                                  title={`${dept} 기본 권한 자동 설정`}
+                                >
+                                  <span>{p.icon}</span>
+                                  <span>{dept}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </td>
@@ -1032,7 +1068,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleToggleApproval(u)}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 border shadow-xs cursor-pointer ${
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 border shadow-xs cursor-pointer ${
                               u.isApproved
                                 ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                                 : 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700'
@@ -1070,11 +1106,11 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
         {/* Footer */}
         <div className="pt-2 border-t border-slate-100 flex justify-between items-center shrink-0">
           <div className="text-[11px] text-slate-500 font-medium">
-            ※ 변경된 직책 및 세부 권한 체크박스는 실시간으로 저장이 완료됩니다.
+            ※ 관리자가 변경한 부서 및 세부 권한은 실시간으로 Firestore DB에 즉시 반영됩니다.
           </div>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm"
+            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm"
           >
             확인 및 닫기
           </button>

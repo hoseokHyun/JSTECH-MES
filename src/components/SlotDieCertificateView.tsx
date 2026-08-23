@@ -397,17 +397,20 @@ export const SlotDieCertificateView: React.FC<SlotDieCertificateViewProps> = () 
       type: 'custom',
       customConfig: {
         id: `cfg-${Date.now()}`,
-        pageNo: newPageNum,
+        type: 'custom',
         title: '검사 성적서_첨부',
         subTitle: '(추가 공정 정밀 검사)',
-        diagramTitle: '추가 검사 포인트 및 3D 모델 형상',
-        tableTitle: '추가 검사 실측 데이터 (㎛ / mm)',
-        tableHeaders: ['No', '검사항목', '측정위치', '기준규격', '실측값', '판정'],
+        inspectionItem: '추가 공정 정밀 검사 (Lip 단차 & 표면조도)',
+        method: 'CMM / 3차원 광학 측정기',
+        standard: '설계 도면 기준 공차 준수 (±0.002mm)',
+        actualResult: '전 항목 규격 만족 (Pass)',
+        judgement: 'PASS',
+        notes: '공정 정밀 검사 완료 및 합격 판정',
         tableRows: [
-          ['1', 'Lip 단차', 'Slot Center', '0.08 ± 0.002 mm', '0.080 mm', '합격'],
-          ['2', '표면조도 (Ra)', 'Lip Edge Point A', 'Ra ≤ 0.02 ㎛', '0.015 ㎛', '합격'],
-          ['3', '진직도 (Straightness)', 'Front Lip', '≤ 2.0 ㎛', '1.4 ㎛', '합격'],
-          ['4', '초음파 세정 후 잔류이물', 'Internal Cavity', 'Zero Defect', '0 ea', '합격']
+          { no: 1, point: 'Slot Center Lip 단차', nominal: '0.080 mm', actual: '0.080 mm', dev: '0.000 mm', result: '합격' },
+          { no: 2, point: 'Lip Edge Point A (Ra)', nominal: '≤ 0.020 ㎛', actual: '0.015 ㎛', dev: '-0.005 ㎛', result: '합격' },
+          { no: 3, point: 'Front Lip 진직도', nominal: '≤ 2.0 ㎛', actual: '1.4 ㎛', dev: '-0.6 ㎛', result: '합격' },
+          { no: 4, point: 'Internal Cavity 이물', nominal: 'Zero Defect', actual: '0 ea', dev: '0', result: '합격' }
         ]
       }
     };

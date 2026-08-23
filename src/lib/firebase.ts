@@ -275,7 +275,8 @@ export async function registerUserAccount(
   email: string,
   pass: string,
   name: string,
-  requestedRole: 'USER' | 'ADMIN'
+  requestedRole: 'USER' | 'ADMIN' = 'USER',
+  department?: string
 ): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   const usersSnap = await getDocs(collection(db, 'users'));
@@ -285,6 +286,7 @@ export async function registerUserAccount(
   // Respect the requestedRole! Only force ADMIN for superAdmin or if ADMIN was explicitly requested on first user
   const finalRole = isSuperAdmin ? 'ADMIN' : requestedRole;
   const finalApproved = isSuperAdmin ? true : (isFirstUser ? true : false);
+  const finalDepartment = isSuperAdmin ? '시스템 관리자' : department;
 
   let uid: string;
   try {
@@ -302,6 +304,7 @@ export async function registerUserAccount(
     password: pass,
     name,
     role: finalRole,
+    department: finalDepartment,
     isApproved: finalApproved,
     createdAt: new Date().toISOString(),
   };
@@ -506,17 +509,31 @@ export function subscribeUsersList(
   );
 }
 
-export async function updateUserApprovalStatus(uid: string, isApproved: boolean) {
+export async function updateUserApprovalStatus(
+  uid: string,
+  isApproved: boolean,
+  department?: string,
+  permissions?: import('../types').UserPermissions
+) {
   try {
-    await setDoc(doc(db, 'users', uid), { isApproved }, { merge: true });
+    const updateData: any = { isApproved };
+    if (department !== undefined) updateData.department = department;
+    if (permissions !== undefined) updateData.permissions = permissions;
+    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
   } catch (err) {
     console.error('Failed to update approval status:', err);
   }
 }
 
-export async function updateUserRoleInFirestore(uid: string, role: 'USER' | 'ADMIN') {
+export async function updateUserRoleInFirestore(
+  uid: string,
+  role: 'USER' | 'ADMIN',
+  department?: string
+) {
   try {
-    await setDoc(doc(db, 'users', uid), { role }, { merge: true });
+    const updateData: any = { role };
+    if (department !== undefined) updateData.department = department;
+    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
   } catch (err) {
     console.error('Failed to update role:', err);
   }
@@ -525,11 +542,15 @@ export async function updateUserRoleInFirestore(uid: string, role: 'USER' | 'ADM
 export async function updateUserPermissionsInFirestore(
   uid: string,
   permissions: import('../types').UserPermissions,
-  role?: 'USER' | 'ADMIN'
+  role?: 'USER' | 'ADMIN',
+  department?: string,
+  isApproved?: boolean
 ) {
   try {
     const updateData: any = { permissions };
-    if (role) updateData.role = role;
+    if (role !== undefined) updateData.role = role;
+    if (department !== undefined) updateData.department = department;
+    if (isApproved !== undefined) updateData.isApproved = isApproved;
     await setDoc(doc(db, 'users', uid), updateData, { merge: true });
   } catch (err) {
     console.error('Failed to update user permissions:', err);

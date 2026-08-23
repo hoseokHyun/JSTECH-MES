@@ -868,6 +868,9 @@ export default function App() {
                 onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
                 onCompleteAllProcesses={handleCompleteAllOrderProcesses}
                 onNavigateToOrderForm={() => setActiveTab('order-form')}
+                onNavigateToOrderMaster={() => setActiveTab('order-master')}
+                onNavigateToEquipment={() => setActiveTab('equipment')}
+                onNavigateToCalendar={() => setActiveTab('calendar')}
                 onUpdateProgress={handleUpdateProgress}
                 approvedOperators={approvedOperators}
                 currentUser={currentUser}

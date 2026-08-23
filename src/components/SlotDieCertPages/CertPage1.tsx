@@ -6,12 +6,16 @@ interface CertPage1Props {
   recipe: ProductSpecRecipe;
   captured3DSnapshot?: string;
   onOpen3DModal: () => void;
+  pageNo?: number;
+  totalPages?: number;
 }
 
 export const CertPage1: React.FC<CertPage1Props> = ({
   recipe,
   captured3DSnapshot,
-  onOpen3DModal
+  onOpen3DModal,
+  pageNo = 1,
+  totalPages = 8
 }) => {
   // 30-Point Trend Line Chart SVG Generator
   const renderTrendChart = (data: number[], color: string = '#0284c7', color2?: string, data2?: number[]) => {
@@ -123,6 +127,8 @@ export const CertPage1: React.FC<CertPage1Props> = ({
           inspector={recipe.inspector}
           approver={recipe.approver}
           isPassed={true}
+          pageNo={pageNo}
+          totalPages={totalPages}
         />
 
         {/* 1. Item Metadata Info Table */}
@@ -507,7 +513,7 @@ export const CertPage1: React.FC<CertPage1Props> = ({
       <div className="pt-2 flex justify-between items-center text-[10.5px] font-mono text-slate-900 border-t border-transparent select-none">
         <div>JS-COA-01</div>
         <div className="font-sans font-bold">JUNSUNG TECH Co., Ltd</div>
-        <div className="w-16 text-right font-bold">Page 1/8</div>
+        <div className="w-24 text-right font-bold">Page {pageNo}/{totalPages}</div>
       </div>
     </div>
   );

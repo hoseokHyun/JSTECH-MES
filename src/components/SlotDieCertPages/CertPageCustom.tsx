@@ -25,25 +25,46 @@ export interface CustomCertPageData {
   snapshot?: string;
 }
 
+export type DynamicCertPageConfig = CustomCertPageData;
+
 interface CertPageCustomProps {
   recipe: ProductSpecRecipe;
-  pageData: CustomCertPageData;
+  pageData?: CustomCertPageData;
+  config?: DynamicCertPageConfig;
   pageNo?: number;
   totalPages?: number;
   isEditMode?: boolean;
+  capturedSnapshot?: string;
   onUpdatePageData?: (data: CustomCertPageData) => void;
   onOpen3DModal?: () => void;
 }
 
 export const CertPageCustom: React.FC<CertPageCustomProps> = ({
   recipe,
-  pageData,
+  pageData: rawPageData,
+  config,
   pageNo = 9,
   totalPages = 9,
   isEditMode = false,
+  capturedSnapshot,
   onUpdatePageData,
   onOpen3DModal
 }) => {
+  const pageData: CustomCertPageData = rawPageData || config || {
+    id: 'default-custom',
+    type: 'custom',
+    title: '검사 성적서_첨부',
+    subTitle: '(추가 공정 검사)',
+    inspectionItem: '추가 정밀 검사',
+    method: 'CMM / 3차원 광학 측정기',
+    standard: '설계 도면 기준 공차 준수',
+    actualResult: '합격 (Pass)',
+    judgement: 'PASS',
+    notes: '전 항목 규격 만족 확인',
+    snapshot: capturedSnapshot
+  };
+
+  const effectiveSnapshot = pageData.snapshot || capturedSnapshot;
   const handleChange = (field: keyof CustomCertPageData, value: any) => {
     if (onUpdatePageData) {
       onUpdatePageData({
@@ -172,9 +193,9 @@ export const CertPageCustom: React.FC<CertPageCustomProps> = ({
             )}
           </div>
           <div className="p-2 bg-slate-50 flex items-center justify-center min-h-[140px] max-h-[170px] overflow-hidden">
-            {pageData.snapshot ? (
+            {effectiveSnapshot ? (
               <img
-                src={pageData.snapshot}
+                src={effectiveSnapshot}
                 alt="Inspection Visual"
                 className="max-h-[160px] w-auto object-contain mx-auto rounded shadow-2xs border border-slate-200 bg-white"
               />
