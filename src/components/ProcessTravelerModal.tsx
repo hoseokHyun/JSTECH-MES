@@ -126,10 +126,11 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
   // Preview & print settings
   const [isEditing, setIsEditing] = useState(false);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(20); // 20 rows per page fits A4 portrait perfectly
+  const [rowsPerPage, setRowsPerPage] = useState<number>(18);
   const [showBlankRows, setShowBlankRows] = useState<boolean>(true);
   const [selectedPageView, setSelectedPageView] = useState<'ALL' | number>('ALL');
   const [savedNotice, setSavedNotice] = useState<string>('');
+  const [isPreparingPrint, setIsPreparingPrint] = useState<boolean>(false);
 
   // Attach body class for print isolation
   useEffect(() => {
@@ -157,8 +158,73 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     setApproverName(order.approverName || '승인자');
   }, [order, defaultCustomer, defaultPoNumber, defaultPartName, defaultPartType, defaultSpec, defaultSerialNo, defaultDueDate, defaultSpecialNotes, currentUser]);
 
+  // Dynamic row sizing & font density based on rowsPerPage
+  const tableDensity = useMemo(() => {
+    if (rowsPerPage <= 15) {
+      return {
+        rowPadding: 'py-2 px-2',
+        fontSize: 'text-xs',
+        headerPadding: 'py-2',
+        stampDateSize: 'text-[11px]',
+        metaPadding: 'py-2',
+        blankHeight: 'h-8',
+      };
+    }
+    if (rowsPerPage <= 18) {
+      return {
+        rowPadding: 'py-1.5 px-2',
+        fontSize: 'text-xs',
+        headerPadding: 'py-1.5',
+        stampDateSize: 'text-[10px]',
+        metaPadding: 'py-1.5',
+        blankHeight: 'h-7',
+      };
+    }
+    if (rowsPerPage <= 20) {
+      return {
+        rowPadding: 'py-1 px-1.5',
+        fontSize: 'text-[11px]',
+        headerPadding: 'py-1',
+        stampDateSize: 'text-[10px]',
+        metaPadding: 'py-1.5',
+        blankHeight: 'h-6',
+      };
+    }
+    if (rowsPerPage <= 22) {
+      return {
+        rowPadding: 'py-0.5 px-1.5',
+        fontSize: 'text-[10px]',
+        headerPadding: 'py-1',
+        stampDateSize: 'text-[9px]',
+        metaPadding: 'py-1',
+        blankHeight: 'h-5.5',
+      };
+    }
+    // 25 rows (High density)
+    return {
+      rowPadding: 'py-0.5 px-1 leading-tight',
+      fontSize: 'text-[10px]',
+      headerPadding: 'py-0.5',
+      stampDateSize: 'text-[9px]',
+      metaPadding: 'py-1',
+      blankHeight: 'h-5',
+    };
+  }, [rowsPerPage]);
+
+  // Robust Async Print Trigger with Forced DOM Reflow
   const handlePrint = () => {
-    window.print();
+    setIsPreparingPrint(true);
+    // Force layout recalculation across document
+    requestAnimationFrame(() => {
+      void document.body.offsetHeight;
+      const modalEl = document.getElementById('process-traveler-modal-container');
+      if (modalEl) void modalEl.offsetHeight;
+
+      setTimeout(() => {
+        setIsPreparingPrint(false);
+        window.print();
+      }, 120);
+    });
   };
 
   const handleSaveMetadata = () => {
@@ -216,10 +282,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
       ];
     }
 
-    const totalPages = Math.ceil(baseProcesses.length / rowsPerPage);
+    const calculatedTotalPages = Math.ceil(baseProcesses.length / rowsPerPage);
     const chunks = [];
 
-    for (let p = 0; p < totalPages; p++) {
+    for (let p = 0; p < calculatedTotalPages; p++) {
       const start = p * rowsPerPage;
       const end = Math.min(start + rowsPerPage, baseProcesses.length);
       const pageProcesses = baseProcesses.slice(start, end).map((proc, idx) => ({
@@ -228,7 +294,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
         originalIndex: start + idx,
       }));
 
-      const isLastPage = p === totalPages - 1;
+      const isLastPage = p === calculatedTotalPages - 1;
       const remainingSlots = rowsPerPage - pageProcesses.length;
       const blankCount = isLastPage && showBlankRows && remainingSlots > 0 ? remainingSlots : 0;
 
@@ -244,6 +310,15 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   }, [baseProcesses, rowsPerPage, showBlankRows]);
 
   const totalPages = pagesData.length;
+
+  // Auto-adjust selected page if rowsPerPage change reduced page count
+  useEffect(() => {
+    if (selectedPageView !== 'ALL' && typeof selectedPageView === 'number') {
+      if (selectedPageView > totalPages) {
+        setSelectedPageView('ALL');
+      }
+    }
+  }, [totalPages, selectedPageView]);
 
   return createPortal(
     <div
@@ -301,11 +376,16 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
+              disabled={isPreparingPrint}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
               title="A4 다중 페이지로 자동 분할되어 일괄 인쇄됩니다."
             >
-              <Printer className="w-4 h-4" />
-              <span>공정 이동표 인쇄 ({totalPages}장 출력)</span>
+              <Printer className={`w-4 h-4 ${isPreparingPrint ? 'animate-spin' : ''}`} />
+              <span>
+                {isPreparingPrint
+                  ? '인쇄 준비 중...'
+                  : `공정 이동표 인쇄 (${totalPages}장 출력)`}
+              </span>
             </button>
 
             <button
@@ -400,7 +480,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
               <div
                 key={`page-container-${pageInfo.pageNumber}`}
                 className={`traveler-page-sheet w-full max-w-[210mm] min-h-[297mm] bg-white text-black p-6 sm:p-8 shadow-xl print:shadow-none print:p-0 print:m-0 border border-slate-300 print:border-none flex flex-col justify-between mb-8 print:mb-0 ${
-                  isHiddenInScreen ? 'hidden print:flex' : 'flex'
+                  isHiddenInScreen ? 'traveler-page-screen-hidden' : ''
                 }`}
                 style={{
                   fontFamily: "'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif",
@@ -503,10 +583,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                       <tbody>
                         {/* Row 1: 고객사 & PO. (PJT) */}
                         <tr>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 w-24 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} w-24 text-xs`}>
                             고 객 사
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-extrabold text-sm w-1/3">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-extrabold text-sm w-1/3`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -519,10 +599,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span>{customer}</span>
                             )}
                           </td>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 w-24 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} w-24 text-xs`}>
                             PO. (PJT)
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-mono font-black text-sm">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-mono font-black text-sm`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -539,10 +619,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
                         {/* Row 2: 품 명 & 품 목 */}
                         <tr>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             품 명
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-extrabold text-sm">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-extrabold text-sm`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -555,10 +635,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span>{partName}</span>
                             )}
                           </td>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             품 목
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-black text-sm">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-black text-sm`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -575,10 +655,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
                         {/* Row 3: 규 격 & 각인번호 */}
                         <tr>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             규 격
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-semibold text-xs">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-semibold text-xs`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -590,10 +670,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span className="font-bold">{spec}</span>
                             )}
                           </td>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             각인번호
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-mono font-bold text-xs">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-mono font-bold text-xs`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -609,10 +689,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
                         {/* Row 4: 납 기 & 수 량 */}
                         <tr>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             납 기
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-mono font-bold text-xs">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-mono font-bold text-xs`}>
                             {isEditing ? (
                               <input
                                 type="date"
@@ -624,10 +704,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span>{dueDate}</span>
                             )}
                           </td>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             수 량
                           </td>
-                          <td className="border border-black text-center py-2 px-3 font-black text-xs">
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-black text-xs`}>
                             {isEditing ? (
                               <input
                                 type="number"
@@ -644,10 +724,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
                         {/* Row 5: 특이사항 */}
                         <tr>
-                          <td className="border border-black bg-slate-100 font-bold text-center py-2.5 text-xs">
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             특이사항
                           </td>
-                          <td colSpan={3} className="border border-black py-2 px-3 text-left font-bold text-xs text-black">
+                          <td colSpan={3} className={`border border-black ${tableDensity.metaPadding} px-3 text-left font-bold text-xs text-black`}>
                             {isEditing ? (
                               <input
                                 type="text"
@@ -672,21 +752,21 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                     <table className="w-full border-collapse border-2 border-black text-xs">
                       <thead>
                         <tr className="bg-slate-100 font-bold text-center text-xs">
-                          <th className="border border-black py-2.5 w-12 text-center">구분</th>
-                          <th className="border border-black py-2.5 w-44 text-center">공정명</th>
-                          <th className="border border-black py-2.5 w-24 text-center">작업자</th>
-                          <th className="border border-black py-2.5 w-36 text-center">설비명</th>
-                          <th className="border border-black py-2.5 w-28 text-center leading-tight">
+                          <th className={`border border-black ${tableDensity.headerPadding} w-12 text-center`}>구분</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-44 text-center`}>공정명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-24 text-center`}>작업자</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-36 text-center`}>설비명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-28 text-center leading-tight`}>
                             <div>작업시작</div>
-                            <div className="text-[11px]">시간 (a)</div>
+                            <div className={tableDensity.stampDateSize}>시간 (a)</div>
                           </th>
-                          <th className="border border-black py-2.5 w-28 text-center leading-tight">
+                          <th className={`border border-black ${tableDensity.headerPadding} w-28 text-center leading-tight`}>
                             <div>작업종료</div>
-                            <div className="text-[11px]">시간 (b)</div>
+                            <div className={tableDensity.stampDateSize}>시간 (b)</div>
                           </th>
-                          <th className="border border-black py-2.5 w-24 text-center leading-tight">
+                          <th className={`border border-black ${tableDensity.headerPadding} w-24 text-center leading-tight`}>
                             <div>작업시간</div>
-                            <div className="text-[11px]">(b-a)</div>
+                            <div className={tableDensity.stampDateSize}>(b-a)</div>
                           </th>
                         </tr>
                       </thead>
@@ -731,27 +811,27 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                           return (
                             <tr key={`proc-${globalIndex}`} className="text-center">
                               {/* 구분 (#) */}
-                              <td className="border border-black py-2 font-bold text-center text-xs">
+                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize}`}>
                                 {globalIndex}
                               </td>
 
                               {/* 공정명 */}
-                              <td className="border border-black py-2 px-2 text-left font-bold text-xs text-black">
+                              <td className={`border border-black ${tableDensity.rowPadding} text-left font-bold ${tableDensity.fontSize} text-black`}>
                                 {proc.name}
                               </td>
 
                               {/* 작업자 */}
-                              <td className="border border-black py-2 px-1 text-center text-xs font-semibold text-slate-900">
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-semibold text-slate-900`}>
                                 {boundWorker}
                               </td>
 
                               {/* 설비명 (담당 설비 매핑) */}
-                              <td className="border border-black py-2 px-2 text-center text-xs font-bold text-slate-900">
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-bold text-slate-900`}>
                                 {boundMachine}
                               </td>
 
                               {/* 작업시작 시간 (a) */}
-                              <td className="border border-black py-1 px-2 text-center text-[10px] text-slate-700 leading-tight">
+                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight`}>
                                 {formattedStart ? (
                                   <div className="font-mono font-bold">
                                     <div>{formattedStart.date}</div>
@@ -769,7 +849,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </td>
 
                               {/* 작업종료 시간 (b) */}
-                              <td className="border border-black py-1 px-2 text-center text-[10px] text-slate-700 leading-tight">
+                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight`}>
                                 {formattedEnd ? (
                                   <div className="font-mono font-bold">
                                     <div>{formattedEnd.date}</div>
@@ -787,7 +867,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </td>
 
                               {/* 작업시간 (b-a) */}
-                              <td className="border border-black py-2 text-center text-xs font-mono font-bold">
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-mono font-bold`}>
                                 {durationDisplay}
                               </td>
                             </tr>
@@ -798,19 +878,19 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                         {Array.from({ length: pageInfo.blankCount }).map((_, bIdx) => {
                           const rowNum = baseProcesses.length + bIdx + 1;
                           return (
-                            <tr key={`blank-${pageInfo.pageNumber}-${bIdx}`} className="text-center h-8">
+                            <tr key={`blank-${pageInfo.pageNumber}-${bIdx}`} className={`text-center ${tableDensity.blankHeight}`}>
                               {/* 구분 */}
-                              <td className="border border-black py-2 font-bold text-center text-xs text-slate-400">
+                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize} text-slate-400`}>
                                 {rowNum}
                               </td>
                               {/* 공정명 */}
-                              <td className="border border-black py-2 px-2 text-left text-xs"></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} text-left ${tableDensity.fontSize}`}></td>
                               {/* 작업자 */}
-                              <td className="border border-black py-2 text-xs"></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
                               {/* 설비명 */}
-                              <td className="border border-black py-2 text-xs"></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
                               {/* 작업시작 */}
-                              <td className="border border-black py-1 px-2 text-center text-[10px] text-slate-400 leading-tight">
+                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight`}>
                                 <div className="flex justify-between px-1">
                                   <span>월</span>
                                   <span>일</span>
@@ -818,7 +898,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 <div className="text-right pr-2 mt-0.5">:</div>
                               </td>
                               {/* 작업종료 */}
-                              <td className="border border-black py-1 px-2 text-center text-[10px] text-slate-400 leading-tight">
+                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight`}>
                                 <div className="flex justify-between px-1">
                                   <span>월</span>
                                   <span>일</span>
@@ -826,7 +906,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 <div className="text-right pr-2 mt-0.5">:</div>
                               </td>
                               {/* 작업시간 */}
-                              <td className="border border-black py-2 text-xs"></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
                             </tr>
                           );
                         })}

@@ -173,14 +173,17 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     flex-direction: column !important;
     justify-content: space-between !important;
     width: 100% !important;
-    max-width: 100% !important;
-    min-height: 260mm !important;
+    max-width: 194mm !important;
+    height: 280mm !important;
+    max-height: 280mm !important;
+    min-height: 280mm !important;
     box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 2mm 4mm !important;
+    margin: 0 auto !important;
+    padding: 2mm 3mm !important;
     background: #ffffff !important;
     border: none !important;
     box-shadow: none !important;
+    overflow: hidden !important;
     page-break-before: always !important;
     break-before: page !important;
     page-break-after: auto !important;
@@ -192,5 +195,15 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   .traveler-page-sheet:first-child {
     page-break-before: avoid !important;
     break-before: avoid !important;
+  }
+
+  .traveler-page-screen-hidden {
+    display: flex !important;
+  }
+}
+
+@media screen {
+  .traveler-page-screen-hidden {
+    display: none !important;
   }
 }
