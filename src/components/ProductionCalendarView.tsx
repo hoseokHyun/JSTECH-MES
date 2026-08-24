@@ -156,8 +156,8 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
   const calendarRef = useRef<HTMLDivElement>(null);
   const fcInstanceRef = useRef<any>(null);
 
-  // View state: 'timeGridWeek' | 'timeGridDay'
-  const [currentViewMode, setCurrentViewMode] = useState<'timeGridWeek' | 'timeGridDay'>('timeGridWeek');
+  // View state: 'timeGridDay' | 'timeGridWeek' | 'dayGridMonth'
+  const [currentViewMode, setCurrentViewMode] = useState<'timeGridDay' | 'timeGridWeek' | 'dayGridMonth'>('timeGridWeek');
   const [calendarTitle, setCalendarTitle] = useState<string>('');
   const [isFcLoaded, setIsFcLoaded] = useState<boolean>(false);
 
@@ -382,8 +382,24 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
         }
       },
       eventContent: (arg: any) => {
-        const { event } = arg;
+        const { event, view } = arg;
         const props = event.extendedProps || {};
+        const isMonthView = view.type === 'dayGridMonth';
+
+        if (isMonthView) {
+          // Compact Google Calendar style month event pill
+          const container = document.createElement('div');
+          container.className = 'fc-custom-month-event w-full flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-bold truncate select-none cursor-pointer transition hover:brightness-95 shadow-2xs leading-tight';
+          container.style.backgroundColor = props.bgColor;
+          container.style.color = props.textColor;
+          container.innerHTML = `
+            <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${props.dotColor};"></span>
+            <span class="truncate font-bold tracking-tight">[${props.orderName}] ${props.groupName}</span>
+            <span class="text-[9px] font-mono opacity-75 shrink-0 ml-auto">${props.startTimeStr}</span>
+          `;
+          return { domNodes: [container] };
+        }
+
         const isShort = (props.durationMinutes || 30) <= 25;
 
         // Custom HTML node for event card with clean pastel styling and no borders
@@ -477,7 +493,7 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
     }
   };
 
-  const handleViewChange = (viewName: 'timeGridWeek' | 'timeGridDay') => {
+  const handleViewChange = (viewName: 'timeGridDay' | 'timeGridWeek' | 'dayGridMonth') => {
     setCurrentViewMode(viewName);
     if (fcInstanceRef.current) {
       fcInstanceRef.current.changeView(viewName);
@@ -554,6 +570,44 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
           padding: 0 !important;
           border: none !important;
           height: 100% !important;
+        }
+
+        /* DayGrid (Month View) Custom Styling */
+        .fc-daygrid-day-number {
+          font-size: 12px !important;
+          font-weight: 700 !important;
+          color: #475569 !important;
+          padding: 4px 8px !important;
+          text-decoration: none !important;
+        }
+        .fc-day-today .fc-daygrid-day-number {
+          background-color: #2563eb !important;
+          color: #ffffff !important;
+          border-radius: 9999px !important;
+          width: 24px;
+          height: 24px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          margin: 2px 4px;
+        }
+        .fc-daygrid-day-frame {
+          min-height: 100px !important;
+        }
+        .fc-daygrid-event {
+          border: none !important;
+          background: transparent !important;
+          margin: 1.5px 3px !important;
+          padding: 0 !important;
+        }
+        .fc-daygrid-event:hover {
+          z-index: 20 !important;
+        }
+        .fc-daygrid-more-link {
+          font-size: 11px !important;
+          font-weight: 700 !important;
+          color: #2563eb !important;
+          padding: 2px 4px !important;
         }
         
         /* Now Indicator */
@@ -728,11 +782,11 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
             )}
           </div>
 
-          {/* View Mode Switcher: [일] [주] */}
+          {/* View Mode Switcher: [일] [주] [월] */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               onClick={() => handleViewChange('timeGridDay')}
-              className={`px-3.5 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
                 currentViewMode === 'timeGridDay'
                   ? 'bg-white text-blue-600 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -742,13 +796,23 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
             </button>
             <button
               onClick={() => handleViewChange('timeGridWeek')}
-              className={`px-3.5 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
                 currentViewMode === 'timeGridWeek'
                   ? 'bg-white text-blue-600 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               주
+            </button>
+            <button
+              onClick={() => handleViewChange('dayGridMonth')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                currentViewMode === 'dayGridMonth'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              월
             </button>
           </div>
 

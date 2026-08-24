@@ -822,7 +822,7 @@ export default function App() {
         />
 
         {/* Content View Area */}
-        <div className={`flex-1 flex flex-col min-h-0 ${activeTab === 'calendar' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 space-y-4'}`}>
+        <div className={`flex-1 flex flex-col min-h-0 ${activeTab === 'calendar' || activeTab === 'timeline' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 space-y-4'}`}>
           <ErrorBoundary
             fallbackTitle="선택하신 화면을 불러오는 중 오류가 발생했습니다."
             onReset={() => setActiveTab('dashboard')}
@@ -929,6 +929,8 @@ export default function App() {
                 onSelectTask={(key) => setSelectedTaskKey(key)}
                 selectedItemKey={selectedTaskKey}
                 onUpdateProgress={handleUpdateProgress}
+                currentUser={currentUser}
+                approvedOperators={approvedOperators}
               />
             )}
 

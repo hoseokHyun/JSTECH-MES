@@ -222,3 +222,40 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   font-size: 11pt;
   line-height: 1.2;
 }
+
+/* Gantt Chart High-Visibility Scrollbars */
+.gantt-scrollbar::-webkit-scrollbar {
+  height: 12px;
+  width: 10px;
+}
+.gantt-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+.gantt-scrollbar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+.gantt-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+.gantt-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #3b82f6;
+}
+
+html.dark .gantt-scrollbar::-webkit-scrollbar-track {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+html.dark .gantt-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+  border: 2px solid #0f172a;
+}
+html.dark .gantt-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+html.dark .gantt-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #3b82f6;
+}
