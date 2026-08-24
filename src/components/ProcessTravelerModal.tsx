@@ -130,6 +130,16 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   const [selectedPageView, setSelectedPageView] = useState<'ALL' | number>('ALL');
   const [savedNotice, setSavedNotice] = useState<string>('');
 
+  // Attach body class for print isolation
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('process-traveler-modal-open');
+      return () => {
+        document.body.classList.remove('process-traveler-modal-open');
+      };
+    }
+  }, [isOpen]);
+
   // Sync state when order changes
   useEffect(() => {
     setCustomer(defaultCustomer);
