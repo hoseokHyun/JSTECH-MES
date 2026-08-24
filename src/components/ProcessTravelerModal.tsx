@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { Order, ProductType, ProcessStep, User, ProcessProgressMap } from '../types';
 
+const MIN_ROWS_PER_PAGE = 10;
+const MAX_ROWS_PER_PAGE = 22;
+
 interface ProcessTravelerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +29,107 @@ interface ProcessTravelerModalProps {
   processProgressMap?: ProcessProgressMap;
   onUpdateOrder?: (updatedOrder: Order) => void;
 }
+
+/**
+ * Auto-fitting Process Name component (공정명)
+ * Strict requirements:
+ * 1. 원본 공정명 100% 온전 보존 (말줄임/자름/생략 절대 없음)
+ * 2. 1행(Single Line) 강제 (white-space: nowrap !important;, 행 높이 증가 방지)
+ * 3. 기본 폰트 크기 10.5pt~11pt (~14px) 상향 조정하여 뛰어난 가독성 확보
+ * 4. 긴 글자 수 공정명 시 컨테이너 너비에 맞춰 폰트 크기 및 수평 배율 자동 축소 (Auto-fitting)
+ */
+const ProcessNameAutoFit: React.FC<{
+  name: string;
+  rowsPerPage: number;
+}> = ({ name, rowsPerPage }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState<number>(1);
+
+  // Dynamic baseline sizing & letter-spacing based on row density and length
+  const { baseFontSize, letterSpacing, initialScale } = useMemo(() => {
+    const len = name.length;
+    const isHighDensity = rowsPerPage >= 21;
+
+    if (len <= 8) {
+      return {
+        baseFontSize: isHighDensity ? '10pt' : '11pt',
+        letterSpacing: '-0.01em',
+        initialScale: 1,
+      };
+    }
+    if (len <= 13) {
+      return {
+        baseFontSize: isHighDensity ? '9.5pt' : '10.5pt',
+        letterSpacing: '-0.02em',
+        initialScale: 1,
+      };
+    }
+    if (len <= 18) {
+      return {
+        baseFontSize: isHighDensity ? '9pt' : '9.5pt',
+        letterSpacing: '-0.03em',
+        initialScale: 1,
+      };
+    }
+    if (len <= 24) {
+      return {
+        baseFontSize: isHighDensity ? '8pt' : '8.5pt',
+        letterSpacing: '-0.04em',
+        initialScale: 1,
+      };
+    }
+    // Very long process name (25+ characters)
+    return {
+      baseFontSize: isHighDensity ? '7.5pt' : '8pt',
+      letterSpacing: '-0.05em',
+      initialScale: Math.max(0.6, 24 / len),
+    };
+  }, [name, rowsPerPage]);
+
+  useLayoutEffect(() => {
+    const updateScale = () => {
+      if (containerRef.current && textRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        const textWidth = textRef.current.scrollWidth;
+        if (containerWidth > 0 && textWidth > containerWidth) {
+          const calculatedRatio = Math.max(0.55, containerWidth / textWidth);
+          setScale(calculatedRatio);
+        } else {
+          setScale(initialScale);
+        }
+      }
+    };
+
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, [name, rowsPerPage, initialScale]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full overflow-hidden flex items-center"
+      title={name}
+      style={{ minWidth: 0 }}
+    >
+      <span
+        ref={textRef}
+        className="font-bold text-black select-text whitespace-nowrap"
+        style={{
+          fontSize: baseFontSize,
+          letterSpacing,
+          display: 'inline-block',
+          transform: scale < 1 ? `scaleX(${scale.toFixed(3)})` : undefined,
+          transformOrigin: 'left center',
+          lineHeight: 1.15,
+        }}
+      >
+        {name}
+      </span>
+    </div>
+  );
+};
 
 export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   isOpen,
@@ -158,9 +262,19 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     setApproverName(order.approverName || '승인자');
   }, [order, defaultCustomer, defaultPoNumber, defaultPartName, defaultPartType, defaultSpec, defaultSerialNo, defaultDueDate, defaultSpecialNotes, currentUser]);
 
-  // Dynamic row sizing & font density based on rowsPerPage
+  // Dynamic continuous row sizing & font density based on rowsPerPage (10 ~ 22)
   const tableDensity = useMemo(() => {
-    if (rowsPerPage <= 15) {
+    if (rowsPerPage <= 11) {
+      return {
+        rowPadding: 'py-2.5 px-2',
+        fontSize: 'text-xs font-medium',
+        headerPadding: 'py-2.5',
+        stampDateSize: 'text-[11px]',
+        metaPadding: 'py-2.5',
+        blankHeight: 'h-9',
+      };
+    }
+    if (rowsPerPage <= 13) {
       return {
         rowPadding: 'py-2 px-2',
         fontSize: 'text-xs',
@@ -170,7 +284,17 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
         blankHeight: 'h-8',
       };
     }
-    if (rowsPerPage <= 18) {
+    if (rowsPerPage <= 15) {
+      return {
+        rowPadding: 'py-1.5 px-2',
+        fontSize: 'text-xs',
+        headerPadding: 'py-2',
+        stampDateSize: 'text-[10.5px]',
+        metaPadding: 'py-1.5',
+        blankHeight: 'h-7.5',
+      };
+    }
+    if (rowsPerPage <= 17) {
       return {
         rowPadding: 'py-1.5 px-2',
         fontSize: 'text-xs',
@@ -180,34 +304,34 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
         blankHeight: 'h-7',
       };
     }
-    if (rowsPerPage <= 20) {
+    if (rowsPerPage <= 19) {
       return {
         rowPadding: 'py-1 px-1.5',
         fontSize: 'text-[11px]',
-        headerPadding: 'py-1',
-        stampDateSize: 'text-[10px]',
+        headerPadding: 'py-1.5',
+        stampDateSize: 'text-[9.5px]',
         metaPadding: 'py-1.5',
-        blankHeight: 'h-6',
+        blankHeight: 'h-6.5',
       };
     }
-    if (rowsPerPage <= 22) {
+    if (rowsPerPage <= 21) {
       return {
         rowPadding: 'py-0.5 px-1.5',
-        fontSize: 'text-[10px]',
+        fontSize: 'text-[10.5px]',
         headerPadding: 'py-1',
         stampDateSize: 'text-[9px]',
         metaPadding: 'py-1',
-        blankHeight: 'h-5.5',
+        blankHeight: 'h-6',
       };
     }
-    // 25 rows (High density)
+    // 22 rows (Maximum density allowed)
     return {
       rowPadding: 'py-0.5 px-1 leading-tight',
       fontSize: 'text-[10px]',
       headerPadding: 'py-0.5',
       stampDateSize: 'text-[9px]',
-      metaPadding: 'py-1',
-      blankHeight: 'h-5',
+      metaPadding: 'py-0.5',
+      blankHeight: 'h-5.5',
     };
   }, [rowsPerPage]);
 
@@ -430,20 +554,79 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
               ))}
             </div>
 
-            {/* Rows Per Page Selector */}
-            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-300">
-              <span className="text-slate-500 font-semibold">페이지당 공정수:</span>
-              <select
-                value={rowsPerPage}
-                onChange={(e) => setRowsPerPage(parseInt(e.target.value))}
-                className="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-bold"
-              >
-                <option value={15}>15줄/장 (여유)</option>
-                <option value={18}>18줄/장 (권장)</option>
-                <option value={20}>20줄/장 (표준)</option>
-                <option value={22}>22줄/장 (고밀도)</option>
-                <option value={25}>25줄/장 (최대)</option>
-              </select>
+            {/* Rows Per Page Selector & Direct Custom Number Input (10 ~ 22) */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-300 flex-wrap">
+              <span className="text-slate-500 font-semibold shrink-0">페이지당 공정수:</span>
+              
+              {/* Quick Presets */}
+              <div className="flex items-center bg-white border border-slate-300 rounded-lg p-0.5 shadow-2xs">
+                {[12, 15, 18, 20, 22].map((preset) => (
+                  <button
+                    key={`preset-${preset}`}
+                    type="button"
+                    onClick={() => setRowsPerPage(preset)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
+                      rowsPerPage === preset
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title={`${preset}줄/장 ${preset === 18 ? '(권장)' : preset === 22 ? '(최대)' : ''}`}
+                  >
+                    {preset}줄{preset === 18 ? '★' : ''}
+                  </button>
+                ))}
+              </div>
+
+              {/* Direct Custom Number Input & Stepper (10 ~ 22) */}
+              <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setRowsPerPage((prev) => Math.max(MIN_ROWS_PER_PAGE, prev - 1))}
+                  disabled={rowsPerPage <= MIN_ROWS_PER_PAGE}
+                  className="w-5 h-5 flex items-center justify-center rounded text-slate-600 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-black text-xs cursor-pointer"
+                  title="1줄 줄이기 (최소 10줄)"
+                >
+                  -
+                </button>
+                <div className="flex items-center">
+                  <input
+                    type="number"
+                    min={MIN_ROWS_PER_PAGE}
+                    max={MAX_ROWS_PER_PAGE}
+                    value={rowsPerPage}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val)) {
+                        setRowsPerPage(Math.min(MAX_ROWS_PER_PAGE, Math.max(MIN_ROWS_PER_PAGE, val)));
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (isNaN(val) || val < MIN_ROWS_PER_PAGE) {
+                        setRowsPerPage(MIN_ROWS_PER_PAGE);
+                      } else if (val > MAX_ROWS_PER_PAGE) {
+                        setRowsPerPage(MAX_ROWS_PER_PAGE);
+                      }
+                    }}
+                    className="w-7 text-center font-mono font-black text-xs bg-transparent border-0 focus:ring-0 p-0 text-blue-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    title="10~22줄 직접 입력"
+                  />
+                  <span className="text-[11px] text-slate-500 font-bold ml-0.5">줄</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRowsPerPage((prev) => Math.min(MAX_ROWS_PER_PAGE, prev + 1))}
+                  disabled={rowsPerPage >= MAX_ROWS_PER_PAGE}
+                  className="w-5 h-5 flex items-center justify-center rounded text-slate-600 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed font-black text-xs cursor-pointer"
+                  title="1줄 늘리기 (최대 22줄)"
+                >
+                  +
+                </button>
+              </div>
+
+              <span className="text-[10px] text-slate-400 font-mono hidden xl:inline">
+                (10~22줄 허용)
+              </span>
             </div>
 
             {/* Blank filler rows toggle */}
@@ -749,22 +932,22 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                   {/* 3. PROCESS ROUTING TABLE (구분, 공정명, 작업자, 설비명, 시작, 종료, 소요시간) */}
                   {/* ------------------------------------------------------------- */}
                   <div className="mb-2">
-                    <table className="w-full border-collapse border-2 border-black text-xs">
+                    <table className="traveler-table w-full border-collapse border-2 border-black text-xs table-fixed">
                       <thead>
                         <tr className="bg-slate-100 font-bold text-center text-xs">
-                          <th className={`border border-black ${tableDensity.headerPadding} w-12 text-center`}>구분</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-44 text-center`}>공정명</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-24 text-center`}>작업자</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-36 text-center`}>설비명</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-28 text-center leading-tight`}>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[7%] text-center`}>구분</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[33%] text-center`}>공정명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[11%] text-center`}>작업자</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[16%] text-center`}>설비명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[13.5%] text-center leading-tight`}>
                             <div>작업시작</div>
                             <div className={tableDensity.stampDateSize}>시간 (a)</div>
                           </th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-28 text-center leading-tight`}>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[13.5%] text-center leading-tight`}>
                             <div>작업종료</div>
                             <div className={tableDensity.stampDateSize}>시간 (b)</div>
                           </th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-24 text-center leading-tight`}>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[6%] text-center leading-tight`}>
                             <div>작업시간</div>
                             <div className={tableDensity.stampDateSize}>(b-a)</div>
                           </th>
@@ -811,27 +994,27 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                           return (
                             <tr key={`proc-${globalIndex}`} className="text-center">
                               {/* 구분 (#) */}
-                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize}`}>
+                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}>
                                 {globalIndex}
                               </td>
 
-                              {/* 공정명 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} text-left font-bold ${tableDensity.fontSize} text-black`}>
-                                {proc.name}
+                              {/* 공정명 - 원본 100% 보존, 1행(Single Line) 강제, 폰트 자동 축소(Auto-fitting) */}
+                              <td className={`border border-black process-name-cell ${tableDensity.rowPadding} text-left font-bold text-black whitespace-nowrap overflow-hidden`}>
+                                <ProcessNameAutoFit name={proc.name} rowsPerPage={rowsPerPage} />
                               </td>
 
                               {/* 작업자 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-semibold text-slate-900`}>
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-semibold text-slate-900 whitespace-nowrap overflow-hidden`}>
                                 {boundWorker}
                               </td>
 
                               {/* 설비명 (담당 설비 매핑) */}
-                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-bold text-slate-900`}>
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-bold text-slate-900 whitespace-nowrap overflow-hidden`}>
                                 {boundMachine}
                               </td>
 
                               {/* 작업시작 시간 (a) */}
-                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight`}>
+                              <td className={`border border-black py-1 px-1 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight whitespace-nowrap overflow-hidden`}>
                                 {formattedStart ? (
                                   <div className="font-mono font-bold">
                                     <div>{formattedStart.date}</div>
@@ -849,7 +1032,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </td>
 
                               {/* 작업종료 시간 (b) */}
-                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight`}>
+                              <td className={`border border-black py-1 px-1 text-center ${tableDensity.stampDateSize} text-slate-700 leading-tight whitespace-nowrap overflow-hidden`}>
                                 {formattedEnd ? (
                                   <div className="font-mono font-bold">
                                     <div>{formattedEnd.date}</div>
@@ -867,7 +1050,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </td>
 
                               {/* 작업시간 (b-a) */}
-                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-mono font-bold`}>
+                              <td className={`border border-black ${tableDensity.rowPadding} text-center ${tableDensity.fontSize} font-mono font-bold whitespace-nowrap overflow-hidden`}>
                                 {durationDisplay}
                               </td>
                             </tr>
@@ -880,17 +1063,17 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                           return (
                             <tr key={`blank-${pageInfo.pageNumber}-${bIdx}`} className={`text-center ${tableDensity.blankHeight}`}>
                               {/* 구분 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize} text-slate-400`}>
+                              <td className={`border border-black ${tableDensity.rowPadding} font-bold text-center ${tableDensity.fontSize} text-slate-400 whitespace-nowrap overflow-hidden`}>
                                 {rowNum}
                               </td>
                               {/* 공정명 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} text-left ${tableDensity.fontSize}`}></td>
+                              <td className={`border border-black process-name-cell ${tableDensity.rowPadding} text-left ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
                               {/* 작업자 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
                               {/* 설비명 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
                               {/* 작업시작 */}
-                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight`}>
+                              <td className={`border border-black py-1 px-1 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight whitespace-nowrap overflow-hidden`}>
                                 <div className="flex justify-between px-1">
                                   <span>월</span>
                                   <span>일</span>
@@ -898,7 +1081,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 <div className="text-right pr-2 mt-0.5">:</div>
                               </td>
                               {/* 작업종료 */}
-                              <td className={`border border-black py-1 px-1.5 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight`}>
+                              <td className={`border border-black py-1 px-1 text-center ${tableDensity.stampDateSize} text-slate-400 leading-tight whitespace-nowrap overflow-hidden`}>
                                 <div className="flex justify-between px-1">
                                   <span>월</span>
                                   <span>일</span>
@@ -906,7 +1089,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 <div className="text-right pr-2 mt-0.5">:</div>
                               </td>
                               {/* 작업시간 */}
-                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize}`}></td>
+                              <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
                             </tr>
                           );
                         })}

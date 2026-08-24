@@ -207,3 +207,18 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     display: none !important;
   }
 }
+
+/* Process Traveler Table & Cell Formatting */
+.traveler-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.traveler-table td.process-name-cell {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: clip;
+  font-size: 11pt;
+  line-height: 1.2;
+}
