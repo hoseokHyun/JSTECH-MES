@@ -380,7 +380,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
         </div>
 
         {/* Scrollable Printable Document Container */}
-        <div className="overflow-y-auto p-4 sm:p-8 bg-slate-200/70 print:bg-white print:p-0 print:m-0 print:overflow-visible flex flex-col items-center">
+        <div className="process-traveler-print-area overflow-y-auto p-4 sm:p-8 bg-slate-200/70 print:bg-white print:p-0 print:m-0 print:overflow-visible flex flex-col items-center">
           {pagesData.map((pageInfo) => {
             const isHiddenInScreen =
               selectedPageView !== 'ALL' && selectedPageView !== pageInfo.pageNumber;

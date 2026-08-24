@@ -66,75 +66,79 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     print-color-adjust: exact !important;
   }
 
-  body, html {
+  html, body {
     background: #ffffff !important;
     color: #000000 !important;
     height: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
   }
 
-  /* Hide navigation, sidebars, modals backdrop overlays, interactive controls when printing */
+  /* 1. Print Isolation: Hide all standard background elements in the DOM tree */
+  body * {
+    visibility: hidden;
+  }
+
+  /* 2. Print Isolation: Make Process Traveler modal print area and all its descendants visible */
+  .process-traveler-print-area,
+  .process-traveler-print-area * {
+    visibility: visible !important;
+  }
+
+  /* 3. Position the printable container at the top-left of the print paper */
+  .process-traveler-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 99999 !important;
+  }
+
+  /* Hide print-hidden interactive elements inside the modal */
   header,
   nav,
   aside,
   .print\:hidden,
+  .print\:hidden *,
   button,
   input[type="checkbox"],
   select {
     display: none !important;
+    visibility: hidden !important;
   }
 
-  #process-traveler-modal-backdrop,
-  #ipqc-print-modal-backdrop,
-  #shipping-coa-print-modal-backdrop {
-    position: static !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-  }
-
-  #process-traveler-modal-container,
-  #ipqc-print-modal-container,
-  #shipping-coa-print-modal-container {
-    max-width: 100% !important;
-    max-height: none !important;
-    width: 100% !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-  }
-
-  #traveler-printable-sheet {
-    max-width: 100% !important;
-    width: 100% !important;
-    min-height: auto !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-
+  /* 4. Page Break & Sheet Pagination rules */
   .traveler-page-sheet {
-    page-break-after: always !important;
-    break-after: page !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
     width: 100% !important;
+    max-width: 100% !important;
     min-height: 275mm !important;
     box-sizing: border-box !important;
-    margin: 0 !important;
+    margin: 0 0 10mm 0 !important;
     padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .traveler-page-sheet:last-child {
     page-break-after: auto !important;
     break-after: auto !important;
+    margin-bottom: 0 !important;
   }
 }
