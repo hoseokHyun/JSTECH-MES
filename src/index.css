@@ -90,12 +90,15 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     overflow: visible !important;
   }
 
-  /* Print Isolation: Hide background sidebar, header, and main content when Process Traveler is open */
-  body.process-traveler-modal-open > #root > div > aside,
-  body.process-traveler-modal-open > #root > div > div > header,
-  body.process-traveler-modal-open > #root > div > div > div:not(:has(#process-traveler-modal-backdrop)):not(#process-traveler-modal-backdrop) {
+  /* Strict Print Isolation: Completely remove #root (dashboard, orders list, sidebar, etc.) from print document */
+  body.process-traveler-modal-open > #root {
     display: none !important;
     visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Hide navigation, headers, sidebars, buttons, toolbars when printing */

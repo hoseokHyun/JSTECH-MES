@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Printer,
@@ -244,7 +245,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
   const totalPages = pagesData.length;
 
-  return (
+  return createPortal(
     <div
       id="process-traveler-modal-backdrop"
       className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
@@ -850,6 +851,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
