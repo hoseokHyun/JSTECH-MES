@@ -1536,6 +1536,14 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [strategy, setStrategy] = useState<'SERIAL' | 'CONTINUOUS'>(order?.strategy || 'CONTINUOUS');
   const [status, setStatus] = useState<OrderStatus>(order?.status || 'IN_PROGRESS');
   const [memo, setMemo] = useState(order?.memo || '');
+  const [customer, setCustomer] = useState(order?.customer || '');
+  const [poNumber, setPoNumber] = useState(order?.poNumber || '');
+  const [partName, setPartName] = useState(order?.partName || '');
+  const [partType, setPartType] = useState(order?.partType || '');
+  const [spec, setSpec] = useState(order?.spec || '');
+  const [serialNo, setSerialNo] = useState(order?.serialNo || '');
+  const [dueDate, setDueDate] = useState(order?.dueDate || '');
+  const [specialNotes, setSpecialNotes] = useState(order?.specialNotes || '');
   const [customProcesses, setCustomProcesses] = useState<ProcessStep[]>([]);
 
   useEffect(() => {
@@ -1547,6 +1555,14 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       setStrategy(order.strategy || 'CONTINUOUS');
       setStatus(order.status || 'IN_PROGRESS');
       setMemo(order.memo || '');
+      setCustomer(order.customer || '');
+      setPoNumber(order.poNumber || '');
+      setPartName(order.partName || '');
+      setPartType(order.partType || '');
+      setSpec(order.spec || '');
+      setSerialNo(order.serialNo || '');
+      setDueDate(order.dueDate || '');
+      setSpecialNotes(order.specialNotes || '');
 
       if (order.customProcesses && order.customProcesses.length > 0) {
         setCustomProcesses(order.customProcesses.map((p) => ({ ...p })));
@@ -1616,6 +1632,14 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       startDate,
       strategy,
       memo,
+      customer,
+      poNumber,
+      partName,
+      partType,
+      spec,
+      serialNo,
+      dueDate,
+      specialNotes,
       customProcesses,
       status,
     };
@@ -1816,6 +1840,100 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               placeholder="수주 관련 메모를 입력하세요."
               className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
+          </div>
+
+          {/* Section: Process Traveler Official Metadata */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+            <div className="flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
+              <FileCheck2 className="w-4 h-4 text-emerald-600" />
+              <span className="font-extrabold text-slate-900 text-xs">
+                공정 이동표 (Process Traveler) 공식 메타데이터
+              </span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                A4 양식 연동
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">고객사</label>
+                <input
+                  type="text"
+                  value={customer}
+                  onChange={(e) => setCustomer(e.target.value)}
+                  placeholder="예: PNT"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">PO. (PJT)</label>
+                <input
+                  type="text"
+                  value={poNumber}
+                  onChange={(e) => setPoNumber(e.target.value)}
+                  placeholder="예: PNT-26-01"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">품 명</label>
+                <input
+                  type="text"
+                  value={partName}
+                  onChange={(e) => setPartName(e.target.value)}
+                  placeholder="예: SLOT DIE"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">품 목</label>
+                <input
+                  type="text"
+                  value={partType}
+                  onChange={(e) => setPartType(e.target.value)}
+                  placeholder="예: UPPER (상판)"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">규 격</label>
+                <input
+                  type="text"
+                  value={spec}
+                  onChange={(e) => setSpec(e.target.value)}
+                  placeholder="예: 650L"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">각인번호</label>
+                <input
+                  type="text"
+                  value={serialNo}
+                  onChange={(e) => setSerialNo(e.target.value)}
+                  placeholder="예: PNT-01"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">납 기</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 text-[11px] mb-1">특이사항</label>
+                <input
+                  type="text"
+                  value={specialNotes}
+                  onChange={(e) => setSpecialNotes(e.target.value)}
+                  placeholder="※ 공정 간 인수인계 철저히"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Section: Process Routing & Machine Assignment Editor */}

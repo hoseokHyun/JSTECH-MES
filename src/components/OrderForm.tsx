@@ -46,8 +46,12 @@ import {
   FolderSync,
   FolderPlus,
   Tag,
-  Palette
+  Palette,
+  Printer,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
+import { ProcessTravelerModal } from './ProcessTravelerModal';
 
 interface OrderFormProps {
   productTypes: Record<string, ProductType>;
@@ -142,6 +146,38 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [qty, setQty] = useState<number>(1);
   const [startDate, setStartDate] = useState<string>(getCurrentDateTimeString);
   const [memo, setMemo] = useState<string>('');
+
+  // Process Traveler Metadata States (공정 이동표 실시간 연동)
+  const [customer, setCustomer] = useState<string>('');
+  const [poNumber, setPoNumber] = useState<string>('');
+  const [partName, setPartName] = useState<string>('');
+  const [partType, setPartType] = useState<string>('UPPER (상판)');
+  const [spec, setSpec] = useState<string>('');
+  const [serialNo, setSerialNo] = useState<string>('');
+  const [dueDate, setDueDate] = useState<string>('');
+  const [specialNotes, setSpecialNotes] = useState<string>('※ 공정 간 인수인계 철저히 할 것!');
+  const [isTravelerMetaExpanded, setIsTravelerMetaExpanded] = useState<boolean>(true);
+  const [isPreviewTravelerOpen, setIsPreviewTravelerOpen] = useState<boolean>(false);
+  const [createdOrderForTraveler, setCreatedOrderForTraveler] = useState<Order | null>(null);
+  const [showCreatedOrderModal, setShowCreatedOrderModal] = useState<boolean>(false);
+
+  // Auto-fill traveler fields when project name is typed
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!customer) {
+      if (val.includes('삼성')) setCustomer('삼성디스플레이');
+      else if (val.includes('LG')) setCustomer('LG디스플레이');
+      else if (val.includes('SK')) setCustomer('SK온');
+      else if (val.includes('PNT')) setCustomer('PNT');
+    }
+    if (!partName && val.trim()) {
+      setPartName(val.replace(/(삼성디스플레이|LG디스플레이|SK온|PNT)/g, '').trim());
+    }
+    const specMatch = val.match(/(\d+mm|\d+L|\d+세대)/i);
+    if (specMatch && !spec) {
+      setSpec(specMatch[0]);
+    }
+  };
 
   // Editable Process Steps State
   const [currentProcesses, setCurrentProcesses] = useState<ProcessStep[]>([]);
@@ -1278,6 +1314,14 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setName(`[재수주] ${sourceOrder.name}`);
     setQty(sourceOrder.qty || 1);
     setMemo(`[완료보관함 사양복사] 원본: ${sourceOrder.id} (${sourceOrder.name})`);
+    if (sourceOrder.customer) setCustomer(sourceOrder.customer);
+    if (sourceOrder.poNumber) setPoNumber(`RE-${sourceOrder.poNumber}`);
+    if (sourceOrder.partName) setPartName(sourceOrder.partName);
+    if (sourceOrder.partType) setPartType(sourceOrder.partType);
+    if (sourceOrder.spec) setSpec(sourceOrder.spec);
+    if (sourceOrder.serialNo) setSerialNo(`${sourceOrder.serialNo}-RE`);
+    if (sourceOrder.dueDate) setDueDate(sourceOrder.dueDate);
+    if (sourceOrder.specialNotes) setSpecialNotes(sourceOrder.specialNotes);
     setStartDate(getCurrentDateTimeString());
     setCopiedSourceOrder(sourceOrder);
     setIsArchiveModalOpen(false);
@@ -1316,7 +1360,18 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     const finalProcesses: ProcessStep[] = currentProcesses.map((p, idx) => ({
       ...p,
       assignedMachine: stepAssignments[idx]?.machine || p.assignedMachine || '',
+      worker: stepAssignments[idx]?.worker || p.worker || p.assignedWorker || '',
+      assignedWorker: stepAssignments[idx]?.worker || p.worker || p.assignedWorker || '',
     }));
+
+    const computedCustomer = customer.trim() || (name.includes('삼성') ? '삼성디스플레이' : name.includes('LG') ? 'LG디스플레이' : name.includes('SK') ? 'SK온' : name.includes('PNT') ? 'PNT' : '고객사 지정');
+    const computedPo = poNumber.trim() || newId;
+    const computedPartName = partName.trim() || name.trim() || 'SLOT DIE';
+    const computedPartType = partType.trim() || 'UPPER (상판)';
+    const computedSpec = spec.trim() || '650L';
+    const computedSerial = serialNo.trim() || `${computedPo.replace(/[^a-zA-Z0-9-]/g, '')}-01`;
+    const computedDueDate = dueDate.trim() || '2026-06-30';
+    const computedNotes = specialNotes.trim() || (memo.trim() ? `※ ${memo.trim()}` : '※ 공정 간 인수인계 철저히 할 것!');
 
     const newOrder: Order = {
       id: newId,
@@ -1329,6 +1384,14 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       mctMachine: firstMachine,
       memo: memo.trim(),
       customProcesses: finalProcesses,
+      customer: computedCustomer,
+      poNumber: computedPo,
+      partName: computedPartName,
+      partType: computedPartType,
+      spec: computedSpec,
+      serialNo: computedSerial,
+      dueDate: computedDueDate,
+      specialNotes: computedNotes,
     };
 
     const initialProgressMap: ProcessProgressMap = {};
@@ -1388,16 +1451,50 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     initialProgressMap: ProcessProgressMap
   ) => {
     onCreateOrder(newOrder, initialProgressMap);
+    setCreatedOrderForTraveler(newOrder);
+    setShowCreatedOrderModal(true);
     setName('');
     setMemo('');
+    setCustomer('');
+    setPoNumber('');
+    setPartName('');
+    setSpec('');
+    setSerialNo('');
+    setDueDate('');
     setStartDate(getCurrentDateTimeString());
     setCopiedSourceOrder(null);
     setPendingConflicts(null);
     setPendingSubmitPayload(null);
-    alert(
-      `🎉 수주건 [${newOrder.name}] 등록이 완료되었습니다!\n설비 가동판(OEE) 및 Gantt 타임라인에 실시간 연동되었습니다.`
-    );
   };
+
+  // Live preview order object for the traveler modal before submission
+  const previewOrderObject: Order = useMemo(() => {
+    return {
+      id: 'ORD-PREVIEW',
+      name: name.trim() || '신규 프로젝트 공정 이동표 미리보기',
+      typeId,
+      qty: Math.max(1, qty),
+      startDate,
+      status: 'IN_PROGRESS',
+      archived: false,
+      mctMachine: stepAssignments[0]?.machine || MCT_MACHINES[0],
+      memo: memo.trim(),
+      customProcesses: currentProcesses.map((p, idx) => ({
+        ...p,
+        assignedMachine: stepAssignments[idx]?.machine || p.assignedMachine || '',
+        worker: stepAssignments[idx]?.worker || p.worker || p.assignedWorker || '',
+        assignedWorker: stepAssignments[idx]?.worker || p.worker || p.assignedWorker || '',
+      })),
+      customer: customer.trim() || (name.includes('삼성') ? '삼성디스플레이' : name.includes('LG') ? 'LG디스플레이' : name.includes('SK') ? 'SK온' : name.includes('PNT') ? 'PNT' : '고객사 지정'),
+      poNumber: poNumber.trim() || 'PO-2026-001',
+      partName: partName.trim() || name.trim() || 'SLOT DIE',
+      partType: partType.trim() || 'UPPER (상판)',
+      spec: spec.trim() || '650L',
+      serialNo: serialNo.trim() || `${(poNumber || 'PO-2026-001').replace(/[^a-zA-Z0-9-]/g, '')}-01`,
+      dueDate: dueDate.trim() || '2026-06-30',
+      specialNotes: specialNotes.trim() || (memo.trim() ? `※ ${memo.trim()}` : '※ 공정 간 인수인계 철저히 할 것!'),
+    };
+  }, [name, typeId, qty, startDate, stepAssignments, memo, currentProcesses, customer, poNumber, partName, partType, spec, serialNo, dueDate, specialNotes]);
 
   return (
     <div className="space-y-6">
@@ -1441,6 +1538,16 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPreviewTravelerOpen(true)}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+              title="현재 입력된 수주 정보와 공정 라우팅으로 공식 공정 이동표(Process Traveler)를 미리보고 인쇄합니다."
+            >
+              <Printer className="w-3.5 h-3.5 text-emerald-700" />
+              <span>공정 이동표 미리보기/인쇄</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsArchiveModalOpen(true)}
@@ -1503,8 +1610,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="예: 삼성디스플레이 8.6세대 슬릿 노즐"
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="예: PNT Flex Bolt 2P SLOT DIE 상판"
                 className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500"
                 required
               />
@@ -1577,6 +1684,133 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* Process Traveler Official Metadata Card (A4 Form Binding) */}
+          <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+            <div
+              onClick={() => setIsTravelerMetaExpanded(!isTravelerMetaExpanded)}
+              className="p-3 bg-slate-100/90 hover:bg-slate-200/70 flex items-center justify-between cursor-pointer border-b border-slate-200 select-none transition"
+            >
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span className="font-extrabold text-slate-800 text-xs">
+                  공정 이동표 (Process Traveler) 공식 메타데이터 연동
+                </span>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                  A4 인쇄 자동 바인딩
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-500 font-semibold">
+                  {isTravelerMetaExpanded ? '접기' : '상세 입력 펼치기'}
+                </span>
+                {isTravelerMetaExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-slate-500" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-500" />
+                )}
+              </div>
+            </div>
+
+            {isTravelerMetaExpanded && (
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-white">
+                {/* 고객사 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">고객사</label>
+                  <input
+                    type="text"
+                    value={customer}
+                    onChange={(e) => setCustomer(e.target.value)}
+                    placeholder="예: PNT, 삼성디스플레이"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* PO. (PJT) */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">PO. (PJT)</label>
+                  <input
+                    type="text"
+                    value={poNumber}
+                    onChange={(e) => setPoNumber(e.target.value)}
+                    placeholder="예: PNT-BNSH650L-26-02"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 품 명 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">품 명</label>
+                  <input
+                    type="text"
+                    value={partName}
+                    onChange={(e) => setPartName(e.target.value)}
+                    placeholder="예: Flex Bolt 2P SLOT DIE"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 품 목 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">품 목</label>
+                  <input
+                    type="text"
+                    value={partType}
+                    onChange={(e) => setPartType(e.target.value)}
+                    placeholder="예: UPPER (상판), LOWER (하판)"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-black text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 규 격 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">규 격</label>
+                  <input
+                    type="text"
+                    value={spec}
+                    onChange={(e) => setSpec(e.target.value)}
+                    placeholder="예: 650L, 1850L"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 각인번호 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">각인번호</label>
+                  <input
+                    type="text"
+                    value={serialNo}
+                    onChange={(e) => setSerialNo(e.target.value)}
+                    placeholder="예: PNT-BNSH650L-265-02-02"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 납 기 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">납 기</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* 특이사항 */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">특이사항 (인수인계)</label>
+                  <input
+                    type="text"
+                    value={specialNotes}
+                    onChange={(e) => setSpecialNotes(e.target.value)}
+                    placeholder="※ 공정 간 인수인계 철저히 할 것!"
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Process Steps Routing Editor Section */}
@@ -2935,6 +3169,112 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* CREATION SUCCESS MODAL WITH PROCESS TRAVELER PRINT SHORTCUT   */}
+      {/* ------------------------------------------------------------- */}
+      {showCreatedOrderModal && createdOrderForTraveler && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-emerald-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-xs">
+                  <CheckCircle2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">🎉 신규 수주 등록 완료!</h3>
+                  <p className="text-xs text-emerald-100 font-mono">
+                    {createdOrderForTraveler.id} | {createdOrderForTraveler.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreatedOrderModal(false)}
+                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-bold">고객사:</span>
+                  <span className="font-extrabold text-slate-900">{createdOrderForTraveler.customer || '미지정'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-bold">PO. (PJT):</span>
+                  <span className="font-mono font-bold text-slate-900">{createdOrderForTraveler.poNumber || createdOrderForTraveler.id}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-bold">품목 / 규격:</span>
+                  <span className="font-bold text-slate-900">{createdOrderForTraveler.partType || 'UPPER'} / {createdOrderForTraveler.spec || '-'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-bold">공정 라우팅:</span>
+                  <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    총 {createdOrderForTraveler.customProcesses?.length || 0}단계 공정 DB 동기화 완료
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                신규 수주가 생산관리 타임라인과 설비 가동판(OEE)에 실시간 등록되었습니다. 현장 작업용 <strong>공식 공정 이동표(Process Traveler)</strong>를 즉시 확인하고 A4로 인쇄할 수 있습니다.
+              </p>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreatedOrderModal(false);
+                  }}
+                  className="w-full sm:w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>수주 등록창 계속 작성</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreatedOrderModal(false);
+                    // Leave createdOrderForTraveler active so ProcessTravelerModal opens immediately
+                  }}
+                  className="w-full sm:w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>공정 이동표 즉시 인쇄 (A4)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* PROCESS TRAVELER MODALS (PREVIEW & POST-CREATION)             */}
+      {/* ------------------------------------------------------------- */}
+      {isPreviewTravelerOpen && (
+        <ProcessTravelerModal
+          isOpen={isPreviewTravelerOpen}
+          onClose={() => setIsPreviewTravelerOpen(false)}
+          order={previewOrderObject}
+          productTypes={productTypes}
+          currentUser={currentUser}
+          processProgressMap={processProgressMap}
+        />
+      )}
+
+      {createdOrderForTraveler && !showCreatedOrderModal && (
+        <ProcessTravelerModal
+          isOpen={!!createdOrderForTraveler}
+          onClose={() => setCreatedOrderForTraveler(null)}
+          order={createdOrderForTraveler}
+          productTypes={productTypes}
+          currentUser={currentUser}
+          processProgressMap={processProgressMap}
+          onUpdateOrder={onUpdateOrder}
+        />
       )}
     </div>
   );

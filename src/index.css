@@ -58,19 +58,83 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 8mm 10mm;
   }
 
-  body {
+  *, *:before, *:after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body, html {
     background: #ffffff !important;
-    color: #0f172a !important;
+    color: #000000 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
-  /* Hide navigation, sidebars, interactive controls when printing */
+  /* Hide navigation, sidebars, modals backdrop overlays, interactive controls when printing */
   header,
   nav,
+  aside,
   .print\:hidden,
-  button {
+  button,
+  input[type="checkbox"],
+  select {
     display: none !important;
+  }
+
+  #process-traveler-modal-backdrop,
+  #ipqc-print-modal-backdrop,
+  #shipping-coa-print-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #process-traveler-modal-container,
+  #ipqc-print-modal-container,
+  #shipping-coa-print-modal-container {
+    max-width: 100% !important;
+    max-height: none !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #traveler-printable-sheet {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .traveler-page-sheet {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    min-height: 275mm !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .traveler-page-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
 }

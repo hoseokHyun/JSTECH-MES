@@ -22,6 +22,8 @@ export interface ProcessStep {
   category: ProcessCategory;
   durationHours: number;
   assignedMachine?: string;
+  worker?: string;
+  assignedWorker?: string;
   phaseId?: string;
   id?: string;
 }
@@ -50,6 +52,18 @@ export interface Order {
   mctMachine?: string;
   memo?: string;
   customProcesses?: ProcessStep[];
+  // Process Traveler (공정 이동표) Metadata
+  customer?: string;       // 고객사 (예: PNT, 삼성디스플레이)
+  poNumber?: string;       // PO. (PJT) (예: PNT-BNSH650L-26-02)
+  partName?: string;       // 품명 (예: Flex Bolt 2P SLOT DIE)
+  partType?: string;       // 품목 (예: UPPER (상판), LOWER (하판), BODY 등)
+  spec?: string;           // 규격 (예: 650L, 2000mm)
+  serialNo?: string;       // 각인번호 (예: PNT-BNSH650L-265-02-02)
+  dueDate?: string;        // 납기 (예: 2026-06-30)
+  specialNotes?: string;   // 특이사항 (예: ※ 공정 간 인수인계 철저히 할 것!)
+  writerName?: string;     // 작성자
+  reviewerName?: string;   // 검토자
+  approverName?: string;   // 승인자
 }
 
 export interface ProcessProgressItem {

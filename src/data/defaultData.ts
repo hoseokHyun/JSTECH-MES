@@ -513,7 +513,18 @@ export const INITIAL_ORDERS: Record<string, import('../types').Order> = {
     startDate: "2026-03-02T08:30",
     workWindow: "ALL_DAY",
     mctMachine: "MCT 12호기 #1",
-    memo: "초경 립 정밀 래핑 및 3차원 측정 결과 첨부 필요"
+    memo: "초경 립 정밀 래핑 및 3차원 측정 결과 첨부 필요",
+    customer: "삼성디스플레이",
+    poNumber: "SDC-2026-SN-08",
+    partName: "8.6G Ultra Slit Nozzle Die",
+    partType: "UPPER (상판)",
+    spec: "1850L",
+    serialNo: "SDC-SN86-2603-01",
+    dueDate: "2026-06-30",
+    specialNotes: "※ 공정 간 인수인계 철저히 할 것! (립 경면도 2um 이하 준수)",
+    writerName: "생산관리팀",
+    reviewerName: "제조팀장",
+    approverName: "공장장"
   },
   "ORD-2026-002": {
     id: "ORD-2026-002",
@@ -523,7 +534,18 @@ export const INITIAL_ORDERS: Record<string, import('../types').Order> = {
     startDate: "2026-03-05T08:30",
     workWindow: "ALL_DAY",
     mctMachine: "MCT 7.5호기 #1",
-    memo: "35도 경사면 가공 시 진직도 0.002mm 이하 유지"
+    memo: "35도 경사면 가공 시 진직도 0.002mm 이하 유지",
+    customer: "LG디스플레이",
+    poNumber: "LGD-WP-2000-02",
+    partName: "2000mm Precision 3P Slot Die",
+    partType: "BODY (몸체)",
+    spec: "2000mm",
+    serialNo: "LGD-3P-2000-2603",
+    dueDate: "2026-07-15",
+    specialNotes: "※ 35도 경사면 가공 시 진직도 0.002mm 이하 유지 및 CMM 측정 필수",
+    writerName: "생산기술팀",
+    reviewerName: "품질보증팀",
+    approverName: "총괄임원"
   },
   "ORD-2026-003": {
     id: "ORD-2026-003",
@@ -533,7 +555,39 @@ export const INITIAL_ORDERS: Record<string, import('../types').Order> = {
     startDate: "2026-03-10T08:30",
     workWindow: "ALL_DAY",
     mctMachine: "MCT 6.5호기 #1",
-    memo: "외주 열처리 및 래핑 일정 사전 확인 완료"
+    memo: "외주 열처리 및 래핑 일정 사전 확인 완료",
+    customer: "SK온",
+    poNumber: "SKON-BATT-26-03",
+    partName: "2P Electrode Coating Die",
+    partType: "LOWER (하판)",
+    spec: "1500L",
+    serialNo: "SKON-2P15-2603-01",
+    dueDate: "2026-08-10",
+    specialNotes: "※ 외주 열처리 후 응력 제거 확인 및 공정 이동표 상시 부착",
+    writerName: "생산관리팀",
+    reviewerName: "제조기술팀",
+    approverName: "품질책임자"
+  },
+  "ORD-2026-PNT": {
+    id: "ORD-2026-PNT",
+    name: "PNT Flex Bolt 2P SLOT DIE 상판",
+    typeId: "TYPE_SLIT_NOZZLE",
+    qty: 1,
+    startDate: "2026-03-01T08:30",
+    workWindow: "ALL_DAY",
+    mctMachine: "MCT 6.5호기 #1",
+    memo: "※ 공정 간 인수인계 철저히 할 것!",
+    customer: "PNT",
+    poNumber: "PNT-BNSH650L-26-02",
+    partName: "Flex Bolt 2P SLOT DIE",
+    partType: "UPPER (상판)",
+    spec: "650L",
+    serialNo: "PNT-BNSH650L-265-02-02",
+    dueDate: "2026-06-30",
+    specialNotes: "※ 공정 간 인수인계 철저히 할 것!",
+    writerName: "작성자",
+    reviewerName: "검토자",
+    approverName: "승인자"
   }
 };
 
