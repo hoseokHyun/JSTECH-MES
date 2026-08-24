@@ -428,16 +428,39 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    if (confirm('선택하신 수주건을 삭제하시겠습니까? 관련 공정 진행 현황이 함께 삭제됩니다.')) {
-      setOrders((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
-      });
-      deleteOrderFromFirestore(orderId);
-      if (selectedTaskItem?.orderId === orderId) {
-        setSelectedTaskKey(null);
+    setOrders((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      try {
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save orders after delete', e);
       }
+      return next;
+    });
+
+    setProcessProgressMap((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith(`${orderId}-`) || key.startsWith(`${orderId}_`) || key.includes(`-${orderId}-`)) {
+          delete next[key];
+          changed = true;
+        }
+      });
+      if (changed) {
+        try {
+          localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(next));
+        } catch (e) {
+          console.error('Failed to update progress map in localStorage', e);
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    deleteOrderFromFirestore(orderId);
+    if (selectedTaskItem?.orderId === orderId) {
+      setSelectedTaskKey(null);
     }
   };
 
@@ -692,6 +715,11 @@ export default function App() {
     setProductTypes((prev) => {
       const next = { ...prev };
       delete next[typeId];
+      try {
+        localStorage.setItem(STORAGE_KEY_TYPES, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to update localStorage for productTypes:', e);
+      }
       return next;
     });
     deleteProductTypeFromFirestore(typeId);

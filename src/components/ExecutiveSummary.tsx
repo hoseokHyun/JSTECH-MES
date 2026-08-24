@@ -475,7 +475,180 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. 주요 병목구간 알림 & 단일 설비 가동율(OEE) 2단 레이아웃                 */}
+      {/* 3. 최적화된 수주별 컴팩트 스윔레인(Swimlane) & 공정 파이프라인 뷰              */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
+              <Layers className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <span>수주별 공정 진행 현황</span>
+              </h2>
+              <p className="text-[11px] text-slate-500 font-medium">
+                각 수주별 공정 흐름과 실시간 진행 단계를 컴팩트한 타임라인으로 요약 표시합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-bold text-slate-600 flex-wrap">
+            <span className="flex items-center gap-1 text-[11px]">
+              <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> 완료
+            </span>
+            <span className="flex items-center gap-1 text-[11px]">
+              <span className="w-2.5 h-2.5 rounded bg-amber-400 animate-pulse" /> 진행중
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-red-600">
+              <span className="w-2.5 h-2.5 rounded bg-red-500" /> 지연(병목)
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+              <span className="w-2.5 h-2.5 rounded bg-slate-200" /> 대기
+            </span>
+          </div>
+        </div>
+
+        {/* Compact Process Swimlane List */}
+        <div className="space-y-3">
+          {activeOrders.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              등록된 활성 수주가 없습니다. 신규 수주를 등록해주세요.
+            </div>
+          ) : (
+            activeOrders.map((ord) => {
+              const type = productTypes[ord.typeId];
+              const processes: ProcessStep[] = ord.customProcesses && ord.customProcesses.length > 0
+                ? ord.customProcesses
+                : type ? type.processes : [];
+              const orderTasks = scheduledTasks.filter((t) => t.orderId === ord.id);
+              const prog = orderProgressMap[ord.id] || { completed: 0, total: 0, delayed: 0, inProgress: 0, pct: 0 };
+              const isCompleted = prog.pct === 100;
+
+              return (
+                <div
+                  key={ord.id}
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    prog.delayed > 0
+                      ? 'bg-red-50/30 border-red-300 shadow-xs'
+                      : isCompleted
+                      ? 'bg-slate-50/60 border-slate-200'
+                      : 'bg-white border-slate-200 shadow-2xs hover:border-blue-300'
+                  }`}
+                >
+                  {/* Order Overview Header Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-black text-slate-900 truncate">
+                        {ord.name}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                        {type ? type.name : '표준'} | {ord.qty}개
+                      </span>
+                      {prog.delayed > 0 && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
+                          ⚠️ 병목 지연 ({prog.delayed}개 공정)
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          ✅ 전공정 완료
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-24 bg-slate-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full transition-all ${
+                              prog.delayed > 0 ? 'bg-red-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${prog.pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-black font-mono text-slate-800">
+                          {prog.pct}%
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {prog.completed}/{prog.total} 단계
+                      </span>
+
+                      {/* Quick Complete All / Revert Button */}
+                      <button
+                        onClick={() => {
+                          if (completeAllFn) {
+                            completeAllFn(ord.id, !isCompleted);
+                          }
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                          isCompleted
+                            ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                        }`}
+                        title="수주 전체 공정 완료 상태 전환"
+                      >
+                        {isCompleted ? '진행중 전환' : '전체완료 처리'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Compact Step Swimlane Pipeline */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin">
+                    {processes.map((proc, idx) => {
+                      const matchingTask = orderTasks.find(
+                        (t) => t.groupName === proc.name || t.processIndex === idx
+                      );
+                      const status = matchingTask?.status || (matchingTask?.isCompleted ? 'COMPLETED' : 'READY');
+
+                      let stepClass = 'bg-slate-100 text-slate-600 border-slate-200';
+                      let dotColor = 'bg-slate-300';
+
+                      if (status === 'COMPLETED') {
+                        stepClass = 'bg-emerald-50 text-emerald-900 border-emerald-300 font-bold';
+                        dotColor = 'bg-emerald-500';
+                      } else if (status === 'DELAYED') {
+                        stepClass = 'bg-red-100 text-red-950 border-red-400 font-black ring-1 ring-red-400 shadow-xs';
+                        dotColor = 'bg-red-600 animate-ping';
+                      } else if (status === 'IN_PROGRESS') {
+                        stepClass = 'bg-amber-50 text-amber-950 border-amber-300 font-extrabold ring-1 ring-amber-400';
+                        dotColor = 'bg-amber-500 animate-pulse';
+                      } else if (status === 'PAUSED') {
+                        stepClass = 'bg-orange-50 text-orange-950 border-orange-300 font-bold';
+                        dotColor = 'bg-orange-500';
+                      }
+
+                      return (
+                        <div key={`${ord.id}-${proc.name}-${idx}`} className="flex items-center shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => matchingTask && handleOpenTaskDetail(matchingTask)}
+                            className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center gap-1.5 transition cursor-pointer hover:scale-105 ${stepClass}`}
+                            title={`${proc.name} (${proc.category}) - ${matchingTask?.machine || proc.assignedMachine || '설비미지정'}`}
+                          >
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                            <span className="font-extrabold whitespace-nowrap">{proc.name}</span>
+                            <span className="text-[9px] opacity-70 font-mono">
+                              ({proc.durationHours}h)
+                            </span>
+                          </button>
+                          {idx < processes.length - 1 && (
+                            <ChevronRight className="w-3 h-3 text-slate-300 mx-0.5 shrink-0" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. 주요 병목구간 알림 & 단일 설비 가동율(OEE) 2단 레이아웃                 */}
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left 2 Cols: 주요 병목구간 및 지연 공정 알림 리스트 (Critical Bottlenecks) */}
@@ -700,179 +873,6 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 4. 최적화된 수주별 컴팩트 스윔레인(Swimlane) & 공정 파이프라인 뷰              */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
-              <Layers className="w-4 h-4 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <span>수주별 공정 진행 현황 및 스윔레인 (Compact Process Pipeline)</span>
-              </h2>
-              <p className="text-[11px] text-slate-500 font-medium">
-                각 수주별 공정 흐름과 실시간 진행 단계를 컴팩트한 타임라인으로 요약 표시합니다.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs font-bold text-slate-600 flex-wrap">
-            <span className="flex items-center gap-1 text-[11px]">
-              <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> 완료
-            </span>
-            <span className="flex items-center gap-1 text-[11px]">
-              <span className="w-2.5 h-2.5 rounded bg-amber-400 animate-pulse" /> 진행중
-            </span>
-            <span className="flex items-center gap-1 text-[11px] text-red-600">
-              <span className="w-2.5 h-2.5 rounded bg-red-500" /> 지연(병목)
-            </span>
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
-              <span className="w-2.5 h-2.5 rounded bg-slate-200" /> 대기
-            </span>
-          </div>
-        </div>
-
-        {/* Compact Process Swimlane List */}
-        <div className="space-y-3">
-          {activeOrders.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              등록된 활성 수주가 없습니다. 신규 수주를 등록해주세요.
-            </div>
-          ) : (
-            activeOrders.map((ord) => {
-              const type = productTypes[ord.typeId];
-              const processes: ProcessStep[] = ord.customProcesses && ord.customProcesses.length > 0
-                ? ord.customProcesses
-                : type ? type.processes : [];
-              const orderTasks = scheduledTasks.filter((t) => t.orderId === ord.id);
-              const prog = orderProgressMap[ord.id] || { completed: 0, total: 0, delayed: 0, inProgress: 0, pct: 0 };
-              const isCompleted = prog.pct === 100;
-
-              return (
-                <div
-                  key={ord.id}
-                  className={`p-3.5 rounded-2xl border transition-all ${
-                    prog.delayed > 0
-                      ? 'bg-red-50/30 border-red-300 shadow-xs'
-                      : isCompleted
-                      ? 'bg-slate-50/60 border-slate-200'
-                      : 'bg-white border-slate-200 shadow-2xs hover:border-blue-300'
-                  }`}
-                >
-                  {/* Order Overview Header Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xs font-black text-slate-900 truncate">
-                        {ord.name}
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                        {type ? type.name : '표준'} | {ord.qty}개
-                      </span>
-                      {prog.delayed > 0 && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
-                          ⚠️ 병목 지연 ({prog.delayed}개 공정)
-                        </span>
-                      )}
-                      {isCompleted && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                          ✅ 전공정 완료
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-24 bg-slate-200 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-2 rounded-full transition-all ${
-                              prog.delayed > 0 ? 'bg-red-500' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${prog.pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-black font-mono text-slate-800">
-                          {prog.pct}%
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {prog.completed}/{prog.total} 단계
-                      </span>
-
-                      {/* Quick Complete All / Revert Button */}
-                      <button
-                        onClick={() => {
-                          if (completeAllFn) {
-                            completeAllFn(ord.id, !isCompleted);
-                          }
-                        }}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition cursor-pointer ${
-                          isCompleted
-                            ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
-                        }`}
-                        title="수주 전체 공정 완료 상태 전환"
-                      >
-                        {isCompleted ? '진행중 전환' : '전체완료 처리'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Compact Step Swimlane Pipeline */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin">
-                    {processes.map((proc, idx) => {
-                      const matchingTask = orderTasks.find(
-                        (t) => t.groupName === proc.name || t.processIndex === idx
-                      );
-                      const status = matchingTask?.status || (matchingTask?.isCompleted ? 'COMPLETED' : 'READY');
-
-                      let stepClass = 'bg-slate-100 text-slate-600 border-slate-200';
-                      let dotColor = 'bg-slate-300';
-
-                      if (status === 'COMPLETED') {
-                        stepClass = 'bg-emerald-50 text-emerald-900 border-emerald-300 font-bold';
-                        dotColor = 'bg-emerald-500';
-                      } else if (status === 'DELAYED') {
-                        stepClass = 'bg-red-100 text-red-950 border-red-400 font-black ring-1 ring-red-400 shadow-xs';
-                        dotColor = 'bg-red-600 animate-ping';
-                      } else if (status === 'IN_PROGRESS') {
-                        stepClass = 'bg-amber-50 text-amber-950 border-amber-300 font-extrabold ring-1 ring-amber-400';
-                        dotColor = 'bg-amber-500 animate-pulse';
-                      } else if (status === 'PAUSED') {
-                        stepClass = 'bg-orange-50 text-orange-950 border-orange-300 font-bold';
-                        dotColor = 'bg-orange-500';
-                      }
-
-                      return (
-                        <div key={`${ord.id}-${proc.name}-${idx}`} className="flex items-center shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => matchingTask && handleOpenTaskDetail(matchingTask)}
-                            className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center gap-1.5 transition cursor-pointer hover:scale-105 ${stepClass}`}
-                            title={`${proc.name} (${proc.category}) - ${matchingTask?.machine || proc.assignedMachine || '설비미지정'}`}
-                          >
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                            <span className="font-extrabold whitespace-nowrap">{proc.name}</span>
-                            <span className="text-[9px] opacity-70 font-mono">
-                              ({proc.durationHours}h)
-                            </span>
-                          </button>
-                          {idx < processes.length - 1 && (
-                            <ChevronRight className="w-3 h-3 text-slate-300 mx-0.5 shrink-0" />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
       {/* 5. MODALS & SUB-COMPONENTS                                                */}
       {/* ========================================================================= */}
       {/* Edit Order Modal */}
@@ -886,6 +886,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
         onCompleteAllOrderProcesses={onCompleteAllOrderProcesses}
         onArchiveOrder={onArchiveOrder}
         onOpenArchiveModal={onOpenArchiveModal}
+        approvedOperators={approvedOperators}
       />
 
       {/* Executive Direct Action Task Detail Modal */}

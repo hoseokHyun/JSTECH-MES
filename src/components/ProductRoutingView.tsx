@@ -20,8 +20,10 @@ import {
   FileText,
   CheckCircle2,
   ShieldAlert,
+  ShieldX,
   Search,
-  Sparkles
+  Sparkles,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface ProductRoutingViewProps {
@@ -49,6 +51,19 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
   );
   const [searchQuery, setSearchQuery] = useState('');
 
+  // RBAC check: Only Representative Admin (대표 관리자) can delete
+  const isRepresentativeAdmin = (user?: User | null) => {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+    if (user.position && (user.position.includes('대표') || user.position.includes('총괄') || user.position.includes('임원'))) return true;
+    if (user.department && (user.department.includes('시스템 관리자') || user.department.includes('임원실'))) return true;
+    return false;
+  };
+
+  // Feedback & Alert states
+  const [permissionAlertMessage, setPermissionAlertMessage] = useState<string | null>(null);
+  const [successToastMessage, setSuccessToastMessage] = useState<string>('');
+
   // Modals state
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [targetTypeToRename, setTargetTypeToRename] = useState<ProductType | null>(null);
@@ -57,7 +72,11 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [targetTypeToDelete, setTargetTypeToDelete] = useState<ProductType | null>(null);
+  const [targetMigrateTypeId, setTargetMigrateTypeId] = useState<string>('');
   const [deleteWarningInfo, setDeleteWarningInfo] = useState<{ isInUse: boolean; orderNames: string[]; isRef: boolean } | null>(null);
+
+  // Safety confirmation modal for deleting individual process step
+  const [stepToDeleteIndex, setStepToDeleteIndex] = useState<number | null>(null);
 
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
   const [targetTypeToCopy, setTargetTypeToCopy] = useState<ProductType | null>(null);
@@ -220,7 +239,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
     });
   };
 
-  const handleRemoveStep = (index: number) => {
+  const handleRequestRemoveStep = (index: number) => {
     if (!currentType) return;
     if (currentType.isReference && currentUser?.role !== 'ADMIN') {
       alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
@@ -232,12 +251,20 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
       return;
     }
 
-    const updatedProcesses = currentType.processes.filter((_, i) => i !== index);
+    setStepToDeleteIndex(index);
+  };
+
+  const handleConfirmRemoveStep = () => {
+    if (!currentType || stepToDeleteIndex === null) return;
+
+    const updatedProcesses = currentType.processes.filter((_, i) => i !== stepToDeleteIndex);
 
     onUpdateProductType({
       ...currentType,
       processes: updatedProcesses,
     });
+
+    setStepToDeleteIndex(null);
   };
 
   /* ==================================================================== */
@@ -346,24 +373,21 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
   const handleConfirmDelete = () => {
     if (!targetTypeToDelete) return;
 
-    // Check if in use or admin constraint
+    // Check if in use
     const linked = getOrdersUsingType(targetTypeToDelete.id);
     if (linked.length > 0) {
       alert(`현재 ${linked.length}건의 수주에서 사용 중인 마스터입니다. 삭제할 수 없습니다.`);
       return;
     }
 
-    if (targetTypeToDelete.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 삭제할 수 있습니다.');
-      return;
-    }
+    const typeIdToDelete = targetTypeToDelete.id;
 
     if (onDeleteProductType) {
-      onDeleteProductType(targetTypeToDelete.id);
+      onDeleteProductType(typeIdToDelete);
     }
 
     // Auto select another master
-    const remainingKeys = typeKeys.filter((k) => k !== targetTypeToDelete.id);
+    const remainingKeys = typeKeys.filter((k) => k !== typeIdToDelete);
     if (remainingKeys.length > 0) {
       setActiveTypeId(remainingKeys[0]);
     }
@@ -653,6 +677,15 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                       <span>복사</span>
                     </button>
 
+                    <button
+                      onClick={() => handleOpenDeleteModal(currentType)}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-slate-200"
+                      title="마스터 삭제"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>삭제</span>
+                    </button>
+
                     <span
                       className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold border ${
                         currentType.isReference
@@ -814,7 +847,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleRemoveStep(idx)}
+                                onClick={() => handleRequestRemoveStep(idx)}
                                 className="text-slate-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition cursor-pointer"
                                 title="이 공정 삭제"
                               >
@@ -1200,6 +1233,70 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 3-B: Delete Process Step Safety Modal                          */}
+      {/* ==================================================================== */}
+      {stepToDeleteIndex !== null && currentType && currentType.processes[stepToDeleteIndex] && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-rose-100 bg-rose-50/80 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-600 border border-rose-300">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-rose-900">공정 단계 삭제 확인</h3>
+                <p className="text-[11px] text-rose-700">마스터 라우팅에서 해당 공정을 삭제합니다.</p>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3.5 text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500">삭제 대상 공정 ({stepToDeleteIndex + 1}단계):</span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                    {currentType.processes[stepToDeleteIndex].category}
+                  </span>
+                </div>
+                <div className="font-extrabold text-slate-900 text-sm">
+                  {currentType.processes[stepToDeleteIndex].name}
+                </div>
+                <div className="text-[11px] text-indigo-700 font-mono font-bold flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  <span>표준 작업시간: {currentType.processes[stepToDeleteIndex].durationHours}시간</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>삭제 시 주의사항</span>
+                </div>
+                <p className="text-amber-800 leading-relaxed">
+                  삭제 후 마스터 공정 순서가 재정렬되며, 총 {currentType.processes.length - 1}개 공정으로 변경됩니다. 이 작업은 즉시 반영됩니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setStepToDeleteIndex(null)}
+                className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-200 rounded-xl font-bold transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveStep}
+                className="px-5 py-2 text-xs bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl shadow-md transition cursor-pointer"
+              >
+                공정 삭제
+              </button>
+            </div>
           </div>
         </div>
       )}

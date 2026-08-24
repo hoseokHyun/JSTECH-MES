@@ -46,6 +46,7 @@ import {
   FolderSync,
   FolderPlus,
   Tag,
+  RotateCcw,
   Palette,
   Printer,
   FileSpreadsheet,
@@ -160,6 +161,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [isPreviewTravelerOpen, setIsPreviewTravelerOpen] = useState<boolean>(false);
   const [createdOrderForTraveler, setCreatedOrderForTraveler] = useState<Order | null>(null);
   const [showCreatedOrderModal, setShowCreatedOrderModal] = useState<boolean>(false);
+  const [isPostCreateTravelerOpen, setIsPostCreateTravelerOpen] = useState<boolean>(false);
 
   // Auto-fill traveler fields when project name is typed
   const handleNameChange = (val: string) => {
@@ -411,8 +413,19 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     { name: '슬레이트 (기타/외주)', value: 'bg-slate-100 text-slate-800 border-slate-300' },
   ];
 
+  const CUSTOM_INITIAL_PHASE: PhaseDefinition = {
+    id: 'phase_custom_1',
+    name: '[Phase 1] 커스텀 공정 구간',
+    titleSuffix: '커스텀 공정 구간',
+    defaultDesc: '공정을 직접 추가하고 설비와 담당자를 지정하여 유연하게 구성하는 공정 구간입니다.',
+    icon: '✨',
+    badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
+  };
+
   // Dynamic Phases State
-  const [phases, setPhases] = useState<PhaseDefinition[]>(INITIAL_PHASE_DEFS);
+  const [phases, setPhases] = useState<PhaseDefinition[]>(() => {
+    return typeId === 'TYPE_CUSTOM' ? [CUSTOM_INITIAL_PHASE] : INITIAL_PHASE_DEFS;
+  });
 
   // Add Phase Modal State
   const [isAddPhaseModalOpen, setIsAddPhaseModalOpen] = useState<boolean>(false);
@@ -484,25 +497,20 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
     if (typeId === 'TYPE_CUSTOM') {
       setIsCustomMode(true);
-      const customType = productTypes['TYPE_CUSTOM'];
-      const rawSteps: ProcessStep[] = customType?.processes?.length
-        ? customType.processes.map((p) => ({ ...p }))
-        : [
-            { name: '1차 MCT 가공', category: '가공', durationHours: 4.0, phaseId: 'phase_1' },
-            { name: '정밀 평면 연마', category: '연마', durationHours: 3.0, phaseId: 'phase_2' },
-            { name: 'CMM 3차원 정밀 측정 및 검사', category: '품질', durationHours: 1.0, phaseId: 'phase_4' },
-          ];
-
-      const initSteps = ensureStepsWithPhases(rawSteps);
-      setCurrentProcesses(initSteps);
-      initStepAssignments(initSteps);
+      setPhases([CUSTOM_INITIAL_PHASE]);
+      setExpandedPhases({ phase_custom_1: true });
+      setCurrentProcesses([]);
+      setStepAssignments({});
+      setSelectedStepIndices(new Set());
       return;
     }
 
     const selectedType = productTypes[typeId];
     if (selectedType && selectedType.processes) {
+      setIsCustomMode(false);
+      setPhases(INITIAL_PHASE_DEFS);
       const rawSteps = selectedType.processes.map((p) => ({ ...p }));
-      const steps = ensureStepsWithPhases(rawSteps);
+      const steps = ensureStepsWithPhases(rawSteps, INITIAL_PHASE_DEFS);
       setCurrentProcesses(steps);
       initStepAssignments(steps);
     }
@@ -856,11 +864,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       }
     });
 
-    if (remainingProcesses.length === 0) {
-      alert('⚠️ 전체 공정이 0개가 되므로 삭제할 수 없습니다. 최소 1개 공정은 유지되어야 합니다.');
-      return;
-    }
-
     const updatedPhases = phases
       .filter((p) => p.id !== phaseIdToDelete)
       .map((p, idx) => ({
@@ -941,10 +944,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   const handleBatchDeleteSelectedSteps = () => {
     if (selectedStepIndices.size === 0) return;
-    if (currentProcesses.length - selectedStepIndices.size < 1) {
-      alert('⚠️ 전체 공정이 0개가 되므로 삭제할 수 없습니다. 최소 1개 공정은 유지되어야 합니다.');
-      return;
-    }
     if (!confirm(`선택한 ${selectedStepIndices.size}개의 공정을 정말 삭제하시겠습니까?`)) {
       return;
     }
@@ -1192,10 +1191,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   };
 
   const handleRemoveProcess = (idx: number) => {
-    if (currentProcesses.length <= 1) {
-      alert('최소 1개 이상의 공정이 필요합니다.');
-      return;
-    }
     setIsCustomMode(true);
     setCurrentProcesses((prev) => prev.filter((_, i) => i !== idx));
 
@@ -1335,6 +1330,53 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       }
     }
   }, [pendingCopyOrder]);
+
+  // Reset entire form inputs and routing state
+  const handleResetForm = () => {
+    if (!window.confirm('입력한 수주 정보 및 공정 설정을 초기화하시겠습니까?')) {
+      return;
+    }
+    setName('');
+    setCustomer('');
+    setPoNumber('');
+    setPartName('');
+    setPartType('UPPER (상판)');
+    setSpec('');
+    setSerialNo('');
+    setDueDate('');
+    setMemo('');
+    setSpecialNotes('※ 공정 간 인수인계 철저히 할 것!');
+    setQty(1);
+    setStartDate(getCurrentDateTimeString());
+    setRoutingSearchTerm('');
+    setSelectedStepIndices(new Set());
+    setSelectedEmptyPhaseIds(new Set());
+    setCopiedSourceOrder(null);
+    setBatchMachine('');
+    setBatchWorker('');
+    setBatchDuration('');
+    setBatchSuccessMessage('');
+
+    const defaultTypeId = productTypes['TYPE_SLIT_NOZZLE']
+      ? 'TYPE_SLIT_NOZZLE'
+      : Object.keys(productTypes)[0] || 'TYPE_CUSTOM';
+    setTypeId(defaultTypeId);
+
+    if (defaultTypeId === 'TYPE_CUSTOM') {
+      setIsCustomMode(true);
+      setPhases([CUSTOM_INITIAL_PHASE]);
+      setExpandedPhases({ phase_custom_1: true });
+      setCurrentProcesses([]);
+      setStepAssignments({});
+    } else if (productTypes[defaultTypeId]?.processes) {
+      setIsCustomMode(false);
+      setPhases(INITIAL_PHASE_DEFS);
+      const rawSteps = productTypes[defaultTypeId].processes.map((p) => ({ ...p }));
+      const steps = ensureStepsWithPhases(rawSteps, INITIAL_PHASE_DEFS);
+      setCurrentProcesses(steps);
+      initStepAssignments(steps);
+    }
+  };
 
   // Form Submit Handler with Conflict Detection
   const handleSubmit = (e: React.FormEvent) => {
@@ -1619,21 +1661,37 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
             {/* Product Type (BOP) Select */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-blue-600" /> 제품 타입 (BOP)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-slate-700 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" /> 제품 타입 (BOP)
+                </label>
+                {typeId === 'TYPE_CUSTOM' && (
+                  <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded border border-blue-200">
+                    커스텀
+                  </span>
+                )}
+              </div>
               <select
+                id="order-product-type-select"
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
                 className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
               >
-                {/* Standard Types */}
-                {(Object.values(productTypes) as ProductType[]).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id === 'TYPE_CUSTOM' ? '✨ ' : ''}
-                    {t.name.replace(/\s*\(\d+단계\)/g, '')} ({t.processes?.length || 0}단계)
-                  </option>
-                ))}
+                {/* 1. Custom Process Option */}
+                <option value="TYPE_CUSTOM" className="font-black text-blue-900 bg-blue-50">
+                  ✨ 커스텀 공정 (사용자 직접 유연 설계)
+                </option>
+
+                {/* 2. Registered Standard BOP Product Types */}
+                <optgroup label="--- 등록된 표준 제품 타입 (BOP) ---">
+                  {(Object.values(productTypes) as ProductType[])
+                    .filter((t) => t.id !== 'TYPE_CUSTOM')
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name.replace(/\s*\(\d+단계\)/g, '')} ({t.processes?.length || 0}단계)
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
 
@@ -1837,8 +1895,18 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 </p>
               </div>
 
-              {/* Accordion Expand/Collapse All & Add Phase Button */}
+              {/* Accordion Expand/Collapse All & Add Phase Button & Reset */}
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  className="px-2.5 py-1.5 text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+                  title="수주 입력 정보 및 공정 라우팅 전체를 초기화합니다"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>초기화</span>
+                </button>
+
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
                   <button
                     type="button"
@@ -2241,19 +2309,16 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                             <h4 className="text-xs sm:text-sm font-black text-slate-900">
                               {group.title}
                             </h4>
-                            {/* Dynamic Sequence Range Badge */}
-                            <span className="font-mono text-[11px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
-                              {group.rangeText}
-                            </span>
+                            {/* Dynamic Sequence Range Badge (Only when steps exist) */}
+                            {group.steps.length > 0 && (
+                              <span className="font-mono text-[11px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+                                {group.rangeText}
+                              </span>
+                            )}
                             {/* Dynamic Process Count Badge */}
                             <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${group.badgeColor}`}>
                               {group.steps.length}개 공정
                             </span>
-                            {isGroupEmpty && (
-                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
-                                공정 없음
-                              </span>
-                            )}
                             {group.matchingCount > 0 && routingSearchTerm && (
                               <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs animate-pulse">
                                 🔍 {group.matchingCount}건 검색 일치
@@ -2338,276 +2403,289 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                     {isExpanded && (
                       <div className="p-0">
                         {group.steps.length === 0 ? (
-                          <div className="p-8 text-center bg-slate-50/50 space-y-2">
-                            <div className="text-slate-400 text-xs font-bold">
-                              현재 이 Phase 구간에 등록된 공정이 없습니다.
+                          <div className="py-12 px-6 text-center bg-white space-y-4">
+                            <div className="text-slate-500 text-xs font-bold">
+                              현재 이 Phase 구간에 등록된 공정이 없습니다. 아래 버튼을 눌러 공정을 직접 추가해보세요.
                             </div>
-                            <div className="flex items-center justify-center gap-1.5 pt-1">
+                            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                               <button
                                 type="button"
                                 onClick={() => handleAddProcessToPhase(group.id, '가공')}
-                                className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold transition cursor-pointer"
+                                className="px-3.5 py-2 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
                               >
-                                + 가공 공정 추가
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>가공 공정 추가</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleAddProcessToPhase(group.id, '연마')}
-                                className="px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold transition cursor-pointer"
+                                className="px-3.5 py-2 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
                               >
-                                + 연마 공정 추가
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>연마 공정 추가</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleAddProcessToPhase(group.id, '품질')}
-                                className="px-2.5 py-1 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg font-bold transition cursor-pointer"
+                                className="px-3.5 py-2 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
                               >
-                                + 품질검사 추가
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>품질검사 추가</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAddProcessToPhase(group.id, '외주')}
+                                className="px-3.5 py-2 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>외주/열처리 추가</span>
                               </button>
                             </div>
                           </div>
                         ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs min-w-[900px]">
-                              <thead className="bg-slate-100/70 text-slate-600 font-extrabold border-b border-slate-200 text-[11px]">
-                                <tr>
-                                  <th className="py-2 px-2.5 w-10 text-center">선택</th>
-                                  <th className="py-2 px-2.5 w-12 text-center">순번</th>
-                                  <th className="py-2 px-2.5 min-w-[200px]">공정명 (Process Step)</th>
-                                  <th className="py-2 px-2.5 text-center w-28">공정 구분</th>
-                                  <th className="py-2 px-2.5 text-center w-20">시간(h)</th>
-                                  <th className="py-2 px-2.5 min-w-[200px]">담당 설비 지정</th>
-                                  <th className="py-2 px-2.5 min-w-[200px]">공정 담당자 지정</th>
-                                  <th className="py-2 px-2.5 min-w-[130px] text-center">구간(Phase) 이동</th>
-                                  <th className="py-2 px-2.5 text-center w-20">순서/삭제</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100 text-slate-800 font-semibold">
-                                {group.steps.map(({ proc, originalIndex: idx }) => {
-                                  const isSelected = selectedStepIndices.has(idx);
-                                  const assign = stepAssignments[idx] || { machine: '', worker: '' };
-                                  const machineBusy = assign.machine ? busyMachinesMap.get(assign.machine) : undefined;
-                                  const workerBusy = assign.worker ? busyWorkersMap.get(assign.worker.trim()) : undefined;
+                          <div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs min-w-[900px]">
+                                <thead className="bg-slate-100/70 text-slate-600 font-extrabold border-b border-slate-200 text-[11px]">
+                                  <tr>
+                                    <th className="py-2 px-2.5 w-10 text-center">선택</th>
+                                    <th className="py-2 px-2.5 w-12 text-center">순번</th>
+                                    <th className="py-2 px-2.5 min-w-[200px]">공정명 (Process Step)</th>
+                                    <th className="py-2 px-2.5 text-center w-28">공정 구분</th>
+                                    <th className="py-2 px-2.5 text-center w-20">시간(h)</th>
+                                    <th className="py-2 px-2.5 min-w-[200px]">담당 설비 지정</th>
+                                    <th className="py-2 px-2.5 min-w-[200px]">공정 담당자 지정</th>
+                                    <th className="py-2 px-2.5 min-w-[130px] text-center">구간(Phase) 이동</th>
+                                    <th className="py-2 px-2.5 text-center w-20">순서/삭제</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-800 font-semibold">
+                                  {group.steps.map(({ proc, originalIndex: idx }) => {
+                                    const isSelected = selectedStepIndices.has(idx);
+                                    const assign = stepAssignments[idx] || { machine: '', worker: '' };
+                                    const machineBusy = assign.machine ? busyMachinesMap.get(assign.machine) : undefined;
+                                    const workerBusy = assign.worker ? busyWorkersMap.get(assign.worker.trim()) : undefined;
 
-                                  const isSearchMatched =
-                                    routingSearchTerm.trim() !== '' &&
-                                    (proc.name.toLowerCase().includes(routingSearchTerm.toLowerCase()) ||
-                                      proc.category.toLowerCase().includes(routingSearchTerm.toLowerCase()) ||
-                                      (assign.machine && assign.machine.toLowerCase().includes(routingSearchTerm.toLowerCase())) ||
-                                      (assign.worker && assign.worker.toLowerCase().includes(routingSearchTerm.toLowerCase())));
+                                    const isSearchMatched =
+                                      routingSearchTerm.trim() !== '' &&
+                                      (proc.name.toLowerCase().includes(routingSearchTerm.toLowerCase()) ||
+                                        proc.category.toLowerCase().includes(routingSearchTerm.toLowerCase()) ||
+                                        (assign.machine && assign.machine.toLowerCase().includes(routingSearchTerm.toLowerCase())) ||
+                                        (assign.worker && assign.worker.toLowerCase().includes(routingSearchTerm.toLowerCase())));
 
-                                  return (
-                                    <tr
-                                      key={proc.id || idx}
-                                      className={`transition ${
-                                        isSelected
-                                          ? 'bg-blue-50/70 hover:bg-blue-50'
-                                          : isSearchMatched
-                                          ? 'bg-amber-50/60 hover:bg-amber-50 border-l-4 border-amber-400'
-                                          : 'hover:bg-slate-50/80'
-                                      }`}
-                                    >
-                                      {/* Selection Checkbox */}
-                                      <td className="py-1.5 px-2.5 text-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => handleToggleSelectStep(idx)}
-                                          className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                        />
-                                      </td>
-
-                                      {/* Step Number */}
-                                      <td className="py-1.5 px-2 text-center font-mono font-bold text-slate-500 text-[11px]">
-                                        #{String(idx + 1).padStart(2, '0')}
-                                      </td>
-
-                                      {/* Process Name (Editable) */}
-                                      <td className="py-1.5 px-2">
-                                        <input
-                                          type="text"
-                                          value={proc.name}
-                                          onChange={(e) => handleUpdateProcessField(idx, 'name', e.target.value)}
-                                          placeholder="공정명 입력"
-                                          className={`w-full text-xs px-2 py-1 border rounded-md font-bold text-slate-900 bg-white ${
-                                            isSearchMatched
-                                              ? 'border-amber-400 ring-1 ring-amber-300'
-                                              : 'border-slate-200 hover:border-slate-400 focus:border-blue-500'
-                                          }`}
-                                        />
-                                      </td>
-
-                                      {/* Category Dropdown */}
-                                      <td className="py-1.5 px-2 text-center">
-                                        <select
-                                          value={proc.category}
-                                          onChange={(e) => handleUpdateProcessField(idx, 'category', e.target.value as ProcessCategory)}
-                                          className={`text-[10px] px-2 py-1 border rounded-md font-black cursor-pointer ${
-                                            proc.category === '가공'
-                                              ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                                              : proc.category === '연마'
-                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                              : proc.category === '품질'
-                                              ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                              : 'bg-amber-50 text-amber-800 border-amber-200'
-                                          }`}
-                                        >
-                                          <option value="가공">가공 (MCT)</option>
-                                          <option value="연마">연마 (Grinder)</option>
-                                          <option value="품질">품질 (CMM)</option>
-                                          <option value="외주">외주 (협력사)</option>
-                                        </select>
-                                      </td>
-
-                                      {/* Duration Hours (Editable) */}
-                                      <td className="py-1.5 px-2 text-center">
-                                        <input
-                                          type="number"
-                                          step="0.1"
-                                          min="0.1"
-                                          value={proc.durationHours}
-                                          onChange={(e) => handleUpdateProcessField(idx, 'durationHours', parseFloat(e.target.value) || 0.1)}
-                                          className="w-14 text-center text-xs px-1 py-1 border border-slate-200 rounded-md font-mono font-bold text-slate-900 bg-white"
-                                        />
-                                      </td>
-
-                                      {/* Machine Select with Real-Time Conflict Warning */}
-                                      <td className="py-1.5 px-2">
-                                        <div className="space-y-0.5">
-                                          <SearchableSelect
-                                            options={equipmentOptions}
-                                            value={assign.machine}
-                                            onChange={(val) => handleStepMachineChange(idx, val)}
-                                            placeholder="담당 설비 검색/선택"
-                                            icon={Cpu}
+                                    return (
+                                      <tr
+                                        key={proc.id || idx}
+                                        className={`transition ${
+                                          isSelected
+                                            ? 'bg-blue-50/70 hover:bg-blue-50'
+                                            : isSearchMatched
+                                            ? 'bg-amber-50/60 hover:bg-amber-50 border-l-4 border-amber-400'
+                                            : 'hover:bg-slate-50/80'
+                                        }`}
+                                      >
+                                        {/* Selection Checkbox */}
+                                        <td className="py-1.5 px-2.5 text-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => handleToggleSelectStep(idx)}
+                                            className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
                                           />
-                                          {machineBusy && (
-                                            <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-1.5 py-0.5 text-[9px] font-bold flex items-center gap-1 shadow-2xs animate-pulse">
-                                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                                              <span className="truncate">
-                                                가동중: [{machineBusy.orderName}] #{machineBusy.productNo}호기 {machineBusy.processName}
-                                              </span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </td>
+                                        </td>
 
-                                      {/* Operator Select with Real-Time Conflict Warning */}
-                                      <td className="py-1.5 px-2">
-                                        <div className="space-y-0.5">
-                                          <SearchableSelect
-                                            options={operatorOptions}
-                                            value={assign.worker}
-                                            onChange={(val) => handleStepWorkerChange(idx, val)}
-                                            placeholder="공정 담당자 검색/선택"
-                                            icon={UserCheck}
+                                        {/* Step Number */}
+                                        <td className="py-1.5 px-2 text-center font-mono font-bold text-slate-500 text-[11px]">
+                                          #{String(idx + 1).padStart(2, '0')}
+                                        </td>
+
+                                        {/* Process Name (Editable) */}
+                                        <td className="py-1.5 px-2">
+                                          <input
+                                            type="text"
+                                            value={proc.name}
+                                            onChange={(e) => handleUpdateProcessField(idx, 'name', e.target.value)}
+                                            placeholder="공정명 입력"
+                                            className={`w-full text-xs px-2 py-1 border rounded-md font-bold text-slate-900 bg-white ${
+                                              isSearchMatched
+                                                ? 'border-amber-400 ring-1 ring-amber-300'
+                                                : 'border-slate-200 hover:border-slate-400 focus:border-blue-500'
+                                            }`}
                                           />
-                                          {workerBusy && (
-                                            <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-1.5 py-0.5 text-[9px] font-bold flex items-center gap-1 shadow-2xs animate-pulse">
-                                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                                              <span className="truncate">
-                                                작업중: [{workerBusy.orderName}] #{workerBusy.productNo}호기
-                                              </span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </td>
+                                        </td>
 
-                                      {/* Step Phase Migration Dropdown */}
-                                      <td className="py-1.5 px-2 text-center">
-                                        <select
-                                          value={proc.phaseId || group.id}
-                                          onChange={(e) => handleMoveStepToPhase(idx, e.target.value)}
-                                          className="text-[10px] px-1.5 py-1 border border-indigo-200 rounded-md font-bold bg-indigo-50/50 text-indigo-900 hover:bg-indigo-50 cursor-pointer shadow-2xs"
-                                          title="다른 Phase 구간으로 공정 이동"
-                                        >
-                                          {phases.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                              {p.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </td>
+                                        {/* Category Dropdown */}
+                                        <td className="py-1.5 px-2 text-center">
+                                          <select
+                                            value={proc.category}
+                                            onChange={(e) => handleUpdateProcessField(idx, 'category', e.target.value as ProcessCategory)}
+                                            className={`text-[10px] px-2 py-1 border rounded-md font-black cursor-pointer ${
+                                              proc.category === '가공'
+                                                ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                                : proc.category === '연마'
+                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                                : proc.category === '품질'
+                                                ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                                            }`}
+                                          >
+                                            <option value="가공">가공 (MCT)</option>
+                                            <option value="연마">연마 (Grinder)</option>
+                                            <option value="품질">품질 (CMM)</option>
+                                            <option value="외주">외주 (협력사)</option>
+                                          </select>
+                                        </td>
 
-                                      {/* Action: Move up/down / Delete */}
-                                      <td className="py-1.5 px-2 text-center">
-                                        <div className="flex items-center justify-center gap-0.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleMoveProcess(idx, 'up')}
-                                            disabled={idx === 0}
-                                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-100 transition cursor-pointer"
-                                            title="위로 이동"
+                                        {/* Duration Hours (Editable) */}
+                                        <td className="py-1.5 px-2 text-center">
+                                          <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0.1"
+                                            value={proc.durationHours}
+                                            onChange={(e) => handleUpdateProcessField(idx, 'durationHours', parseFloat(e.target.value) || 0.1)}
+                                            className="w-14 text-center text-xs px-1 py-1 border border-slate-200 rounded-md font-mono font-bold text-slate-900 bg-white"
+                                          />
+                                        </td>
+
+                                        {/* Machine Select with Real-Time Conflict Warning */}
+                                        <td className="py-1.5 px-2">
+                                          <div className="space-y-0.5">
+                                            <SearchableSelect
+                                              options={equipmentOptions}
+                                              value={assign.machine}
+                                              onChange={(val) => handleStepMachineChange(idx, val)}
+                                              placeholder="담당 설비 검색/선택"
+                                              icon={Cpu}
+                                            />
+                                            {machineBusy && (
+                                              <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-1.5 py-0.5 text-[9px] font-bold flex items-center gap-1 shadow-2xs animate-pulse">
+                                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                                <span className="truncate">
+                                                  가동중: [{machineBusy.orderName}] #{machineBusy.productNo}호기 {machineBusy.processName}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        {/* Operator Select with Real-Time Conflict Warning */}
+                                        <td className="py-1.5 px-2">
+                                          <div className="space-y-0.5">
+                                            <SearchableSelect
+                                              options={operatorOptions}
+                                              value={assign.worker}
+                                              onChange={(val) => handleStepWorkerChange(idx, val)}
+                                              placeholder="공정 담당자 검색/선택"
+                                              icon={UserCheck}
+                                            />
+                                            {workerBusy && (
+                                              <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-1.5 py-0.5 text-[9px] font-bold flex items-center gap-1 shadow-2xs animate-pulse">
+                                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                                <span className="truncate">
+                                                  작업중: [{workerBusy.orderName}] #{workerBusy.productNo}호기
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        {/* Step Phase Migration Dropdown */}
+                                        <td className="py-1.5 px-2 text-center">
+                                          <select
+                                            value={proc.phaseId || group.id}
+                                            onChange={(e) => handleMoveStepToPhase(idx, e.target.value)}
+                                            className="text-[10px] px-1.5 py-1 border border-indigo-200 rounded-md font-bold bg-indigo-50/50 text-indigo-900 hover:bg-indigo-50 cursor-pointer shadow-2xs"
+                                            title="다른 Phase 구간으로 공정 이동"
                                           >
-                                            <ArrowUp className="w-3.5 h-3.5" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleMoveProcess(idx, 'down')}
-                                            disabled={idx === currentProcesses.length - 1}
-                                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-100 transition cursor-pointer"
-                                            title="아래로 이동"
-                                          >
-                                            <ArrowDown className="w-3.5 h-3.5" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleRemoveProcess(idx)}
-                                            className="p-1 text-rose-500 hover:text-rose-700 rounded hover:bg-rose-50 transition cursor-pointer ml-0.5"
-                                            title="공정 삭제"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                                            {phases.map((p) => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+
+                                        {/* Action: Move up/down / Delete */}
+                                        <td className="py-1.5 px-2 text-center">
+                                          <div className="flex items-center justify-center gap-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMoveProcess(idx, 'up')}
+                                              disabled={idx === 0}
+                                              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-100 transition cursor-pointer"
+                                              title="위로 이동"
+                                            >
+                                              <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMoveProcess(idx, 'down')}
+                                              disabled={idx === currentProcesses.length - 1}
+                                              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-100 transition cursor-pointer"
+                                              title="아래로 이동"
+                                            >
+                                              <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveProcess(idx)}
+                                              className="p-1 text-rose-500 hover:text-rose-700 rounded hover:bg-rose-50 transition cursor-pointer ml-0.5"
+                                              title="공정 삭제"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Phase Footer Main Add Buttons Bar */}
+                            <div className="bg-slate-50/80 border-t border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2.5">
+                              <span className="text-xs text-slate-600 font-extrabold flex items-center gap-1">
+                                <span>{group.title} 공정 추가:</span>
+                              </span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddProcessToPhase(group.id, '가공')}
+                                  className="px-3 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>가공 공정 추가</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddProcessToPhase(group.id, '연마')}
+                                  className="px-3 py-1.5 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>연마 공정 추가</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddProcessToPhase(group.id, '품질')}
+                                  className="px-3 py-1.5 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>품질검사 추가</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddProcessToPhase(group.id, '외주')}
+                                  className="px-3 py-1.5 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>외주/열처리 추가</span>
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
-
-                        {/* Phase Footer Quick-Add Toolbar */}
-                        <div className="bg-slate-50/80 border-t border-slate-200 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
-                            <span>{group.title} 내 빠른 공정 추가:</span>
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleAddProcessToPhase(group.id, '가공')}
-                              className="px-2 py-0.5 text-[10px] bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-bold transition cursor-pointer flex items-center gap-0.5"
-                            >
-                              <Plus className="w-2.5 h-2.5" />
-                              <span>+ 가공</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAddProcessToPhase(group.id, '연마')}
-                              className="px-2 py-0.5 text-[10px] bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-bold transition cursor-pointer flex items-center gap-0.5"
-                            >
-                              <Plus className="w-2.5 h-2.5" />
-                              <span>+ 연마</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAddProcessToPhase(group.id, '품질')}
-                              className="px-2 py-0.5 text-[10px] bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded font-bold transition cursor-pointer flex items-center gap-0.5"
-                            >
-                              <Plus className="w-2.5 h-2.5" />
-                              <span>+ CMM</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAddProcessToPhase(group.id, '외주')}
-                              className="px-2 py-0.5 text-[10px] bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded font-bold transition cursor-pointer flex items-center gap-0.5"
-                            >
-                              <Plus className="w-2.5 h-2.5" />
-                              <span>+ 외주</span>
-                            </button>
-                          </div>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -3176,22 +3254,28 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       {/* ------------------------------------------------------------- */}
       {showCreatedOrderModal && createdOrderForTraveler && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-emerald-200 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border-2 border-emerald-500 animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-xs">
-                  <CheckCircle2 className="w-6 h-6 text-white" />
+                  <CheckCircle2 className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base">🎉 신규 수주 등록 완료!</h3>
-                  <p className="text-xs text-emerald-100 font-mono">
+                  <h3 className="font-extrabold text-base flex items-center gap-2">
+                    <span>🎉 신규 수주가 성공적으로 등록되었습니다!</span>
+                  </h3>
+                  <p className="text-xs text-emerald-100 font-mono mt-0.5">
                     {createdOrderForTraveler.id} | {createdOrderForTraveler.name}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreatedOrderModal(false)}
+                onClick={() => {
+                  setShowCreatedOrderModal(false);
+                  setCreatedOrderForTraveler(null);
+                  setIsPostCreateTravelerOpen(false);
+                }}
                 className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -3199,29 +3283,44 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>데이터베이스(Firestore) 및 공정 타임라인에 실시간 저장 동기화가 완료되었습니다.</span>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-bold">고객사:</span>
-                  <span className="font-extrabold text-slate-900">{createdOrderForTraveler.customer || '미지정'}</span>
+                  <span className="text-slate-500 font-bold">수주명 / 프로젝트:</span>
+                  <span className="font-extrabold text-slate-900">{createdOrderForTraveler.name}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-bold">PO. (PJT):</span>
-                  <span className="font-mono font-bold text-slate-900">{createdOrderForTraveler.poNumber || createdOrderForTraveler.id}</span>
+                  <span className="text-slate-500 font-bold">고객사 / 발주번호(PO):</span>
+                  <span className="font-bold text-slate-900">
+                    {createdOrderForTraveler.customer || '미지정'} / {createdOrderForTraveler.poNumber || createdOrderForTraveler.id}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-bold">품목 / 규격:</span>
-                  <span className="font-bold text-slate-900">{createdOrderForTraveler.partType || 'UPPER'} / {createdOrderForTraveler.spec || '-'}</span>
+                  <span className="text-slate-500 font-bold">품목 / 규격 / 수량:</span>
+                  <span className="font-bold text-slate-900">
+                    {createdOrderForTraveler.partType || 'UPPER'} ({createdOrderForTraveler.spec || '-'}) | <strong className="text-blue-700 font-black">{createdOrderForTraveler.qty}개</strong>
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-bold">공정 라우팅:</span>
-                  <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    총 {createdOrderForTraveler.customProcesses?.length || 0}단계 공정 DB 동기화 완료
+                  <span className="text-slate-500 font-bold">공정 구성 (BOP):</span>
+                  <span className="font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    총 {createdOrderForTraveler.customProcesses?.length || 0}단계 라우팅 구성 완료
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-bold">생산 시작일 / 납기일:</span>
+                  <span className="font-mono text-slate-700 font-bold">
+                    {createdOrderForTraveler.startDate?.split('T')[0] || '-'} ~ {createdOrderForTraveler.dueDate || '미지정'}
                   </span>
                 </div>
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                신규 수주가 생산관리 타임라인과 설비 가동판(OEE)에 실시간 등록되었습니다. 현장 작업용 <strong>공식 공정 이동표(Process Traveler)</strong>를 즉시 확인하고 A4로 인쇄할 수 있습니다.
+                신규 수주가 생산관리 타임라인과 설비 가동판(OEE)에 즉시 배치되었습니다. 현장 작업용 <strong>공식 공정 이동표(Process Traveler)</strong>를 즉시 인쇄(A4)하거나 등록 작업을 계속할 수 있습니다.
               </p>
 
               <div className="pt-2 flex flex-col sm:flex-row gap-2">
@@ -3229,16 +3328,19 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   type="button"
                   onClick={() => {
                     setShowCreatedOrderModal(false);
+                    setCreatedOrderForTraveler(null);
+                    setIsPostCreateTravelerOpen(false);
                   }}
                   className="w-full sm:w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span>수주 등록창 계속 작성</span>
+                  <CheckCircle2 className="w-4 h-4 text-slate-500" />
+                  <span>확인 (신규 등록 계속)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreatedOrderModal(false);
-                    // Leave createdOrderForTraveler active so ProcessTravelerModal opens immediately
+                    setIsPostCreateTravelerOpen(true);
                   }}
                   className="w-full sm:w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                 >
@@ -3265,10 +3367,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         />
       )}
 
-      {createdOrderForTraveler && !showCreatedOrderModal && (
+      {isPostCreateTravelerOpen && createdOrderForTraveler && (
         <ProcessTravelerModal
-          isOpen={!!createdOrderForTraveler}
-          onClose={() => setCreatedOrderForTraveler(null)}
+          isOpen={isPostCreateTravelerOpen}
+          onClose={() => {
+            setIsPostCreateTravelerOpen(false);
+            setCreatedOrderForTraveler(null);
+          }}
           order={createdOrderForTraveler}
           productTypes={productTypes}
           currentUser={currentUser}

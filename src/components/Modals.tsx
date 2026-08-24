@@ -1516,6 +1516,8 @@ interface EditOrderModalProps {
   ) => void;
   onArchiveOrder?: (orderId: string) => void;
   onOpenArchiveModal?: () => void;
+  usersList?: User[];
+  approvedOperators?: string[];
 }
 
 export const EditOrderModal: React.FC<EditOrderModalProps> = ({
@@ -1528,6 +1530,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   onCompleteAllOrderProcesses,
   onArchiveOrder,
   onOpenArchiveModal,
+  usersList,
+  approvedOperators,
 }) => {
   const [name, setName] = useState(order?.name || '');
   const [selectedTypeId, setSelectedTypeId] = useState(order?.typeId || '');
@@ -1545,6 +1549,79 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [dueDate, setDueDate] = useState(order?.dueDate || '');
   const [specialNotes, setSpecialNotes] = useState(order?.specialNotes || '');
   const [customProcesses, setCustomProcesses] = useState<ProcessStep[]>([]);
+  const [users, setUsers] = useState<User[]>(usersList || []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsub = subscribeUsersList((list) => {
+      setUsers(list);
+    });
+    return () => unsub();
+  }, [isOpen]);
+
+  const departmentGroups = React.useMemo(() => {
+    const map: Record<string, User[]> = {
+      '가공팀': [],
+      '연마팀': [],
+      '품질팀': [],
+      '생산 관리': [],
+      '시스템 관리자': [],
+      '기타': [],
+    };
+
+    const activeUsers = users.filter((u) => u.isApproved !== false);
+
+    if (activeUsers.length === 0) {
+      return [
+        {
+          team: '가공팀',
+          members: [
+            { name: '김가공', team: '가공팀', position: '주임' },
+            { name: '이가공', team: '가공팀', position: '기사' },
+          ],
+        },
+        {
+          team: '연마팀',
+          members: [
+            { name: '박연마', team: '연마팀', position: '팀장' },
+            { name: '최연마', team: '연마팀', position: '기사' },
+          ],
+        },
+        {
+          team: '품질팀',
+          members: [
+            { name: '정품질', team: '품질팀', position: '책임' },
+          ],
+        },
+        {
+          team: '생산 관리 / 시스템',
+          members: [
+            { name: '관리자', team: '시스템 관리자', position: '관리자' },
+          ],
+        },
+      ];
+    }
+
+    activeUsers.forEach((u) => {
+      const dept = (u.department as string) || (u.role === 'ADMIN' ? '시스템 관리자' : '기타');
+      if (map[dept]) {
+        map[dept].push(u);
+      } else {
+        map['기타'].push(u);
+      }
+    });
+
+    return Object.entries(map)
+      .filter(([_, list]) => list.length > 0)
+      .map(([team, members]) => ({
+        team,
+        members: members.map((m) => ({
+          name: m.name,
+          team: m.department || (m.role === 'ADMIN' ? '시스템 관리자' : '일반'),
+          position: m.position,
+        })),
+      }));
+  }, [users]);
 
   useEffect(() => {
     if (order) {
@@ -1591,6 +1668,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         category: '가공',
         durationHours: 2,
         assignedMachine: '',
+        assignedWorker: '',
+        worker: '',
       },
     ]);
   };
@@ -1608,9 +1687,17 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       const updated = [...prev];
       const step = { ...updated[index], [field]: value };
 
-      // If category changed to 외주, default machine to (외주/협력사)
+      // If category changed to 외주, default machine and worker to (외주/협력사)
       if (field === 'category' && value === '외주') {
         step.assignedMachine = '(외주/협력사)';
+        step.assignedWorker = '(외주/협력사)';
+        step.worker = '(외주/협력사)';
+      }
+
+      if (field === 'assignedWorker') {
+        step.worker = value;
+      } else if (field === 'worker') {
+        step.assignedWorker = value;
       }
 
       updated[index] = step;
@@ -1623,6 +1710,15 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     if (!name.trim()) return;
 
     const isCompleted = status === 'COMPLETED';
+
+    const sanitizedProcesses: ProcessStep[] = customProcesses.map((p) => {
+      const workerVal = p.assignedWorker || p.worker || '';
+      return {
+        ...p,
+        worker: workerVal,
+        assignedWorker: workerVal,
+      };
+    });
 
     const updated: Order = {
       ...order,
@@ -1640,14 +1736,14 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       serialNo,
       dueDate,
       specialNotes,
-      customProcesses,
+      customProcesses: sanitizedProcesses,
       status,
     };
 
     onUpdateOrder(updated);
 
     if (onCompleteAllOrderProcesses) {
-      onCompleteAllOrderProcesses(order.id, isCompleted, customProcesses, Number(qty));
+      onCompleteAllOrderProcesses(order.id, isCompleted, sanitizedProcesses, Number(qty));
     }
 
     onClose();
@@ -1714,7 +1810,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col my-auto">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col my-auto">
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
@@ -1724,7 +1820,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             <div>
               <h3 className="text-sm font-extrabold text-slate-900">수주 및 공정 라우팅 수정 (Edit Order & Processes)</h3>
               <p className="text-[11px] text-slate-500">
-                수주 기본정보, 사내/외주 공정 변경 및 지정 설비 재할당
+                수주 기본정보, 사내/외주 공정 변경, 지정 설비 및 공정별 담당자(소속팀 연계) 배정
               </p>
             </div>
           </div>
@@ -1936,13 +2032,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Process Routing & Machine Assignment Editor */}
+          {/* Section: Process Routing, Machine & Assignee Assignment Editor */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
               <div className="flex items-center gap-1.5">
                 <Settings className="w-4 h-4 text-indigo-600" />
                 <span className="font-extrabold text-slate-900 text-xs">
-                  수주 공정 흐름 및 설비 변경 (Process Routing & Machine Assignment)
+                  수주 공정 흐름, 설비 및 담당자 지정 (Process Routing, Machine & Assignee)
                 </span>
               </div>
               <button
@@ -1956,32 +2052,45 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500">
-              사내 제작 ↔ 외주 가공 변경, 또는 MCT/연마기/CMM 특정 설비 지정 변경이 가능합니다.
+              사내 제작 ↔ 외주 가공 변경, 또는 MCT/연마기/CMM 특정 설비 및 공정별 담당자(소속팀 연계) 지정이 가능합니다.
             </p>
 
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {/* Desktop Column Header */}
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100/90 rounded-md text-[10px] font-extrabold text-slate-600 border border-slate-200/80">
+              <span className="w-5 text-center shrink-0">#</span>
+              <span className="flex-1 min-w-[130px]">공정명 (Process)</span>
+              <span className="w-24 shrink-0">공정 구분</span>
+              <span className="w-20 shrink-0 text-center">소요시간</span>
+              <span className="w-36 lg:w-40 shrink-0">지정 설비 (Machine)</span>
+              <span className="w-40 lg:w-48 shrink-0">공정 담당자 (Assignee)</span>
+              <span className="w-6 text-center shrink-0">삭제</span>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {customProcesses.map((proc, pIdx) => (
                 <div
                   key={pIdx}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-wrap sm:flex-nowrap items-center gap-2"
+                  className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-wrap md:flex-nowrap items-center gap-2 shadow-2xs hover:border-slate-300 transition"
                 >
                   <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-extrabold flex items-center justify-center shrink-0 text-[10px]">
                     {pIdx + 1}
                   </span>
 
                   {/* Process Name */}
-                  <div className="flex-1 min-w-[120px]">
+                  <div className="flex-1 min-w-[130px]">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">공정명</label>
                     <input
                       type="text"
                       value={proc.name}
                       onChange={(e) => handleProcessChange(pIdx, 'name', e.target.value)}
                       placeholder="공정명 입력"
-                      className="w-full px-2 py-1 border border-slate-300 rounded font-bold text-slate-900 focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1 border border-slate-300 rounded font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 text-xs"
                     />
                   </div>
 
                   {/* Process Category */}
                   <div className="w-24 shrink-0">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">공정 구분</label>
                     <select
                       value={proc.category}
                       onChange={(e) => handleProcessChange(pIdx, 'category', e.target.value as ProcessCategory)}
@@ -2003,24 +2112,35 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                   </div>
 
                   {/* Duration */}
-                  <div className="w-20 shrink-0 flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0.01}
-                      step="any"
-                      value={proc.durationHours}
-                      onChange={(e) => handleProcessChange(pIdx, 'durationHours', parseFloat(e.target.value) || 0)}
-                      className="w-14 px-1.5 py-1 border border-slate-300 rounded font-mono font-bold text-center text-slate-900"
-                    />
-                    <span className="text-[10px] font-bold text-slate-500">시간</span>
+                  <div className="w-20 shrink-0">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">소요시간</label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0.01}
+                        step="any"
+                        value={proc.durationHours}
+                        onChange={(e) => handleProcessChange(pIdx, 'durationHours', parseFloat(e.target.value) || 0)}
+                        className="w-13 px-1.5 py-1 border border-slate-300 rounded font-mono font-bold text-center text-slate-900 text-xs"
+                      />
+                      <span className="text-[10px] font-bold text-slate-500">시간</span>
+                    </div>
                   </div>
 
                   {/* Machine Assignment */}
-                  <div className="flex-1 min-w-[130px]">
+                  <div className="w-36 lg:w-40 shrink-0">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">설비 지정</label>
                     <select
                       value={proc.assignedMachine || ''}
                       onChange={(e) => handleProcessChange(pIdx, 'assignedMachine', e.target.value)}
-                      className="w-full px-2 py-1 border border-slate-300 rounded font-bold text-[11px] text-slate-800 focus:ring-1 focus:ring-blue-500"
+                      className={`w-full px-2 py-1 border rounded font-bold text-[11px] focus:ring-1 focus:ring-blue-500 ${
+                        proc.assignedMachine && proc.assignedMachine !== '(외주/협력사)'
+                          ? 'bg-indigo-50/70 border-indigo-300 text-indigo-950 font-extrabold'
+                          : proc.assignedMachine === '(외주/협력사)'
+                          ? 'bg-amber-50/70 border-amber-300 text-amber-950 font-extrabold'
+                          : 'bg-white border-slate-300 text-slate-800'
+                      }`}
+                      title="담당 설비 지정"
                     >
                       <option value="">자동 지정 (기본)</option>
                       <option value="(외주/협력사)">(외주/협력사)</option>
@@ -2048,11 +2168,45 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                     </select>
                   </div>
 
+                  {/* Assignee / Worker Selection (담당자 선택) */}
+                  <div className="w-40 lg:w-48 shrink-0">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">담당자 지정</label>
+                    <select
+                      value={proc.assignedWorker || proc.worker || ''}
+                      onChange={(e) => {
+                        handleProcessChange(pIdx, 'assignedWorker', e.target.value);
+                        handleProcessChange(pIdx, 'worker', e.target.value);
+                      }}
+                      className={`w-full px-2 py-1 border rounded font-bold text-[11px] focus:ring-1 focus:ring-blue-500 ${
+                        (proc.assignedWorker || proc.worker) &&
+                        proc.assignedWorker !== '(외주/협력사)' &&
+                        proc.worker !== '(외주/협력사)'
+                          ? 'bg-blue-50/80 border-blue-300 text-blue-950 font-extrabold'
+                          : proc.assignedWorker === '(외주/협력사)' || proc.worker === '(외주/협력사)'
+                          ? 'bg-amber-50/80 border-amber-300 text-amber-950 font-extrabold'
+                          : 'bg-white border-slate-300 text-slate-700'
+                      }`}
+                      title="공정 담당자 선택"
+                    >
+                      <option value="">담당자 미지정 (현장 배정)</option>
+                      <option value="(외주/협력사)">(외주/협력사)</option>
+                      {departmentGroups.map((group) => (
+                        <optgroup key={group.team} label={`--- ${group.team} ---`}>
+                          {group.members.map((m) => (
+                            <option key={`${group.team}-${m.name}`} value={m.name}>
+                              {m.name} ({m.team}{m.position ? ` · ${m.position}` : ''})
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Remove Button */}
                   <button
                     type="button"
                     onClick={() => handleRemoveProcess(pIdx)}
-                    className="p-1 text-slate-400 hover:text-red-600 rounded transition cursor-pointer"
+                    className="p-1 text-slate-400 hover:text-red-600 rounded transition cursor-pointer shrink-0"
                     title="공정 삭제"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
