@@ -133,12 +133,13 @@ export interface User {
   name: string;
   phoneNumber?: string;           // 필수 휴대전화번호 (SMS/알림톡 연동)
   role: 'USER' | 'ADMIN';
-  department?: UserDepartment | string;
+  department?: UserDepartment | string | null;
   position?: string;
   skillMctLevel?: number;         // MCT 가공 숙련도 (1~5)
   skillGrinderLevel?: number;     // 연마 숙련도 (1~5)
   permissions?: UserPermissions;
   isApproved?: boolean;
+  status?: 'pending' | 'approved' | 'rejected'; // 가입 승인 상태
   isOnline?: boolean;
   createdAt?: string;
   loginAt?: string;

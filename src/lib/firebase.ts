@@ -276,7 +276,7 @@ export async function registerUserAccount(
   pass: string,
   name: string,
   requestedRole: 'USER' | 'ADMIN' = 'USER',
-  department?: string,
+  department?: string | null,
   phoneNumber?: string,
   skillMctLevel: number = 3,
   skillGrinderLevel: number = 3
@@ -289,7 +289,8 @@ export async function registerUserAccount(
   // Respect the requestedRole! Only force ADMIN for superAdmin or if ADMIN was explicitly requested on first user
   const finalRole = isSuperAdmin ? 'ADMIN' : requestedRole;
   const finalApproved = isSuperAdmin ? true : (isFirstUser ? true : false);
-  const finalDepartment = isSuperAdmin ? '시스템 관리자' : department;
+  const finalDepartment = isSuperAdmin ? '시스템 관리자' : (department && department.trim() ? department.trim() : '미지정');
+  const finalStatus: 'approved' | 'pending' = finalApproved ? 'approved' : 'pending';
 
   let uid: string;
   try {
@@ -312,10 +313,12 @@ export async function registerUserAccount(
     skillMctLevel: skillMctLevel || 3,
     skillGrinderLevel: skillGrinderLevel || 3,
     isApproved: finalApproved,
+    status: finalStatus,
     createdAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, 'users', uid), userDoc);
+  // Safe Firestore write ensuring no undefined properties
+  await setDoc(doc(db, 'users', uid), cleanUndefined(userDoc));
   return userDoc;
 }
 
@@ -399,7 +402,9 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
         password: pass,
         name: normalizedEmail.includes('noworries') ? '대표 관리자' : '시스템 관리자',
         role: 'ADMIN',
+        department: '시스템 관리자',
         isApproved: true,
+        status: 'approved',
         createdAt: new Date().toISOString(),
         permissions: {
           canEditOrder: true,
@@ -407,9 +412,11 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
           canManageUsers: true,
           canEditMaster: true,
           canArchive: true,
+          canQualityInspection: true,
+          canShipmentControl: true,
         },
       };
-      await setDoc(doc(db, 'users', uid), matchedUser);
+      await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
     } else {
       const usersSnap = await getDocs(collection(db, 'users'));
       if (usersSnap.empty) {
@@ -420,7 +427,9 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
           password: pass,
           name: '시스템 관리자',
           role: 'ADMIN',
+          department: '시스템 관리자',
           isApproved: true,
+          status: 'approved',
           createdAt: new Date().toISOString(),
           permissions: {
             canEditOrder: true,
@@ -428,9 +437,11 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
             canManageUsers: true,
             canEditMaster: true,
             canArchive: true,
+            canQualityInspection: true,
+            canShipmentControl: true,
           },
         };
-        await setDoc(doc(db, 'users', uid), matchedUser);
+        await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
       } else {
         throw new Error('INVALID_CREDENTIALS');
       }
@@ -518,14 +529,17 @@ export function subscribeUsersList(
 export async function updateUserApprovalStatus(
   uid: string,
   isApproved: boolean,
-  department?: string,
+  department?: string | null,
   permissions?: import('../types').UserPermissions
 ) {
   try {
-    const updateData: any = { isApproved };
-    if (department !== undefined) updateData.department = department;
+    const updateData: any = {
+      isApproved,
+      status: isApproved ? 'approved' : 'pending'
+    };
+    if (department !== undefined) updateData.department = department || '미지정';
     if (permissions !== undefined) updateData.permissions = permissions;
-    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
+    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update approval status:', err);
   }
@@ -534,12 +548,12 @@ export async function updateUserApprovalStatus(
 export async function updateUserRoleInFirestore(
   uid: string,
   role: 'USER' | 'ADMIN',
-  department?: string
+  department?: string | null
 ) {
   try {
     const updateData: any = { role };
-    if (department !== undefined) updateData.department = department;
-    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
+    if (department !== undefined) updateData.department = department || '미지정';
+    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update role:', err);
   }
@@ -549,15 +563,18 @@ export async function updateUserPermissionsInFirestore(
   uid: string,
   permissions: import('../types').UserPermissions,
   role?: 'USER' | 'ADMIN',
-  department?: string,
+  department?: string | null,
   isApproved?: boolean
 ) {
   try {
     const updateData: any = { permissions };
     if (role !== undefined) updateData.role = role;
-    if (department !== undefined) updateData.department = department;
-    if (isApproved !== undefined) updateData.isApproved = isApproved;
-    await setDoc(doc(db, 'users', uid), updateData, { merge: true });
+    if (department !== undefined) updateData.department = department || '미지정';
+    if (isApproved !== undefined) {
+      updateData.isApproved = isApproved;
+      updateData.status = isApproved ? 'approved' : 'pending';
+    }
+    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update user permissions:', err);
   }
