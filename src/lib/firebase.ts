@@ -276,7 +276,10 @@ export async function registerUserAccount(
   pass: string,
   name: string,
   requestedRole: 'USER' | 'ADMIN' = 'USER',
-  department?: string
+  department?: string,
+  phoneNumber?: string,
+  skillMctLevel: number = 3,
+  skillGrinderLevel: number = 3
 ): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   const usersSnap = await getDocs(collection(db, 'users'));
@@ -303,8 +306,11 @@ export async function registerUserAccount(
     email: normalizedEmail,
     password: pass,
     name,
+    phoneNumber: phoneNumber || '010-0000-0000',
     role: finalRole,
     department: finalDepartment,
+    skillMctLevel: skillMctLevel || 3,
+    skillGrinderLevel: skillGrinderLevel || 3,
     isApproved: finalApproved,
     createdAt: new Date().toISOString(),
   };

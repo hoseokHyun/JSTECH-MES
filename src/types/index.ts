@@ -1,6 +1,6 @@
 export type ProcessCategory = '가공' | '연마' | '외주' | '품질';
 
-export type TaskExecutionStatus = 'READY' | 'PLANNED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'DELAYED';
+export type TaskExecutionStatus = 'READY' | 'PLANNED' | 'DISPATCHED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'DELAYED' | 'ISSUE_HOLD';
 
 export type PauseReason =
   | '설비 고장'
@@ -15,6 +15,16 @@ export interface PauseLog {
   resumedAt?: string;
   reason: PauseReason | string;
   durationMinutes?: number;
+}
+
+export interface AndonIssue {
+  issueType: string;
+  note: string;
+  reportedAt: string;
+  reportedBy: string;
+  isResolved?: boolean;
+  resolvedAt?: string;
+  resolvedNote?: string;
 }
 
 export interface ProcessStep {
@@ -35,7 +45,7 @@ export interface ProductType {
   processes: ProcessStep[];
 }
 
-export type OrderStatus = 'IN_PROGRESS' | 'COMPLETED';
+export type OrderStatus = 'DRAFT' | 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
 export type ProductionStrategy = 'SERIAL' | 'CONTINUOUS';
 
 export interface Order {
@@ -58,8 +68,12 @@ export interface Order {
   partName?: string;       // 품명 (예: Flex Bolt 2P SLOT DIE)
   partType?: string;       // 품목 (예: UPPER (상판), LOWER (하판), BODY 등)
   spec?: string;           // 규격 (예: 650L, 2000mm)
+  material?: string;       // 소재 (예: SUS316L, AL6061)
+  tolerance?: string;      // 정밀공차 (예: ±5µm)
+  coatingSpec?: string;    // 코팅규격 (예: TiN / DLC 2.5µm)
   serialNo?: string;       // 각인번호 (예: PNT-BNSH650L-265-02-02)
   dueDate?: string;        // 납기 (예: 2026-06-30)
+  dispatchedAt?: string;   // 현장 배포 일시
   specialNotes?: string;   // 특이사항 (예: ※ 공정 간 인수인계 철저히 할 것!)
   writerName?: string;     // 작성자
   reviewerName?: string;   // 검토자
@@ -81,6 +95,14 @@ export interface ProcessProgressItem {
   delayMinutes?: number;
   delayReason?: string;
   memo?: string;
+  defectQty?: number;
+  // Andon & Issue Reporting
+  andonStatus?: 'NORMAL' | 'ISSUE_HOLD' | 'RESOLVED';
+  andonIssueType?: string;
+  andonIssueNote?: string;
+  andonReportedAt?: string;
+  andonReportedBy?: string;
+  andonHistory?: AndonIssue[];
 }
 
 export type ProcessProgressMap = Record<string, ProcessProgressItem>;
@@ -109,9 +131,12 @@ export interface User {
   email?: string;
   password?: string;
   name: string;
+  phoneNumber?: string;           // 필수 휴대전화번호 (SMS/알림톡 연동)
   role: 'USER' | 'ADMIN';
   department?: UserDepartment | string;
   position?: string;
+  skillMctLevel?: number;         // MCT 가공 숙련도 (1~5)
+  skillGrinderLevel?: number;     // 연마 숙련도 (1~5)
   permissions?: UserPermissions;
   isApproved?: boolean;
   isOnline?: boolean;
@@ -153,6 +178,13 @@ export interface ScheduledTaskItem {
   delayMinutes?: number;
   delayReason?: string;
   memo?: string;
+  defectQty?: number;
+  // Andon
+  andonStatus?: 'NORMAL' | 'ISSUE_HOLD' | 'RESOLVED';
+  andonIssueType?: string;
+  andonIssueNote?: string;
+  andonReportedAt?: string;
+  andonReportedBy?: string;
 }
 
 export type CalendarViewMode = 'day' | 'week' | 'month';

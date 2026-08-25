@@ -6,6 +6,7 @@ import {
   Lock,
   Mail,
   User as UserIcon,
+  Phone,
   Eye,
   EyeOff,
   AlertCircle,
@@ -60,8 +61,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
   // Sign Up Form
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
+  const [signUpPhone, setSignUpPhone] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [signUpPasswordConfirm, setSignUpPasswordConfirm] = useState('');
+
+  // Helper: Format Phone Number
+  const formatPhoneNumber = (value: string) => {
+    const raw = value.replace(/[^0-9]/g, '').slice(0, 11);
+    if (raw.length <= 3) return raw;
+    if (raw.length <= 7) return `${raw.slice(0, 3)}-${raw.slice(3)}`;
+    return `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7)}`;
+  };
 
   // State
   const [loading, setLoading] = useState(false);
@@ -110,8 +120,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
-    if (!signUpName.trim() || !signUpEmail.trim() || !signUpPassword) {
-      setErrorMsg('모든 필수 항목을 입력해 주세요.');
+    if (!signUpName.trim() || !signUpEmail.trim() || !signUpPassword || !signUpPhone.trim()) {
+      setErrorMsg('이름, 연락처, 이메일, 비밀번호 등 모든 필수 항목을 입력해 주세요.');
+      return;
+    }
+    if (signUpPhone.replace(/[^0-9]/g, '').length < 10) {
+      setErrorMsg('올바른 휴대전화 번호 10~11자리를 입력해 주세요 (예: 010-1234-5678).');
       return;
     }
     if (signUpPassword.length < 6) {
@@ -125,12 +139,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
 
     setLoading(true);
     try {
-      // Sign up without department (Admin will assign department and permissions upon approval)
+      // Sign up with phone number & default skill levels
       const newUser = await registerUserAccount(
         signUpEmail.trim(),
         signUpPassword,
         signUpName.trim(),
-        'USER'
+        'USER',
+        undefined,
+        signUpPhone.trim(),
+        3,
+        3
       );
       if (newUser.isApproved) {
         setSuccessMsg('🎉 시스템 관리자로 자동 승인되었습니다! 바로 로그인 가능합니다.');
@@ -142,6 +160,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
       setPassword('');
       setSignUpName('');
       setSignUpEmail('');
+      setSignUpPhone('');
       setSignUpPassword('');
       setSignUpPasswordConfirm('');
     } catch (err: any) {
@@ -409,6 +428,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
                 onChange={(e) => setSignUpEmail(e.target.value)}
                 placeholder="예: user@jstech.co.kr"
                 className="w-full bg-white border border-slate-300 focus:border-[#0066FF] focus:ring-2 focus:ring-[#0066FF]/20 text-slate-900 px-3.5 py-2.5 rounded-xl outline-none transition font-semibold placeholder:text-slate-400"
+                required
+              />
+            </div>
+
+            {/* Phone Number (멀티채널 자동 알림 및 현장 배포 필수) */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700 flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-blue-600" />
+                  휴대전화 번호 *
+                </label>
+                <span className="text-[10px] text-blue-600 font-semibold">
+                  (SMS / 알림톡 배포 연동)
+                </span>
+              </div>
+              <input
+                type="tel"
+                value={signUpPhone}
+                onChange={(e) => setSignUpPhone(formatPhoneNumber(e.target.value))}
+                placeholder="예: 010-1234-5678"
+                className="w-full bg-white border border-slate-300 focus:border-[#0066FF] focus:ring-2 focus:ring-[#0066FF]/20 text-slate-900 px-3.5 py-2.5 rounded-xl outline-none transition font-semibold font-mono placeholder:text-slate-400"
                 required
               />
             </div>

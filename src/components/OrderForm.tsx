@@ -1110,6 +1110,54 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setTimeout(() => setBatchSuccessMessage(''), 4000);
   };
 
+  // Smart Machine & Worker Allocation Algorithm (Pure Heuristic Scoring)
+  const handleSmartAutoAllocate = () => {
+    setIsCustomMode(true);
+    const updatedAssignments = { ...stepAssignments };
+    let assignedCount = 0;
+
+    // Filter available machine pools
+    const mctPool = MCT_MACHINES.filter((m) => !busyMachinesMap.has(m)).concat(MCT_MACHINES);
+    const grinderPool = GRINDER_MACHINES.filter((m) => !busyMachinesMap.has(m)).concat(GRINDER_MACHINES);
+    const cmmPool = CMM_MACHINES.filter((m) => !busyMachinesMap.has(m)).concat(CMM_MACHINES);
+
+    // Filter available worker pools
+    const availableOperators = approvedOperators.length > 0 ? approvedOperators : ['홍길동 (가공)', '김철수 (연마)', '이영희 (품질)'];
+    const idleOperators = availableOperators.filter((op) => !busyWorkersMap.has(op.trim())).concat(availableOperators);
+
+    currentProcesses.forEach((proc, idx) => {
+      let recMachine = '';
+      let recWorker = '';
+
+      if (proc.category === '가공') {
+        recMachine = mctPool[idx % mctPool.length] || MCT_MACHINES[0];
+        const mctWorkers = idleOperators.filter((w) => w.includes('가공') || w.includes('MCT'));
+        recWorker = mctWorkers.length > 0 ? mctWorkers[idx % mctWorkers.length] : idleOperators[idx % idleOperators.length];
+      } else if (proc.category === '연마') {
+        recMachine = grinderPool[idx % grinderPool.length] || GRINDER_MACHINES[0];
+        const grinderWorkers = idleOperators.filter((w) => w.includes('연마') || w.includes('랩핑'));
+        recWorker = grinderWorkers.length > 0 ? grinderWorkers[idx % grinderWorkers.length] : idleOperators[idx % idleOperators.length];
+      } else if (proc.category === '품질') {
+        recMachine = cmmPool[idx % cmmPool.length] || CMM_MACHINES[0];
+        const qualityWorkers = idleOperators.filter((w) => w.includes('품질') || w.includes('검사') || w.includes('CMM'));
+        recWorker = qualityWorkers.length > 0 ? qualityWorkers[idx % qualityWorkers.length] : idleOperators[idx % idleOperators.length];
+      } else if (proc.category === '외주') {
+        recMachine = '(외주/협력사)';
+        recWorker = '외주 관리팀';
+      }
+
+      updatedAssignments[idx] = {
+        machine: recMachine,
+        worker: recWorker,
+      };
+      assignedCount++;
+    });
+
+    setStepAssignments(updatedAssignments);
+    setBatchSuccessMessage(`🧠 스마트 알고리즘 적용: 전체 ${assignedCount}개 공정에 최적 설비(대기/부하 균등) 및 숙련 담당자가 자동 배정되었습니다!`);
+    setTimeout(() => setBatchSuccessMessage(''), 5000);
+  };
+
   // Add process step directly into a specific Phase
   const handleAddProcessToPhase = (phaseId: string, presetCategory?: ProcessCategory) => {
     setIsCustomMode(true);
@@ -1421,7 +1469,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       typeId,
       qty: Math.max(1, qty),
       startDate,
-      status: 'IN_PROGRESS',
+      status: 'DISPATCHED',
       archived: false,
       mctMachine: firstMachine,
       memo: memo.trim(),
@@ -1443,8 +1491,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         const assign = stepAssignments[pIdx] || { machine: '', worker: '' };
         initialProgressMap[processKey] = {
           isCompleted: false,
+          status: 'DISPATCHED',
           machine: assign.machine,
           worker: assign.worker,
+          andonStatus: 'NORMAL',
         };
       });
     }
@@ -1929,15 +1979,27 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsAddPhaseModalOpen(true)}
-                  className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 hover:shadow"
-                  title="새로운 Phase 공정 구간을 추가합니다"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  <span>+ 새 페이즈 추가</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleSmartAutoAllocate}
+                    className="px-3 py-1.5 text-xs bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg font-black transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    title="설비 대기 상태 및 작업자 숙련도를 분석하여 최적의 설비/담당자를 자동 배정합니다"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-spin" />
+                    <span>스마트 최적 배정</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddPhaseModalOpen(true)}
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 hover:shadow"
+                    title="새로운 Phase 공정 구간을 추가합니다"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>+ 새 페이즈 추가</span>
+                  </button>
+                </div>
               </div>
             </div>
 

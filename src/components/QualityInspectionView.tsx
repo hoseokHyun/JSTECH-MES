@@ -49,7 +49,7 @@ import {
   Save,
   Undo2
 } from 'lucide-react';
-import { Order, ScheduledTaskItem, User } from '../types';
+import { Order, OrderStatus, ScheduledTaskItem, User } from '../types';
 import { SlotDieCertificateView } from './SlotDieCertificateView';
 import { IqcDetailModal, IqcLotItem, DEFAULT_IQC_LOTS, calculateIqcOverallResult } from './IqcDetailModal';
 import { IpqcPrintModal } from './IpqcPrintModal';
@@ -146,7 +146,7 @@ export interface ProductSpcData {
   productName: string;
   shortName: string;
   orderId?: string;
-  orderStatus?: 'IN_PROGRESS' | 'COMPLETED';
+  orderStatus?: OrderStatus | 'IN_PROGRESS' | 'COMPLETED';
   orderQty?: number;
   customer?: string;
   mctMachine?: string;

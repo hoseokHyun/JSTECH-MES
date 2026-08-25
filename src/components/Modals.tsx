@@ -32,7 +32,9 @@ import {
   Building2,
   Microscope,
   FileCheck2,
-  BarChart3
+  BarChart3,
+  Phone,
+  Smartphone
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -853,8 +855,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {u.email || '(이메일 미등록)'}
+                        <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-slate-400" />
+                          <span>{u.email || '(이메일 미등록)'}</span>
+                        </div>
+                        <div className="text-[11px] text-blue-700 font-mono mt-0.5 flex items-center gap-1 font-bold">
+                          <Phone className="w-3 h-3 text-blue-600" />
+                          <span>{u.phoneNumber || '010-0000-0000'}</span>
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
                           가입: {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '-'}
