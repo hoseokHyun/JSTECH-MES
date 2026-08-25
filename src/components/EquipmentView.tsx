@@ -383,7 +383,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             approvedOperators.map((w) => {
               const workerTasks = items.filter((i) => i.worker === w);
               const active = workerTasks.filter((i) => !i.isCompleted);
-              const userRecord = usersList.find((u) => u.name === w);
+              const userRecord = usersList.find(
+                (u) => u.name === w || (u.name && w.startsWith(u.name))
+              );
               const isSelf = currentUser?.name === w || Boolean(userRecord && currentUser?.email && userRecord.email?.toLowerCase() === currentUser.email.toLowerCase());
               // Online status: Realtime session sync, explicit Firestore online status, or recent login record
               const isOnline = Boolean(

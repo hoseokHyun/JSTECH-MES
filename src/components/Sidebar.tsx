@@ -292,7 +292,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-8 h-8 rounded-lg bg-[#00C4B4]/15 border border-[#00C4B4]/30 flex items-center justify-center text-[#00A396] dark:text-[#00C4B4] shrink-0 font-bold text-xs">
-                  {currentUser.role === 'ADMIN' ? <Shield className="w-4 h-4 text-amber-500" /> : <UserIcon className="w-4 h-4" />}
+                  {currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자' ? (
+                    <Shield className="w-4 h-4 text-amber-500" />
+                  ) : (
+                    <UserIcon className="w-4 h-4" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-black text-slate-900 dark:text-white truncate">
@@ -300,7 +304,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span>{currentUser.role === 'ADMIN' ? '관리자' : '현장담당자'}</span>
+                    <span>
+                      {currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자'
+                        ? '시스템 관리자(나)'
+                        : currentUser.department === '생산 관리'
+                        ? '생산 관리(나)'
+                        : currentUser.department
+                        ? `${currentUser.department}(나)`
+                        : '현장담당자(나)'}
+                    </span>
                   </div>
                 </div>
               </div>

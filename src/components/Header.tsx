@@ -116,17 +116,35 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shrink-0">
               <UserIcon className="w-3.5 h-3.5 text-[#00C4B4]" />
               <span className="text-slate-800 dark:text-slate-200 font-bold">{currentUser.name}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
-                  currentUser.role === 'ADMIN'
-                    ? 'bg-[#0B3A82] text-white'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                }`}
-              >
-                {currentUser.role === 'ADMIN' ? '관리자' : '현장담당자'}
-              </span>
+              {(() => {
+                const isAdmin = currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자';
+                const isProdMgmt = currentUser.department === '생산 관리';
 
-              {currentUser.role === 'ADMIN' && onOpenUserApprovalModal && (
+                if (isAdmin) {
+                  return (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-0.5">
+                      <span>👑</span>
+                      <span>시스템 관리자(나)</span>
+                    </span>
+                  );
+                }
+                if (isProdMgmt) {
+                  return (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-purple-100 text-purple-900 border border-purple-300 flex items-center gap-0.5">
+                      <span>📊</span>
+                      <span>생산 관리(나)</span>
+                    </span>
+                  );
+                }
+                return (
+                  <span className="text-[10px] px-2 py-0.5 rounded font-black bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-0.5">
+                    <span>👷</span>
+                    <span>{currentUser.department ? `${currentUser.department}(나)` : '현장담당자(나)'}</span>
+                  </span>
+                );
+              })()}
+
+              {(currentUser.role === 'ADMIN' || currentUser.permissions?.canManageUsers) && onOpenUserApprovalModal && (
                 <button
                   onClick={onOpenUserApprovalModal}
                   className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 rounded text-[10px] font-extrabold transition flex items-center gap-1 ml-1 shrink-0 cursor-pointer"

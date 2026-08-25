@@ -276,12 +276,33 @@ export default function App() {
     applyTheme(themeMode);
   }, []);
 
-  // Compute approvedOperators list containing registered approved field operators (role !== 'ADMIN')
+  // Compute approvedOperators list containing ONLY approved floor workers (excluding System Admin & Production Management)
   const approvedOperators = useMemo(() => {
-    const registeredApproved = usersList
-      .filter((u) => u.isApproved && u.role !== 'ADMIN')
-      .map((u) => u.name);
-    return Array.from(new Set(registeredApproved));
+    const fieldWorkers = usersList
+      .filter((u) => {
+        if (!u.isApproved) return false;
+        if (u.role === 'ADMIN') return false;
+        const dept = (u.department || '').trim();
+        if (
+          dept === '시스템 관리자' ||
+          dept === '생산 관리' ||
+          dept.includes('관리자') ||
+          dept.includes('생산관리')
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((u) => {
+        const deptLabel = u.department ? ` (${u.department.replace('팀', '')})` : '';
+        return `${u.name.trim()}${deptLabel}`;
+      });
+
+    if (fieldWorkers.length > 0) {
+      return Array.from(new Set(fieldWorkers));
+    }
+    // Default floor worker pool fallback if no field operators are registered yet
+    return ['홍길동 (가공)', '김철수 (연마)', '이영희 (품질)', '박민수 (가공)', '최현우 (연마)'];
   }, [usersList]);
 
   // 3. Selection & Modal States

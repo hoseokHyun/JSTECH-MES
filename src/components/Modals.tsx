@@ -508,8 +508,8 @@ const DEPARTMENT_PRESETS: Record<UserDepartment, {
   '생산 관리': {
     role: 'USER',
     label: '생산 관리',
-    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
-    desc: '수주/공정 일정 제어, 스케줄러 편집, 마스터 관리',
+    badgeClass: 'bg-purple-100 text-purple-900 border-purple-300',
+    desc: '수주 등록, 생산 스케줄링, 공정 배포 총괄 (현장 담당자 풀 제외)',
     icon: '📊',
     permissions: {
       canEditOrder: true,
@@ -525,7 +525,7 @@ const DEPARTMENT_PRESETS: Record<UserDepartment, {
     role: 'ADMIN',
     label: '시스템 관리자',
     badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
-    desc: '마스터 총괄, 회원 승인/삭제, 7종 전 기능 권한',
+    desc: '최고 관리자 - 마스터 총괄, 회원 승인/삭제, 7종 전 기능 권한',
     icon: '👑',
     permissions: {
       canEditOrder: true,
@@ -877,13 +877,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-extrabold text-slate-900 text-sm">{u.name}</span>
                           {isSuperAdmin && (
-                            <span className="text-[10px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded font-black">
+                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-black">
                               👑 대표
                             </span>
                           )}
                           {isCurrent && (
-                            <span className="text-[10px] bg-blue-100 text-blue-800 border border-blue-300 px-1.5 py-0.2 rounded font-black">
-                              나(현재)
+                            <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-1.5 py-0.2 rounded font-black">
+                              (나)
                             </span>
                           )}
                         </div>
@@ -968,9 +968,29 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                           ))}
                         </select>
                         <div className="mt-1">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${DEPARTMENT_PRESETS[currentDept]?.badgeClass || 'bg-slate-100 text-slate-700'}`}>
-                            {u.role === 'ADMIN' ? '👑 관리자' : '👷 담당자'}
-                          </span>
+                          {(() => {
+                            const isAdmin = u.role === 'ADMIN' || u.department === '시스템 관리자';
+                            const isProd = u.department === '생산 관리';
+                            if (isAdmin) {
+                              return (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-amber-100 text-amber-900 border-amber-300 inline-flex items-center gap-1">
+                                  <span>👑 시스템 관리자{isCurrent ? '(나)' : ''}</span>
+                                </span>
+                              );
+                            }
+                            if (isProd) {
+                              return (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-purple-100 text-purple-900 border-purple-300 inline-flex items-center gap-1">
+                                  <span>📊 생산 관리{isCurrent ? '(나)' : ''}</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-slate-100 text-slate-800 border-slate-300 inline-flex items-center gap-1">
+                                <span>👷 {u.department || '현장담당자'}{isCurrent ? '(나)' : ''}</span>
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
 

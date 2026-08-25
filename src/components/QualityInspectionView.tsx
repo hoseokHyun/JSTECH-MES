@@ -1040,26 +1040,45 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
     return Array.from(new Set(Object.values(orders).map((o) => o.name).filter(Boolean)));
   }, [orders]);
 
-  // Inspector options: ONLY registered approved field operators (role !== 'ADMIN')
+  // Inspector options: ONLY registered approved field operators (excluding Admin and Production Management)
   const approvedInspectors = useMemo(() => {
     const list: string[] = [];
 
-    // 1. Add current user if field operator (not admin)
-    if (currentUser && currentUser.role !== 'ADMIN' && currentUserName) {
+    // 1. Add current user if field operator (not admin & not production management)
+    if (
+      currentUser &&
+      currentUser.role !== 'ADMIN' &&
+      currentUser.department !== '시스템 관리자' &&
+      currentUser.department !== '생산 관리' &&
+      currentUserName
+    ) {
       list.push(currentUserName);
     }
 
     // 2. Add DB registered approved field operators
     if (usersList && usersList.length > 0) {
       usersList
-        .filter((u) => u.name && u.role !== 'ADMIN' && u.isApproved !== false)
+        .filter((u) => {
+          if (!u.name || u.isApproved === false || u.role === 'ADMIN') return false;
+          const dept = (u.department || '').trim();
+          if (
+            dept === '시스템 관리자' ||
+            dept === '생산 관리' ||
+            dept.includes('관리자') ||
+            dept.includes('생산관리')
+          ) {
+            return false;
+          }
+          return true;
+        })
         .forEach((u) => {
-          const name = u.name.trim();
+          const deptLabel = u.department ? ` (${u.department.replace('팀', '')})` : '';
+          const name = `${u.name.trim()}${deptLabel}`;
           if (name && !list.includes(name)) list.push(name);
         });
     }
 
-    // 3. Add approvedOperators (which are non-admin operators)
+    // 3. Add approvedOperators (which are floor operators)
     if (approvedOperators && approvedOperators.length > 0) {
       approvedOperators.forEach((op) => {
         const name = op.trim();
@@ -1070,19 +1089,34 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
     return Array.from(new Set(list.filter(Boolean)));
   }, [currentUser, currentUserName, usersList, approvedOperators]);
 
-  // QA Manager options: ONLY registered ADMIN users
+  // QA Manager options: ADMIN or Production Management users
   const approvedQaManagers = useMemo(() => {
     const list: string[] = [];
 
-    // 1. Add current user if ADMIN
-    if (currentUser?.role === 'ADMIN' && currentUserName) {
+    // 1. Add current user if ADMIN or Production Management
+    if (
+      (currentUser?.role === 'ADMIN' ||
+        currentUser?.department === '시스템 관리자' ||
+        currentUser?.department === '생산 관리') &&
+      currentUserName
+    ) {
       list.push(currentUserName);
     }
 
-    // 2. Add DB registered admin users
+    // 2. Add DB registered admin & production management users
     if (usersList && usersList.length > 0) {
       usersList
-        .filter((u) => u.name && u.role === 'ADMIN' && u.isApproved !== false)
+        .filter((u) => {
+          if (!u.name || u.isApproved === false) return false;
+          const dept = (u.department || '').trim();
+          return (
+            u.role === 'ADMIN' ||
+            dept === '시스템 관리자' ||
+            dept === '생산 관리' ||
+            dept.includes('관리자') ||
+            dept.includes('생산관리')
+          );
+        })
         .forEach((u) => {
           const name = u.name.trim();
           if (name && !list.includes(name)) list.push(name);
