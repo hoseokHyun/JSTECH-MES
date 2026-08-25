@@ -132,6 +132,7 @@ export interface User {
   password?: string;
   name: string;
   phoneNumber?: string;           // 필수 휴대전화번호 (SMS/알림톡 연동)
+  phone_number?: string;          // snake_case 호환용 별칭
   role: 'USER' | 'ADMIN';
   department?: UserDepartment | string | null;
   position?: string;

@@ -282,6 +282,7 @@ export async function registerUserAccount(
   skillGrinderLevel: number = 3
 ): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
+  const cleanPhone = (phoneNumber || '').trim();
   const usersSnap = await getDocs(collection(db, 'users'));
   const isSuperAdmin = normalizedEmail === 'noworriesmate01@gmail.com';
   const isFirstUser = usersSnap.empty;
@@ -307,7 +308,8 @@ export async function registerUserAccount(
     email: normalizedEmail,
     password: pass,
     name,
-    phoneNumber: phoneNumber || '010-0000-0000',
+    phoneNumber: cleanPhone,
+    phone_number: cleanPhone, // snake_case 및 DB 호환 필드
     role: finalRole,
     department: finalDepartment,
     skillMctLevel: skillMctLevel || 3,
@@ -364,9 +366,16 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     const uid = userCredential.user.uid;
     const usersSnap = await getDocs(collection(db, 'users'));
     usersSnap.forEach((docSnap) => {
-      const data = docSnap.data() as User;
+      const data = docSnap.data() as any;
       if (data.uid === uid || (data.email && data.email.toLowerCase() === normalizedEmail)) {
-        matchedUser = data;
+        const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
+        matchedUser = {
+          ...data,
+          uid: data.uid || docSnap.id,
+          phoneNumber: phone,
+          phone_number: phone,
+          department: data.department || '미지정',
+        };
       }
     });
   } catch (err: any) {
@@ -377,11 +386,18 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
   if (!matchedUser) {
     const usersSnap = await getDocs(collection(db, 'users'));
     usersSnap.forEach((docSnap) => {
-      const data = docSnap.data() as User;
+      const data = docSnap.data() as any;
       if (data.email && data.email.toLowerCase() === normalizedEmail) {
         // If password stored, verify
         if (!data.password || data.password === pass) {
-          matchedUser = data;
+          const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
+          matchedUser = {
+            ...data,
+            uid: data.uid || docSnap.id,
+            phoneNumber: phone,
+            phone_number: phone,
+            department: data.department || '미지정',
+          };
         }
       }
     });
@@ -401,6 +417,8 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
         email: normalizedEmail,
         password: pass,
         name: normalizedEmail.includes('noworries') ? '대표 관리자' : '시스템 관리자',
+        phoneNumber: '010-1234-5678',
+        phone_number: '010-1234-5678',
         role: 'ADMIN',
         department: '시스템 관리자',
         isApproved: true,
@@ -426,6 +444,8 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
           email: normalizedEmail,
           password: pass,
           name: '시스템 관리자',
+          phoneNumber: '010-1234-5678',
+          phone_number: '010-1234-5678',
           role: 'ADMIN',
           department: '시스템 관리자',
           isApproved: true,
@@ -489,11 +509,18 @@ export function subscribeUsersList(
       const extraDocIdsToDelete: string[] = [];
 
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as User;
+        const raw = docSnap.data() as any;
         const docId = docSnap.id;
-        const uid = data.uid || docId;
-        const userObj: User = { ...data, uid };
-        const key = (data.email || data.name || docId).toLowerCase().trim();
+        const uid = raw.uid || docId;
+        const phone = (raw.phoneNumber || raw.phone_number || raw.phone || '').trim();
+        const userObj: User = {
+          ...raw,
+          uid,
+          phoneNumber: phone,
+          phone_number: phone,
+          department: raw.department || '미지정',
+        };
+        const key = (raw.email || raw.name || docId).toLowerCase().trim();
 
         if (emailMap.has(key)) {
           // Duplicate account document found for the same email
@@ -524,6 +551,22 @@ export function subscribeUsersList(
       if (onError) onError(err);
     }
   );
+}
+
+export async function updateUserPhoneNumber(uid: string, phoneNumber: string) {
+  try {
+    const cleanPhone = (phoneNumber || '').trim();
+    await setDoc(
+      doc(db, 'users', uid),
+      cleanUndefined({
+        phoneNumber: cleanPhone,
+        phone_number: cleanPhone,
+      }),
+      { merge: true }
+    );
+  } catch (err) {
+    console.error('Failed to update phone number in Firestore:', err);
+  }
 }
 
 export async function updateUserApprovalStatus(

@@ -43,6 +43,7 @@ import {
   updateUserApprovalStatus,
   updateUserRoleInFirestore,
   updateUserPermissionsInFirestore,
+  updateUserPhoneNumber,
   deleteUserFromFirestore
 } from '../lib/firebase';
 
@@ -552,6 +553,16 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   const [users, setUsers] = useState<User[]>([]);
   const [filterTab, setFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | UserDepartment>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingPhoneUid, setEditingPhoneUid] = useState<string | null>(null);
+  const [tempPhone, setTempPhone] = useState<string>('');
+
+  // Format phone helper
+  const formatPhone = (val: string) => {
+    const raw = val.replace(/[^0-9]/g, '').slice(0, 11);
+    if (raw.length <= 3) return raw;
+    if (raw.length <= 7) return `${raw.slice(0, 3)}-${raw.slice(3)}`;
+    return `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7)}`;
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -582,7 +593,8 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
       !query ||
       u.name.toLowerCase().includes(query) ||
       (u.email && u.email.toLowerCase().includes(query)) ||
-      (u.department && u.department.toLowerCase().includes(query));
+      (u.department && u.department.toLowerCase().includes(query)) ||
+      ((u.phoneNumber || (u as any).phone_number || '').includes(query));
 
     return matchesTab && matchesSearch;
   });
@@ -609,6 +621,26 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
         return u;
       })
     );
+  };
+
+  const handleStartEditPhone = (u: User) => {
+    const targetId = u.uid || u.email || '';
+    setEditingPhoneUid(targetId);
+    setTempPhone(u.phoneNumber || (u as any).phone_number || '');
+  };
+
+  const handleSavePhone = async (u: User) => {
+    const targetId = u.uid || u.email || '';
+    if (!targetId) return;
+    const formatted = tempPhone.trim();
+    updateLocalUser(targetId, {
+      phoneNumber: formatted,
+      phone_number: formatted,
+    });
+    if (u.uid) {
+      await updateUserPhoneNumber(u.uid, formatted);
+    }
+    setEditingPhoneUid(null);
   };
 
   const handleToggleApproval = async (user: User) => {
@@ -859,10 +891,64 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                           <Mail className="w-3 h-3 text-slate-400" />
                           <span>{u.email || '(이메일 미등록)'}</span>
                         </div>
-                        <div className="text-[11px] text-blue-700 font-mono mt-0.5 flex items-center gap-1 font-bold">
-                          <Phone className="w-3 h-3 text-blue-600" />
-                          <span>{u.phoneNumber || '010-0000-0000'}</span>
-                        </div>
+                        {/* Phone Number Display & Inline Edit */}
+                        {editingPhoneUid === (u.uid || u.email) ? (
+                          <div className="mt-1 flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-blue-600 shrink-0" />
+                            <input
+                              type="tel"
+                              value={tempPhone}
+                              onChange={(e) => setTempPhone(formatPhone(e.target.value))}
+                              placeholder="010-1234-5678"
+                              className="w-28 text-[11px] px-1.5 py-0.5 border border-blue-400 rounded font-mono font-bold bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSavePhone(u)}
+                              className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold hover:bg-blue-700 cursor-pointer"
+                              title="저장"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPhoneUid(null)}
+                              className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-300 cursor-pointer"
+                              title="취소"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-mono mt-0.5 flex items-center gap-1 font-bold">
+                            <Phone className="w-3 h-3 text-blue-600 shrink-0" />
+                            {(() => {
+                              const phone = (u.phoneNumber || (u as any).phone_number || (u as any).phone || '').trim();
+                              const hasValidPhone = phone && phone !== '010-0000-0000';
+                              return (
+                                <div className="flex items-center gap-1.5">
+                                  {hasValidPhone ? (
+                                    <span className="text-blue-700 font-extrabold">{phone}</span>
+                                  ) : (
+                                    <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-semibold">
+                                      연락처 미등록
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditPhone(u)}
+                                    title="연락처 변경/등록"
+                                    className="text-[10px] text-slate-400 hover:text-blue-600 hover:underline cursor-pointer flex items-center gap-0.5"
+                                  >
+                                    <Pencil className="w-2.5 h-2.5" />
+                                    <span>{hasValidPhone ? '수정' : '등록'}</span>
+                                  </button>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                         <div className="text-[10px] text-slate-400 mt-0.5">
                           가입: {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '-'}
                         </div>
