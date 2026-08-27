@@ -117,10 +117,10 @@ export const Header: React.FC<HeaderProps> = ({
               <UserIcon className="w-3.5 h-3.5 text-[#00C4B4]" />
               <span className="text-slate-800 dark:text-slate-200 font-bold">{currentUser.name}</span>
               {(() => {
-                const isAdmin = currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자';
-                const isProdMgmt = currentUser.department === '생산 관리';
+                const isSysAdmin = currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자' || currentUser.email === 'noworriesmate01@gmail.com';
+                const dept = currentUser.department || (isSysAdmin ? '시스템 관리자' : '가공팀');
 
-                if (isAdmin) {
+                if (isSysAdmin) {
                   return (
                     <span className="text-[10px] px-2 py-0.5 rounded font-black bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-0.5">
                       <span>👑</span>
@@ -128,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   );
                 }
-                if (isProdMgmt) {
+                if (dept === '생산 관리') {
                   return (
                     <span className="text-[10px] px-2 py-0.5 rounded font-black bg-purple-100 text-purple-900 border border-purple-300 flex items-center gap-0.5">
                       <span>📊</span>
@@ -136,10 +136,34 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   );
                 }
+                if (dept === '가공팀' || dept.includes('가공')) {
+                  return (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-0.5">
+                      <span>⚙️</span>
+                      <span>가공팀(나)</span>
+                    </span>
+                  );
+                }
+                if (dept === '연마팀' || dept.includes('연마')) {
+                  return (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-cyan-100 text-cyan-800 border border-cyan-300 flex items-center gap-0.5">
+                      <span>✨</span>
+                      <span>연마팀(나)</span>
+                    </span>
+                  );
+                }
+                if (dept === '품질팀' || dept.includes('품질')) {
+                  return (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-0.5">
+                      <span>🔬</span>
+                      <span>품질팀(나)</span>
+                    </span>
+                  );
+                }
                 return (
-                  <span className="text-[10px] px-2 py-0.5 rounded font-black bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-0.5">
+                  <span className="text-[10px] px-2 py-0.5 rounded font-black bg-slate-100 text-slate-800 border border-slate-300 flex items-center gap-0.5">
                     <span>👷</span>
-                    <span>{currentUser.department ? `${currentUser.department}(나)` : '현장담당자(나)'}</span>
+                    <span>{dept}(나)</span>
                   </span>
                 );
               })()}

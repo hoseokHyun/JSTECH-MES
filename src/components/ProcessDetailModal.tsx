@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScheduledTaskItem, User } from '../types';
 import { MCT_MACHINES, ALL_EQUIPMENT_LIST } from '../data/defaultData';
+import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { Info, X, CheckCircle, RotateCcw, UserCheck, Cpu, Clock, Calendar, Lock } from 'lucide-react';
 
 interface ProcessDetailModalProps {
@@ -24,8 +25,8 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
 
   const isAdmin =
     currentUser?.role === 'ADMIN' ||
-    currentUser?.name?.includes('관리자') ||
-    currentUser?.name?.includes('대표');
+    currentUser?.department === '시스템 관리자' ||
+    currentUser?.name?.includes('관리자');
 
   const isAssignedToMe = Boolean(
     currentUser?.name &&
@@ -35,22 +36,122 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
 
   const canModify = isAdmin || isAssignedToMe;
 
+  const operatorOptions: SelectOption[] = useMemo(() => {
+    const opts: SelectOption[] = [
+      { value: '', label: '(미지정)', badge: '미지정', badgeColor: 'bg-slate-700 text-slate-300' }
+    ];
+    const added = new Set<string>(['']);
+
+    approvedOperators.forEach((op) => {
+      const clean = (op || '').trim();
+      if (!clean || added.has(clean)) return;
+      added.add(clean);
+
+      let badge = '현장';
+      let badgeColor = 'bg-blue-950 text-blue-300';
+      if (clean.includes('(가공)') || clean.includes('가공')) {
+        badge = '가공';
+        badgeColor = 'bg-blue-950 text-blue-300';
+      } else if (clean.includes('(연마)') || clean.includes('연마')) {
+        badge = '연마';
+        badgeColor = 'bg-emerald-950 text-emerald-300';
+      } else if (clean.includes('(품질)') || clean.includes('품질') || clean.includes('검사')) {
+        badge = '품질';
+        badgeColor = 'bg-purple-950 text-purple-300';
+      } else if (clean.includes('(조립)') || clean.includes('조립')) {
+        badge = '조립';
+        badgeColor = 'bg-teal-950 text-teal-300';
+      } else if (clean.includes('생산')) {
+        badge = '생산';
+        badgeColor = 'bg-amber-950 text-amber-300';
+      }
+
+      opts.push({
+        value: clean,
+        label: clean,
+        badge,
+        badgeColor,
+      });
+    });
+
+    if (selectedItem.worker && !added.has(selectedItem.worker.trim())) {
+      const clean = selectedItem.worker.trim();
+      opts.push({
+        value: clean,
+        label: clean,
+        badge: '배정',
+        badgeColor: 'bg-indigo-950 text-indigo-300',
+      });
+    }
+
+    return opts;
+  }, [approvedOperators, selectedItem.worker]);
+
+  const machineOptions: SelectOption[] = useMemo(() => {
+    const opts: SelectOption[] = [
+      { value: '', label: '(미지정)', badge: '미지정', badgeColor: 'bg-slate-700 text-slate-300' }
+    ];
+    const added = new Set<string>(['']);
+
+    ALL_EQUIPMENT_LIST.forEach((m) => {
+      if (!m || added.has(m)) return;
+      added.add(m);
+
+      let badge = '설비';
+      let badgeColor = 'bg-slate-800 text-slate-200';
+      if (m.includes('MCT')) {
+        badge = 'MCT';
+        badgeColor = 'bg-blue-950 text-blue-300';
+      } else if (m.includes('연마기')) {
+        badge = '연마';
+        badgeColor = 'bg-emerald-950 text-emerald-300';
+      } else if (m.includes('CMM') || m.includes('측정')) {
+        badge = '품질CMM';
+        badgeColor = 'bg-purple-950 text-purple-300';
+      } else if (m.includes('세척') || m.includes('초음파')) {
+        badge = '세척';
+        badgeColor = 'bg-teal-950 text-teal-300';
+      } else if (m.includes('조립') || m.includes('클린룸')) {
+        badge = '조립';
+        badgeColor = 'bg-cyan-950 text-cyan-300';
+      }
+
+      opts.push({
+        value: m,
+        label: m,
+        badge,
+        badgeColor,
+      });
+    });
+
+    if (selectedItem.machine && !added.has(selectedItem.machine.trim())) {
+      const clean = selectedItem.machine.trim();
+      opts.push({
+        value: clean,
+        label: clean,
+        badge: '배정설비',
+        badgeColor: 'bg-indigo-950 text-indigo-300',
+      });
+    }
+
+    return opts;
+  }, [selectedItem.machine]);
+
   const handleToggleClick = () => {
     if (!canModify) {
       alert(
         `[권한 제한] 본인에게 배정된 공정만 완료 또는 취소할 수 있습니다.\n\n` +
           `• 공정명: ${selectedItem.content}\n` +
           `• 현재 담당자: ${selectedItem.worker || '(미지정)'}\n` +
-          `• 로그인 계정: ${currentUser?.name || '미로그인'} (${isAdmin ? '관리자' : '일반사원'})\n\n` +
-          `※ 담당자 본인 또는 대표/관리자 계정만 처리 가능합니다.`
+          `• 로그인 계정: ${currentUser?.name || '미로그인'} (${isAdmin ? '시스템 관리자' : '현장담당자'})\n\n` +
+          `※ 담당자 본인 또는 시스템 관리자 계정만 처리 가능합니다.`
       );
       return;
     }
     onToggleComplete();
   };
 
-  const handleWorkerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newWorker = e.target.value;
+  const handleWorkerChange = (newWorker: string) => {
     if (!isAdmin && selectedItem.worker && !isAssignedToMe) {
       alert(
         `[권한 제한] 타 담당자(${selectedItem.worker})의 배정 변경은 관리자만 가능합니다.`
@@ -60,8 +161,7 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
     onUpdateAssignee(newWorker, selectedItem.machine);
   };
 
-  const handleMachineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newMachine = e.target.value;
+  const handleMachineChange = (newMachine: string) => {
     if (!canModify && selectedItem.worker) {
       alert(
         `[권한 제한] 본인에게 배정된 공정의 설비만 수정할 수 있습니다.\n` +
@@ -198,18 +298,15 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
           <label className="block text-[11px] text-slate-300 font-bold mb-1 flex items-center gap-1">
             <UserCheck className="w-3.5 h-3.5 text-blue-400" /> 공정 담당자 지정
           </label>
-          <select
-            value={selectedItem.worker}
+          <SearchableSelect
+            options={operatorOptions}
+            value={selectedItem.worker || ''}
             onChange={handleWorkerChange}
-            className="w-full text-xs px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          >
-            <option value="">(미지정)</option>
-            {approvedOperators.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </select>
+            placeholder="담당자 선택"
+            icon={UserCheck}
+            className="w-full"
+            triggerClassName="w-full text-xs py-1.5 bg-slate-800 border border-slate-700 text-white font-bold"
+          />
         </div>
 
         {/* Machine Selector */}
@@ -217,18 +314,15 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
           <label className="block text-[11px] text-slate-300 font-bold mb-1 flex items-center gap-1">
             <Cpu className="w-3.5 h-3.5 text-indigo-400" /> 담당 설비 선택 (총 21대)
           </label>
-          <select
-            value={selectedItem.machine}
+          <SearchableSelect
+            options={machineOptions}
+            value={selectedItem.machine || ''}
             onChange={handleMachineChange}
-            className="w-full text-xs px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          >
-            <option value="">(미지정)</option>
-            {ALL_EQUIPMENT_LIST.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+            placeholder="설비 선택"
+            icon={Cpu}
+            className="w-full"
+            triggerClassName="w-full text-xs py-1.5 bg-slate-800 border border-slate-700 text-white font-bold"
+          />
         </div>
 
         {/* Toggle Complete Button */}

@@ -73,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: '생산 종합 대시보드',
       sublabel: '설비 21대/실시간 현황',
       icon: LayoutDashboard,
-      badge: '대표 화면',
+      badge: '메인 현황',
       badgeColor: 'bg-blue-600 text-white',
     },
     {

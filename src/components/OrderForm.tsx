@@ -53,11 +53,13 @@ import {
   Download
 } from 'lucide-react';
 import { ProcessTravelerModal } from './ProcessTravelerModal';
+import { subscribeUsersList } from '../lib/firebase';
 
 interface OrderFormProps {
   productTypes: Record<string, ProductType>;
   orders?: Record<string, Order>;
   approvedOperators?: string[];
+  usersList?: User[];
   onCreateOrder: (newOrder: Order, initialProgressMap?: ProcessProgressMap) => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onDeleteOrder?: (orderId: string) => void;
@@ -105,6 +107,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   productTypes,
   orders = {},
   approvedOperators = [],
+  usersList = [],
   onCreateOrder,
   onUpdateOrder,
   onDeleteOrder,
@@ -119,6 +122,21 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   onOpenCopyTypeModal,
   onOrderCreatedSuccess,
 }) => {
+  // Live Firestore users subscription for real-time operator sync
+  const [dbUsers, setDbUsers] = useState<User[]>(usersList);
+
+  useEffect(() => {
+    if (usersList && usersList.length > 0) {
+      setDbUsers(usersList);
+    }
+  }, [usersList]);
+
+  useEffect(() => {
+    const unsub = subscribeUsersList((list) => {
+      setDbUsers(list);
+    });
+    return () => unsub();
+  }, []);
   const canEditOrder =
     !currentUser ||
     currentUser.role === 'ADMIN' ||
@@ -296,23 +314,128 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     ];
   }, [busyMachinesMap]);
 
+  // Compute live operator options dynamically strictly from Firestore users & approvedOperators
+  const dynamicOperators = useMemo(() => {
+    const excludedDepts = new Set<string>([
+      '시스템 관리자',
+      '시스템관리자',
+      '생산 관리',
+      '생산관리',
+      '생산관리팀',
+      '생산기술',
+    ]);
+
+    const KNOWN_MEMBERS: Record<string, string> = {
+      '김현아': '(가공)',
+      '제갈문정': '(가공)',
+      '전광식': '(가공)',
+      '박준영': '(연마)',
+      '김수현': '(연마)',
+      '박종도': '(품질)',
+    };
+
+    const opMap = new Map<string, string>();
+
+    // 1. Process from live Firestore DB users list (highest priority)
+    dbUsers.forEach((u) => {
+      const rawName = (u.name || '').trim();
+      if (!rawName || rawName === '(미지정)' || rawName === '미지정') return;
+      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+      const email = (u.email || '').toLowerCase().trim();
+      const dept = (u.department || '').trim();
+
+      if (u.status === 'rejected') return;
+      if (
+        email === 'noworriesmate01@gmail.com' ||
+        email.includes('admin@') ||
+        baseName === '시스템 관리자' ||
+        baseName === '시스템관리자' ||
+        baseName === '관리자' ||
+        excludedDepts.has(dept) ||
+        dept.includes('시스템') ||
+        dept.includes('생산')
+      ) {
+        return;
+      }
+
+      const isApproved = u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
+
+      if (isApproved) {
+        let tag = '(가공)';
+        if (dept.includes('가공')) tag = '(가공)';
+        else if (dept.includes('연마')) tag = '(연마)';
+        else if (dept.includes('품질') || dept.includes('검사')) tag = '(품질)';
+        else if (dept.includes('조립')) tag = '(조립)';
+        else if (KNOWN_MEMBERS[baseName]) tag = KNOWN_MEMBERS[baseName];
+        else if (u.skillGrinderLevel && u.skillMctLevel && u.skillGrinderLevel > u.skillMctLevel) tag = '(연마)';
+        else tag = '(가공)';
+
+        opMap.set(baseName, `${baseName} ${tag}`);
+      }
+    });
+
+    // 2. Add from approvedOperators prop if not already mapped
+    approvedOperators.forEach((op) => {
+      const clean = op.trim();
+      if (!clean) return;
+      const baseName = clean.replace(/\s*\([^)]*\)/g, '').trim();
+      if (baseName === '시스템 관리자' || baseName === '시스템관리자' || baseName === '관리자') return;
+      if (!opMap.has(baseName)) {
+        let formatted = clean;
+        if (formatted.includes('(미지정)') || !formatted.includes('(')) {
+          const tag = KNOWN_MEMBERS[baseName] || '(가공)';
+          formatted = `${baseName} ${tag}`;
+        }
+        opMap.set(baseName, formatted);
+      }
+    });
+
+    const teamOrder: Record<string, number> = {
+      '(가공)': 1,
+      '(연마)': 2,
+      '(품질)': 3,
+      '(조립)': 4,
+    };
+
+    return Array.from(opMap.values()).sort((a, b) => {
+      const getOrder = (str: string) => {
+        for (const [t, ord] of Object.entries(teamOrder)) {
+          if (str.includes(t)) return ord;
+        }
+        return 99;
+      };
+      const orderA = getOrder(a);
+      const orderB = getOrder(b);
+      if (orderA !== orderB) return orderA - orderB;
+      return a.localeCompare(b, 'ko-KR');
+    });
+  }, [dbUsers, approvedOperators]);
+
   // Options for Operator Searchable Select with Busy status indicator
   const operatorOptions: SelectOption[] = useMemo(() => {
-    return [
-      { value: '', label: '(미지정)' },
-      ...approvedOperators.map((op) => {
-        const busy = busyWorkersMap.get(op.trim());
-        return {
-          value: op,
-          label: busy ? `${op} ⚠️(작업중)` : op,
-          badge: busy ? '작업중 충돌주의' : '승인회원',
-          badgeColor: busy
-            ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
-            : 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-        };
-      }),
-    ];
-  }, [approvedOperators, busyWorkersMap]);
+    const list: SelectOption[] = [{ value: '', label: '(미지정)' }];
+    const addedValues = new Set<string>(['']);
+
+    dynamicOperators.forEach((op) => {
+      const cleanOp = op.trim();
+      if (!cleanOp || addedValues.has(cleanOp)) return;
+      addedValues.add(cleanOp);
+
+      const baseName = cleanOp.replace(/\s*\([^)]*\)/g, '').trim();
+      const busy = busyWorkersMap.get(cleanOp) || busyWorkersMap.get(baseName);
+
+      list.push({
+        value: cleanOp,
+        label: busy ? `${cleanOp} ⚠️(작업중)` : cleanOp,
+        badge: busy ? '작업중 충돌주의' : '현장담당자',
+        badgeColor: busy
+          ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
+          : 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      });
+    });
+
+    return list;
+  }, [dynamicOperators, busyWorkersMap]);
 
   // Phase Definition Interface for Dynamic Phase Blocks
   interface PhaseDefinition {
@@ -360,47 +483,47 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     },
   ];
 
-  // Practical Quick Presets for New Phase Creation
+  // Practical Quick Presets for New Phase Creation (정밀 기계 부품 및 노즐 가공 현장 표준 6대 공정)
   const QUICK_PHASE_PRESETS = [
     {
-      titleSuffix: '특수 도금 및 방청 표면처리 구간',
-      defaultDesc: '무전해 니켈도금(ENP), 경질 아노다이징 및 방청 방습 코팅 공정',
-      icon: '🧪',
-      badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
-    },
-    {
-      titleSuffix: '외주 가공 및 협력사 열처리 구간',
-      defaultDesc: '외부 전문 협력사 진공 열처리, 서브제로 및 방전(EDM) 가공 공정',
-      icon: '🏭',
+      titleSuffix: '소재 발주 및 외주 열처리',
+      defaultDesc: '소재 발주 및 입고 치수 검사, 협력사 연계 용체화, 석출경화 및 서브제로 열처리 공정',
+      icon: '🔥',
       badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
     },
     {
-      titleSuffix: '초음파 세척 및 클린룸 조립 구간',
-      defaultDesc: '3단계 초음파 탈지 세척, 핫에어 건조 및 클린룸 조립 공정',
-      icon: '✨',
-      badgeColor: 'bg-cyan-100 text-cyan-900 border-cyan-300',
-    },
-    {
-      titleSuffix: '최종 품질 성적서(COA) 및 출하 포장 구간',
-      defaultDesc: '공인 성적서 발행, 진공 비닐 포장 및 완충재 박스 패키징 공정',
-      icon: '🚀',
-      badgeColor: 'bg-rose-100 text-rose-900 border-rose-300',
-    },
-    {
-      titleSuffix: '고정밀 5축 복합 가공 구간',
-      defaultDesc: '5축 MCT 다면 동시 가공 및 미세 노즐 홀 고속 정밀 가공',
+      titleSuffix: 'MCT 가공',
+      defaultDesc: 'MCT를 활용한 형상 황삭(Rough) 및 고정밀 치수 정삭(Finish) 가공 공정',
       icon: '⚙️',
       badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
     },
     {
-      titleSuffix: '출하 전 에이징 및 신뢰성 시험 구간',
-      defaultDesc: '고온 챔버 에이징, 압력 리크(Leak) 기밀 시험 및 동작 신뢰성 검증',
+      titleSuffix: '연마 공정',
+      defaultDesc: '요구 공차 확보를 위한 황삭/정삭 연마 및 결합 부위 조립 연마 가공 공정',
+      icon: '🔘',
+      badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    },
+    {
+      titleSuffix: '세척 및 클린룸 조립',
+      defaultDesc: '초음파 탈지 세척, 에어 건조 및 부품 클린룸 조립 공정',
+      icon: '💧',
+      badgeColor: 'bg-teal-100 text-teal-900 border-teal-300',
+    },
+    {
+      titleSuffix: '품질 검사',
+      defaultDesc: '3차원 측정기(CMM) 치수 검수, 표면 거칠기 측정 및 품질 성적서 발행 공정',
       icon: '🔬',
       badgeColor: 'bg-purple-100 text-purple-900 border-purple-300',
     },
+    {
+      titleSuffix: '포장 및 출하',
+      defaultDesc: '제품 출하 포장, 바코드 라벨링 및 물류 배송 공정',
+      icon: '📦',
+      badgeColor: 'bg-rose-100 text-rose-900 border-rose-300',
+    },
   ];
 
-  const AVAILABLE_ICONS = ['📦', '⚙️', '✨', '📐', '🔬', '🚀', '🏭', '🛡️', '🧪', '🛠️', '🔍', '📋', '🎯', '⚡', '💎'];
+  const AVAILABLE_ICONS = ['🔥', '⚙️', '🔘', '💧', '🔬', '📦', '🔍', '🧪', '💎', '🛠️', '🛡️', '📋', '🎯', '📐'];
 
   const AVAILABLE_COLORS = [
     { name: '앰버 (소재/황삭)', value: 'bg-amber-100 text-amber-900 border-amber-300' },
@@ -1122,7 +1245,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     const cmmPool = CMM_MACHINES.filter((m) => !busyMachinesMap.has(m)).concat(CMM_MACHINES);
 
     // Filter available worker pools
-    const availableOperators = approvedOperators.length > 0 ? approvedOperators : ['홍길동 (가공)', '김철수 (연마)', '이영희 (품질)'];
+    const availableOperators = dynamicOperators.length > 0 ? dynamicOperators : approvedOperators;
     const idleOperators = availableOperators.filter((op) => !busyWorkersMap.has(op.trim())).concat(availableOperators);
 
     currentProcesses.forEach((proc, idx) => {
@@ -3084,41 +3207,50 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
                   <Tag className="w-3.5 h-3.5 text-blue-600" /> 빠른 추천 프리셋 적용
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {QUICK_PHASE_PRESETS.map((preset, pIdx) => (
-                    <button
-                      key={pIdx}
-                      type="button"
-                      onClick={() => {
-                        setNewPhaseTitle(preset.titleSuffix);
-                        setNewPhaseDesc(preset.defaultDesc);
-                        setNewPhaseIcon(preset.icon);
-                        setNewPhaseColor(preset.badgeColor);
-                      }}
-                      className="text-left p-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition cursor-pointer flex items-center gap-2 group"
-                    >
-                      <span className="text-base group-hover:scale-110 transition">{preset.icon}</span>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
-                          {preset.titleSuffix}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {QUICK_PHASE_PRESETS.map((preset, pIdx) => {
+                    const isSelected = newPhaseTitle === preset.titleSuffix;
+                    return (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => {
+                          setNewPhaseTitle(preset.titleSuffix);
+                          setNewPhaseDesc(preset.defaultDesc);
+                          setNewPhaseIcon(preset.icon);
+                          setNewPhaseColor(preset.badgeColor);
+                        }}
+                        className={`text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center gap-2.5 group ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50/90 ring-1.5 ring-blue-400 shadow-xs'
+                            : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50 bg-white'
+                        }`}
+                      >
+                        <span className="text-lg p-1.5 bg-slate-50 rounded-lg border border-slate-100 group-hover:scale-110 transition shrink-0">
+                          {preset.icon}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className={`text-xs font-bold truncate ${isSelected ? 'text-blue-800' : 'text-slate-800 group-hover:text-blue-700'}`}>
+                            {preset.titleSuffix}
+                          </div>
+                          <div className="text-[10px] text-slate-500 line-clamp-1">{preset.defaultDesc}</div>
                         </div>
-                        <div className="text-[10px] text-slate-400 truncate">{preset.defaultDesc}</div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Phase Title Input */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  페이즈 구간 명칭 *
+                  페이즈 공정 명칭 *
                 </label>
                 <input
                   type="text"
                   value={newPhaseTitle}
                   onChange={(e) => setNewPhaseTitle(e.target.value)}
-                  placeholder="예: 정밀 방전(EDM) 및 미세 홀 가공 구간"
+                  placeholder="예: 정밀 방전(EDM) 및 미세 홀 가공"
                   className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -3127,7 +3259,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               {/* Phase Description */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  구간 상세 설명 및 가공 요건
+                  공정 상세 설명 및 가공 요건
                 </label>
                 <input
                   type="text"
@@ -3144,7 +3276,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">아이콘</label>
                   <div className="flex flex-wrap gap-1">
-                    {['⚙️', '🔥', '⚡', '🔬', '🧪', '📦', '💎', '🛠️', '🛡️'].map((emoji) => (
+                    {['🔥', '⚙️', '🔘', '💧', '🔬', '📦', '🔍', '🧪', '💎', '🛠️', '🛡️'].map((emoji) => (
                       <button
                         key={emoji}
                         type="button"

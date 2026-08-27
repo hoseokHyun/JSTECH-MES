@@ -223,19 +223,19 @@ export const KpiDetailModal: React.FC<KpiDetailModalProps> = ({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                     <tr>
                       <td className="p-2.5 font-bold">LINE 1 (클린룸 #1 슬롯다이)</td>
-                      <td className="p-2.5">이준혁 검사원</td>
+                      <td className="p-2.5">품질 검사 담당</td>
                       <td className="p-2.5 font-mono font-bold text-blue-600">580건</td>
                       <td className="p-2.5"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">정상 가동</span></td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-bold">LINE 2 (클린룸 #2 초정밀 연마)</td>
-                      <td className="p-2.5">박민수 주임</td>
+                      <td className="p-2.5">초정밀 연마 담당</td>
                       <td className="p-2.5 font-mono font-bold text-blue-600">520건</td>
                       <td className="p-2.5"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">정상 가동</span></td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-bold">LINE 3 (정밀 CNC/MCT 가공)</td>
-                      <td className="p-2.5">김철수 반장</td>
+                      <td className="p-2.5">MCT 가공 담당</td>
                       <td className="p-2.5 font-mono font-bold text-blue-600">380건</td>
                       <td className="p-2.5"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">정상 가동</span></td>
                     </tr>

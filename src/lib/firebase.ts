@@ -3,6 +3,9 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
+  query,
+  where,
   onSnapshot,
   setDoc,
   deleteDoc,
@@ -270,6 +273,18 @@ export async function resetFirestoreData() {
   }
 }
 
+// Canonical standard departments for company members
+export const KNOWN_MEMBER_DEPARTMENTS: Record<string, string> = {
+  '김현아': '가공팀',
+  '제갈문정': '가공팀',
+  '전광식': '가공팀',
+  '박준영': '연마팀',
+  '김수현': '연마팀',
+  '박종도': '품질팀',
+  '주장태': '생산 관리',
+  '박세령': '생산 관리',
+};
+
 // 4. User Auth & Approval Functions
 export async function registerUserAccount(
   email: string,
@@ -283,14 +298,27 @@ export async function registerUserAccount(
 ): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   const cleanPhone = (phoneNumber || '').trim();
+  const cleanName = (name || '').trim();
   const usersSnap = await getDocs(collection(db, 'users'));
   const isSuperAdmin = normalizedEmail === 'noworriesmate01@gmail.com';
   const isFirstUser = usersSnap.empty;
 
+  // Derive canonical department if not explicitly given or set to '미지정'
+  let finalDepartment = isSuperAdmin ? '시스템 관리자' : (department && department.trim() && department !== '미지정' ? department.trim() : '');
+  if (!finalDepartment) {
+    const base = cleanName.replace(/\s*\([^)]*\)/g, '').trim();
+    if (KNOWN_MEMBER_DEPARTMENTS[base]) {
+      finalDepartment = KNOWN_MEMBER_DEPARTMENTS[base];
+    } else if (skillGrinderLevel && skillMctLevel && skillGrinderLevel > skillMctLevel) {
+      finalDepartment = '연마팀';
+    } else {
+      finalDepartment = '가공팀';
+    }
+  }
+
   // Respect the requestedRole! Only force ADMIN for superAdmin or if ADMIN was explicitly requested on first user
   const finalRole = isSuperAdmin ? 'ADMIN' : requestedRole;
   const finalApproved = isSuperAdmin ? true : (isFirstUser ? true : false);
-  const finalDepartment = isSuperAdmin ? '시스템 관리자' : (department && department.trim() ? department.trim() : '미지정');
   const finalStatus: 'approved' | 'pending' = finalApproved ? 'approved' : 'pending';
 
   let uid: string;
@@ -307,7 +335,7 @@ export async function registerUserAccount(
     uid,
     email: normalizedEmail,
     password: pass,
-    name,
+    name: cleanName === '대표 관리자' || cleanName.includes('대표') ? '시스템 관리자' : cleanName,
     phoneNumber: cleanPhone,
     phone_number: cleanPhone, // snake_case 및 DB 호환 필드
     role: finalRole,
@@ -391,12 +419,20 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
         // If password stored, verify
         if (!data.password || data.password === pass) {
           const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
+          const rawName = (data.name || '').trim();
+          const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+          const cleanName = rawName === '대표 관리자' || rawName.includes('대표') ? '시스템 관리자' : rawName;
+          let dept = data.department;
+          if (!dept || dept === '미지정') {
+            dept = KNOWN_MEMBER_DEPARTMENTS[baseName] || (data.role === 'ADMIN' ? '시스템 관리자' : '가공팀');
+          }
           matchedUser = {
             ...data,
+            name: cleanName,
             uid: data.uid || docSnap.id,
             phoneNumber: phone,
             phone_number: phone,
-            department: data.department || '미지정',
+            department: dept,
           };
         }
       }
@@ -416,7 +452,7 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
         uid,
         email: normalizedEmail,
         password: pass,
-        name: normalizedEmail.includes('noworries') ? '대표 관리자' : '시스템 관리자',
+        name: '시스템 관리자',
         phoneNumber: '010-1234-5678',
         phone_number: '010-1234-5678',
         role: 'ADMIN',
@@ -468,6 +504,15 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     }
   }
 
+  // Ensure superAdmin has full admin role, system admin department and approved status
+  if (isSuperAdmin || matchedUser.email === 'noworriesmate01@gmail.com') {
+    matchedUser.role = 'ADMIN';
+    matchedUser.department = '시스템 관리자';
+    matchedUser.name = '시스템 관리자';
+    matchedUser.isApproved = true;
+    matchedUser.status = 'approved';
+  }
+
   if (!matchedUser.isApproved) {
     try { await signOut(auth); } catch {}
     throw new Error('PENDING_APPROVAL');
@@ -505,45 +550,105 @@ export function subscribeUsersList(
   return onSnapshot(
     usersRef,
     (snapshot) => {
-      const emailMap = new Map<string, { user: User; docId: string }>();
-      const extraDocIdsToDelete: string[] = [];
+      const usersMap = new Map<string, User>();
 
       snapshot.forEach((docSnap) => {
         const raw = docSnap.data() as any;
         const docId = docSnap.id;
         const uid = raw.uid || docId;
+        const rawName = (raw.name || '').trim();
+        const email = (raw.email || '').toLowerCase().trim();
         const phone = (raw.phoneNumber || raw.phone_number || raw.phone || '').trim();
+
+        const isSuperAdmin =
+          email === 'noworriesmate01@gmail.com' ||
+          email === 'admin@jstech.co.kr' ||
+          email === 'admin@jun-sung.co.kr' ||
+          rawName === '대표 관리자' ||
+          rawName.includes('대표') ||
+          rawName === '시스템 관리자' ||
+          rawName === '시스템관리자';
+
+        let name = rawName;
+        let dept = (raw.department || '').trim();
+        let role = raw.role || 'USER';
+        let isApproved =
+          raw.isApproved === true ||
+          raw.isApproved === 'true' ||
+          raw.status === 'approved' ||
+          (raw.status !== 'pending' && raw.status !== 'rejected' && raw.isApproved !== false);
+
+        if (isSuperAdmin) {
+          name = '시스템 관리자';
+          dept = '시스템 관리자';
+          role = 'ADMIN';
+          isApproved = true;
+
+          // Auto-repair Firestore document if it had legacy "대표 관리자"
+          if (rawName === '대표 관리자' || raw.name !== '시스템 관리자' || raw.department !== '시스템 관리자') {
+            setDoc(
+              doc(db, 'users', docId),
+              {
+                name: '시스템 관리자',
+                department: '시스템 관리자',
+                role: 'ADMIN',
+                isApproved: true,
+                status: 'approved',
+              },
+              { merge: true }
+            ).catch(() => {});
+          }
+        } else {
+          // If department is missing or explicitly '미지정', provide an intelligent initial fallback without overriding user-set values
+          if (!dept || dept === '미지정') {
+            const baseName = name.replace(/\s*\([^)]*\)/g, '').trim();
+            if (KNOWN_MEMBER_DEPARTMENTS[baseName]) {
+              dept = KNOWN_MEMBER_DEPARTMENTS[baseName];
+            } else if (raw.skillGrinderLevel && raw.skillMctLevel && raw.skillGrinderLevel > raw.skillMctLevel) {
+              dept = '연마팀';
+            } else {
+              dept = '가공팀';
+            }
+            isApproved = true;
+            setDoc(
+              doc(db, 'users', docId),
+              { department: dept, isApproved: true, status: 'approved' },
+              { merge: true }
+            ).catch(() => {});
+          }
+        }
+
         const userObj: User = {
           ...raw,
           uid,
+          name,
+          email,
           phoneNumber: phone,
           phone_number: phone,
-          department: raw.department || '미지정',
+          role,
+          department: dept,
+          isApproved: isApproved,
+          status: isApproved ? 'approved' : (raw.status || 'pending'),
         };
-        const key = (raw.email || raw.name || docId).toLowerCase().trim();
 
-        if (emailMap.has(key)) {
-          // Duplicate account document found for the same email
-          const existing = emailMap.get(key)!;
-          if (userObj.role === 'ADMIN' && existing.user.role !== 'ADMIN') {
-            extraDocIdsToDelete.push(existing.docId);
-            emailMap.set(key, { user: userObj, docId });
-          } else {
-            extraDocIdsToDelete.push(docId);
-          }
+        // Deduplicate: Ensure only 1 entry for super admin
+        const primaryKey = isSuperAdmin ? 'admin_primary_single' : (email || uid || docId);
+        if (!usersMap.has(primaryKey)) {
+          usersMap.set(primaryKey, userObj);
         } else {
-          emailMap.set(key, { user: userObj, docId });
+          // If the existing entry doesn't have a phone number, use the one with a phone number
+          const existing = usersMap.get(primaryKey)!;
+          if ((!existing.phoneNumber || existing.phoneNumber === '010-0000-0000') && (phone && phone !== '010-0000-0000')) {
+            usersMap.set(primaryKey, {
+              ...existing,
+              phoneNumber: phone,
+              phone_number: phone,
+            });
+          }
         }
       });
 
-      // Automatically clean up duplicate user documents from Firestore
-      if (extraDocIdsToDelete.length > 0) {
-        extraDocIdsToDelete.forEach((id) => {
-          deleteDoc(doc(db, 'users', id)).catch(() => {});
-        });
-      }
-
-      const list = Array.from(emailMap.values()).map((item) => item.user);
+      const list = Array.from(usersMap.values());
       onUpdate(list);
     },
     (err) => {
@@ -553,11 +658,36 @@ export function subscribeUsersList(
   );
 }
 
+async function resolveUserDocRef(uidOrEmail: string) {
+  if (!uidOrEmail) return null;
+  // 1. Try direct doc ID
+  const directRef = doc(db, 'users', uidOrEmail);
+  const directSnap = await getDoc(directRef);
+  if (directSnap.exists()) {
+    return directRef;
+  }
+  // 2. Query by uid field
+  const qUid = query(collection(db, 'users'), where('uid', '==', uidOrEmail));
+  const snapUid = await getDocs(qUid);
+  if (!snapUid.empty) {
+    return snapUid.docs[0].ref;
+  }
+  // 3. Query by email field
+  const qEmail = query(collection(db, 'users'), where('email', '==', uidOrEmail.toLowerCase().trim()));
+  const snapEmail = await getDocs(qEmail);
+  if (!snapEmail.empty) {
+    return snapEmail.docs[0].ref;
+  }
+  return directRef;
+}
+
 export async function updateUserPhoneNumber(uid: string, phoneNumber: string) {
   try {
     const cleanPhone = (phoneNumber || '').trim();
+    const userRef = await resolveUserDocRef(uid);
+    if (!userRef) return;
     await setDoc(
-      doc(db, 'users', uid),
+      userRef,
       cleanUndefined({
         phoneNumber: cleanPhone,
         phone_number: cleanPhone,
@@ -582,7 +712,9 @@ export async function updateUserApprovalStatus(
     };
     if (department !== undefined) updateData.department = department || '미지정';
     if (permissions !== undefined) updateData.permissions = permissions;
-    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
+    const userRef = await resolveUserDocRef(uid);
+    if (!userRef) return;
+    await setDoc(userRef, cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update approval status:', err);
   }
@@ -596,7 +728,9 @@ export async function updateUserRoleInFirestore(
   try {
     const updateData: any = { role };
     if (department !== undefined) updateData.department = department || '미지정';
-    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
+    const userRef = await resolveUserDocRef(uid);
+    if (!userRef) return;
+    await setDoc(userRef, cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update role:', err);
   }
@@ -617,7 +751,9 @@ export async function updateUserPermissionsInFirestore(
       updateData.isApproved = isApproved;
       updateData.status = isApproved ? 'approved' : 'pending';
     }
-    await setDoc(doc(db, 'users', uid), cleanUndefined(updateData), { merge: true });
+    const userRef = await resolveUserDocRef(uid);
+    if (!userRef) return;
+    await setDoc(userRef, cleanUndefined(updateData), { merge: true });
   } catch (err) {
     console.error('Failed to update user permissions:', err);
   }
@@ -625,7 +761,9 @@ export async function updateUserPermissionsInFirestore(
 
 export async function deleteUserFromFirestore(uid: string) {
   try {
-    await deleteDoc(doc(db, 'users', uid));
+    const userRef = await resolveUserDocRef(uid);
+    if (!userRef) return;
+    await deleteDoc(userRef);
   } catch (err) {
     console.error('Failed to delete user:', err);
   }

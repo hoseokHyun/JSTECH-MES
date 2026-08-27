@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ScheduledTaskItem, ProcessProgressItem, PauseReason, User, PauseLog } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
+import { SearchableSelect, SelectOption } from './SearchableSelect';
 import {
   X,
   Play,
@@ -93,7 +94,128 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
       setCustomPauseReason('');
       setLocalTaskOverride(null);
     }
-  }, [task?.processKey, isOpen]);
+  }, [task?.processKey, task?.worker, task?.machine, isOpen]);
+
+  // Dynamic operator options for SearchableSelect
+  const operatorOptions: SelectOption[] = useMemo(() => {
+    const opts: SelectOption[] = [
+      { value: '', label: '(작업자 미지정)', badge: '미지정', badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' }
+    ];
+    const added = new Set<string>(['']);
+
+    approvedOperators.forEach((op) => {
+      const clean = (op || '').trim();
+      if (!clean || added.has(clean)) return;
+      added.add(clean);
+
+      let badge = '현장';
+      let badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
+      if (clean.includes('(가공)') || clean.includes('가공')) {
+        badge = '가공';
+        badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
+      } else if (clean.includes('(연마)') || clean.includes('연마')) {
+        badge = '연마';
+        badgeColor = 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300';
+      } else if (clean.includes('(품질)') || clean.includes('품질') || clean.includes('검사')) {
+        badge = '품질';
+        badgeColor = 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300';
+      } else if (clean.includes('(조립)') || clean.includes('조립')) {
+        badge = '조립';
+        badgeColor = 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300';
+      } else if (clean.includes('(생산') || clean.includes('생산')) {
+        badge = '생산';
+        badgeColor = 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300';
+      }
+
+      opts.push({
+        value: clean,
+        label: clean,
+        badge,
+        badgeColor,
+      });
+    });
+
+    [selectedWorker, task?.worker].forEach((w) => {
+      const clean = (w || '').trim();
+      if (clean && !added.has(clean)) {
+        added.add(clean);
+        let badge = '배정';
+        let badgeColor = 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300';
+        if (clean.includes('연마')) {
+          badge = '연마';
+          badgeColor = 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300';
+        } else if (clean.includes('가공')) {
+          badge = '가공';
+          badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
+        } else if (clean.includes('품질')) {
+          badge = '품질';
+          badgeColor = 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300';
+        }
+        opts.push({
+          value: clean,
+          label: clean,
+          badge,
+          badgeColor,
+        });
+      }
+    });
+
+    return opts;
+  }, [approvedOperators, selectedWorker, task?.worker]);
+
+  // Dynamic machine options for SearchableSelect
+  const machineOptions: SelectOption[] = useMemo(() => {
+    const opts: SelectOption[] = [
+      { value: '', label: '(설비 미지정)', badge: '미지정', badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' }
+    ];
+    const added = new Set<string>(['']);
+
+    ALL_EQUIPMENT_LIST.forEach((m) => {
+      if (!m || added.has(m)) return;
+      added.add(m);
+
+      let badge = '설비';
+      let badgeColor = 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200';
+      if (m.includes('MCT')) {
+        badge = 'MCT';
+        badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
+      } else if (m.includes('연마기')) {
+        badge = '연마';
+        badgeColor = 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300';
+      } else if (m.includes('CMM') || m.includes('측정')) {
+        badge = '품질CMM';
+        badgeColor = 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300';
+      } else if (m.includes('세척') || m.includes('초음파')) {
+        badge = '세척';
+        badgeColor = 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300';
+      } else if (m.includes('조립') || m.includes('클린룸')) {
+        badge = '조립';
+        badgeColor = 'bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300';
+      }
+
+      opts.push({
+        value: m,
+        label: m,
+        badge,
+        badgeColor,
+      });
+    });
+
+    [selectedMachine, task?.machine].forEach((m) => {
+      const clean = (m || '').trim();
+      if (clean && !added.has(clean)) {
+        added.add(clean);
+        opts.push({
+          value: clean,
+          label: clean,
+          badge: '배정설비',
+          badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300',
+        });
+      }
+    });
+
+    return opts;
+  }, [selectedMachine, task?.machine]);
 
   // Active task item merging optimistic local overrides
   const activeTask: ScheduledTaskItem | null = task
@@ -717,18 +839,15 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                 <Cpu className="w-3.5 h-3.5 text-blue-500" />
                 <span>담당 가공 설비</span>
               </label>
-              <select
+              <SearchableSelect
+                options={machineOptions}
                 value={selectedMachine}
-                onChange={(e) => setSelectedMachine(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">(설비 미지정)</option>
-                {ALL_EQUIPMENT_LIST.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedMachine(val)}
+                placeholder="담당 설비 선택 (총 21대)"
+                icon={Cpu}
+                className="w-full"
+                triggerClassName="w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+              />
             </div>
 
             <div>
@@ -736,21 +855,15 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                 <UserIcon className="w-3.5 h-3.5 text-emerald-500" />
                 <span>공정 담당 작업자</span>
               </label>
-              <select
+              <SearchableSelect
+                options={operatorOptions}
                 value={selectedWorker}
-                onChange={(e) => setSelectedWorker(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">(작업자 미지정)</option>
-                {approvedOperators.map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-                {selectedWorker && !approvedOperators.includes(selectedWorker) && (
-                  <option value={selectedWorker}>{selectedWorker}</option>
-                )}
-              </select>
+                onChange={(val) => setSelectedWorker(val)}
+                placeholder="공정 담당 작업자 선택"
+                icon={UserIcon}
+                className="w-full"
+                triggerClassName="w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+              />
             </div>
           </div>
 

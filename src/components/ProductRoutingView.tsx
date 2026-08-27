@@ -51,12 +51,11 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
   );
   const [searchQuery, setSearchQuery] = useState('');
 
-  // RBAC check: Only Representative Admin (대표 관리자) can delete
-  const isRepresentativeAdmin = (user?: User | null) => {
+  // RBAC check: Only System Admin can delete
+  const isSystemAdmin = (user?: User | null) => {
     if (!user) return false;
     if (user.role === 'ADMIN') return true;
-    if (user.position && (user.position.includes('대표') || user.position.includes('총괄') || user.position.includes('임원'))) return true;
-    if (user.department && (user.department.includes('시스템 관리자') || user.department.includes('임원실'))) return true;
+    if (user.department && (user.department.includes('시스템 관리자') || user.department === '시스템 관리자')) return true;
     return false;
   };
 

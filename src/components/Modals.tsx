@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Order, OrderStatus, ProductType, User, UserPermissions, UserDepartment, ProcessCategory, ProcessStep } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
+import { SearchableSelect, SelectOption } from './SearchableSelect';
 import {
   Archive,
   X,
@@ -34,7 +35,9 @@ import {
   FileCheck2,
   BarChart3,
   Phone,
-  Smartphone
+  Smartphone,
+  Search,
+  Cpu
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -665,10 +668,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     const preset = DEPARTMENT_PRESETS[newDept];
     if (!preset) return;
 
+    // Automatically approve user when department is assigned by admin
     updateLocalUser(targetId, {
       department: newDept,
       role: preset.role,
       permissions: preset.permissions,
+      isApproved: true,
+      status: 'approved',
     });
 
     if (user.uid) {
@@ -676,13 +682,36 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
         user.uid,
         preset.permissions,
         preset.role,
-        newDept
+        newDept,
+        true // Force isApproved: true
       );
     }
   };
 
   const handleApplyPreset = async (user: User, deptPreset: UserDepartment) => {
     await handleDepartmentChange(user, deptPreset);
+  };
+
+  const handleApproveAllPending = async () => {
+    const pendingList = users.filter((u) => !u.isApproved);
+    if (pendingList.length === 0) {
+      alert('현재 승인 대기 중인 회원이 없습니다.');
+      return;
+    }
+    if (!confirm(`대기 중인 ${pendingList.length}명의 회원을 모두 승인하시겠습니까?`)) {
+      return;
+    }
+    for (const pu of pendingList) {
+      const targetId = pu.uid || pu.email;
+      if (!targetId) continue;
+      const dept = pu.department && pu.department !== '미지정' ? pu.department : '가공팀';
+      const perms = getUserPermissions(pu);
+      updateLocalUser(targetId, { isApproved: true, department: dept, status: 'approved' });
+      if (pu.uid) {
+        await updateUserApprovalStatus(pu.uid, true, dept, perms);
+      }
+    }
+    alert(`${pendingList.length}명의 회원이 모두 승인되었습니다.`);
   };
 
   const handlePermissionToggle = async (user: User, permKey: keyof UserPermissions) => {
@@ -816,23 +845,38 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
             ))}
           </div>
 
-          {/* Search Input */}
-          <div className="relative min-w-[200px]">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="성명, 이메일, 부서 검색..."
-              className="w-full text-xs px-3 py-1.5 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0066FF] focus:outline-none"
-            />
-            {searchQuery && (
+          {/* Quick Actions & Search Input */}
+          <div className="flex items-center gap-2">
+            {pendingUsers.length > 0 && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                type="button"
+                onClick={handleApproveAllPending}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                title="승인 대기 중인 모든 회원을 일괄 승인합니다"
               >
-                ✕
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>대기자 전체 승인 ({pendingUsers.length}명)</span>
               </button>
             )}
+            <div className="relative min-w-[180px]">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="성명, 이메일, 부서 검색..."
+                className="w-full text-xs pl-8 pr-7 py-1.5 border border-slate-300 rounded-xl bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -860,10 +904,10 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
               ) : (
                 filteredUsers.map((u) => {
                   const perms = getUserPermissions(u);
-                  const isSuperAdmin =
-                    u.email === 'noworriesmate01@gmail.com' || u.name.includes('대표');
+                  const isSuperAdmin = u.email === 'noworriesmate01@gmail.com' || u.department === '시스템 관리자' || u.name === '시스템 관리자';
                   const isCurrent = currentUser?.email && u.email && currentUser.email === u.email;
-                  const currentDept = (u.department as UserDepartment) || '가공팀';
+                  const currentDept = (u.department as UserDepartment) || (isSuperAdmin ? '시스템 관리자' : '가공팀');
+                  const displayName = u.name === '대표 관리자' || u.name.includes('대표') ? '시스템 관리자' : u.name;
 
                   return (
                     <tr
@@ -875,38 +919,37 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                       {/* Name & Email */}
                       <td className="p-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-sm">{u.name}</span>
-                          {isSuperAdmin && (
-                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-black">
-                              👑 대표
+                          <span className="font-extrabold text-slate-900 text-sm">{displayName}</span>
+                          {isCurrent ? (
+                            <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded font-black flex items-center gap-0.5">
+                              {isSuperAdmin ? '👑 시스템 관리자(나)' : '(나)'}
                             </span>
-                          )}
-                          {isCurrent && (
-                            <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-1.5 py-0.2 rounded font-black">
-                              (나)
+                          ) : isSuperAdmin ? (
+                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded font-black flex items-center gap-0.5">
+                              👑 시스템 관리자
                             </span>
-                          )}
+                          ) : null}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-slate-400" />
+                        <div className="text-xs text-slate-500 font-sans mt-0.5 flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
                           <span>{u.email || '(이메일 미등록)'}</span>
                         </div>
                         {/* Phone Number Display & Inline Edit */}
                         {editingPhoneUid === (u.uid || u.email) ? (
-                          <div className="mt-1 flex items-center gap-1">
+                          <div className="mt-1.5 flex items-center gap-1">
                             <Phone className="w-3 h-3 text-blue-600 shrink-0" />
                             <input
                               type="tel"
                               value={tempPhone}
                               onChange={(e) => setTempPhone(formatPhone(e.target.value))}
                               placeholder="010-1234-5678"
-                              className="w-28 text-[11px] px-1.5 py-0.5 border border-blue-400 rounded font-mono font-bold bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="w-28 text-xs px-2 py-0.5 border border-blue-400 rounded font-mono font-bold bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               autoFocus
                             />
                             <button
                               type="button"
                               onClick={() => handleSavePhone(u)}
-                              className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold hover:bg-blue-700 cursor-pointer"
+                              className="px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 cursor-pointer"
                               title="저장"
                             >
                               ✓
@@ -914,24 +957,24 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                             <button
                               type="button"
                               onClick={() => setEditingPhoneUid(null)}
-                              className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-300 cursor-pointer"
+                              className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[11px] font-bold hover:bg-slate-300 cursor-pointer"
                               title="취소"
                             >
                               ✕
                             </button>
                           </div>
                         ) : (
-                          <div className="text-[11px] font-mono mt-0.5 flex items-center gap-1 font-bold">
-                            <Phone className="w-3 h-3 text-blue-600 shrink-0" />
+                          <div className="text-xs font-sans mt-1 flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                             {(() => {
                               const phone = (u.phoneNumber || (u as any).phone_number || (u as any).phone || '').trim();
                               const hasValidPhone = phone && phone !== '010-0000-0000';
                               return (
                                 <div className="flex items-center gap-1.5">
                                   {hasValidPhone ? (
-                                    <span className="text-blue-700 font-extrabold">{phone}</span>
+                                    <span className="text-blue-700 font-bold font-mono text-xs">{phone}</span>
                                   ) : (
-                                    <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-semibold">
+                                    <span className="inline-flex items-center text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md leading-normal tracking-normal">
                                       연락처 미등록
                                     </span>
                                   )}
@@ -939,7 +982,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                                     type="button"
                                     onClick={() => handleStartEditPhone(u)}
                                     title="연락처 변경/등록"
-                                    className="text-[10px] text-slate-400 hover:text-blue-600 hover:underline cursor-pointer flex items-center gap-0.5"
+                                    className="text-[11px] text-slate-500 hover:text-blue-600 hover:underline cursor-pointer flex items-center gap-0.5 font-medium ml-0.5"
                                   >
                                     <Pencil className="w-2.5 h-2.5" />
                                     <span>{hasValidPhone ? '수정' : '등록'}</span>
@@ -949,7 +992,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                             })()}
                           </div>
                         )}
-                        <div className="text-[10px] text-slate-400 mt-0.5">
+                        <div className="text-[11px] text-slate-400 mt-0.5 font-sans">
                           가입: {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '-'}
                         </div>
                       </td>
@@ -969,25 +1012,14 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                         </select>
                         <div className="mt-1">
                           {(() => {
-                            const isAdmin = u.role === 'ADMIN' || u.department === '시스템 관리자';
-                            const isProd = u.department === '생산 관리';
-                            if (isAdmin) {
-                              return (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-amber-100 text-amber-900 border-amber-300 inline-flex items-center gap-1">
-                                  <span>👑 시스템 관리자{isCurrent ? '(나)' : ''}</span>
-                                </span>
-                              );
-                            }
-                            if (isProd) {
-                              return (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-purple-100 text-purple-900 border-purple-300 inline-flex items-center gap-1">
-                                  <span>📊 생산 관리{isCurrent ? '(나)' : ''}</span>
-                                </span>
-                              );
-                            }
+                            const dPreset = DEPARTMENT_PRESETS[currentDept] || {
+                              icon: '👷',
+                              label: u.department || '현장담당자',
+                              badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
+                            };
                             return (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-black border bg-slate-100 text-slate-800 border-slate-300 inline-flex items-center gap-1">
-                                <span>👷 {u.department || '현장담당자'}{isCurrent ? '(나)' : ''}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${dPreset.badgeClass} inline-flex items-center gap-1`}>
+                                <span>{dPreset.icon} {dPreset.label}{isCurrent ? '(나)' : ''}</span>
                               </span>
                             );
                           })()}
@@ -1673,73 +1705,160 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   }, [isOpen]);
 
   const departmentGroups = React.useMemo(() => {
-    const map: Record<string, User[]> = {
+    const map: Record<string, { name: string; team: string; position?: string }[]> = {
       '가공팀': [],
       '연마팀': [],
       '품질팀': [],
-      '생산 관리': [],
-      '시스템 관리자': [],
-      '기타': [],
+      '조립팀': [],
     };
 
-    const activeUsers = users.filter((u) => u.isApproved !== false);
+    const excludedNames = new Set<string>([
+      '시스템 관리자',
+      '시스템관리자',
+      '생산 관리',
+      '생산관리',
+      '생산관리팀',
+      '생산기술',
+      '박세령',
+      '관리자',
+    ]);
 
-    if (activeUsers.length === 0) {
-      return [
-        {
-          team: '가공팀',
-          members: [
-            { name: '김가공', team: '가공팀', position: '주임' },
-            { name: '이가공', team: '가공팀', position: '기사' },
-          ],
-        },
-        {
-          team: '연마팀',
-          members: [
-            { name: '박연마', team: '연마팀', position: '팀장' },
-            { name: '최연마', team: '연마팀', position: '기사' },
-          ],
-        },
-        {
-          team: '품질팀',
-          members: [
-            { name: '정품질', team: '품질팀', position: '책임' },
-          ],
-        },
-        {
-          team: '생산 관리 / 시스템',
-          members: [
-            { name: '관리자', team: '시스템 관리자', position: '관리자' },
-          ],
-        },
-      ];
-    }
+    const activeUsers = users.filter((u) => {
+      if (u.status === 'rejected') return false;
+      const email = (u.email || '').toLowerCase().trim();
+      const rawName = (u.name || '').trim();
+      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+      const dept = (u.department || '').trim();
+
+      if (
+        email === 'noworriesmate01@gmail.com' ||
+        email.includes('admin@') ||
+        baseName === '시스템 관리자' ||
+        baseName === '시스템관리자' ||
+        dept === '시스템 관리자' ||
+        dept.includes('시스템관리자') ||
+        dept === '생산 관리' ||
+        dept.includes('생산관리') ||
+        baseName === '박세령'
+      ) {
+        return false;
+      }
+      return u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
+    });
+
+    const addedMemberNames = new Set<string>();
 
     activeUsers.forEach((u) => {
-      const dept = (u.department as string) || (u.role === 'ADMIN' ? '시스템 관리자' : '기타');
-      if (map[dept]) {
-        map[dept].push(u);
-      } else {
-        map['기타'].push(u);
-      }
+      const rawName = (u.name || '').trim();
+      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+      if (!baseName || addedMemberNames.has(baseName)) return;
+      addedMemberNames.add(baseName);
+
+      const dept = (u.department || '').trim();
+      let targetTeam = '가공팀';
+      if (dept.includes('가공')) targetTeam = '가공팀';
+      else if (dept.includes('연마')) targetTeam = '연마팀';
+      else if (dept.includes('품질') || dept.includes('검사')) targetTeam = '품질팀';
+      else if (dept.includes('조립')) targetTeam = '조립팀';
+      else if (u.skillGrinderLevel && u.skillMctLevel && u.skillGrinderLevel > u.skillMctLevel) targetTeam = '연마팀';
+
+      if (!map[targetTeam]) map[targetTeam] = [];
+      map[targetTeam].push({
+        name: baseName,
+        team: targetTeam,
+        position: u.position || '담당자',
+      });
     });
 
     return Object.entries(map)
       .filter(([_, list]) => list.length > 0)
       .map(([team, members]) => ({
         team,
-        members: members.map((m) => ({
-          name: m.name,
-          team: m.department || (m.role === 'ADMIN' ? '시스템 관리자' : '일반'),
-          position: m.position,
-        })),
+        members,
       }));
   }, [users]);
+
+  // Options for Operator Searchable Select in Edit Modal
+  const operatorOptions: SelectOption[] = React.useMemo(() => {
+    const list: SelectOption[] = [
+      { value: '', label: '담당자 미지정 (현장 배정)' },
+      {
+        value: '(외주/협력사)',
+        label: '(외주/협력사)',
+        badge: '외주업체',
+        badgeColor: 'bg-amber-100 text-amber-800 border border-amber-300',
+      },
+    ];
+
+    const teamBadgeColors: Record<string, string> = {
+      '가공팀': 'bg-indigo-100 text-indigo-800 border border-indigo-200',
+      '연마팀': 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      '품질팀': 'bg-purple-100 text-purple-800 border border-purple-200',
+      '조립팀': 'bg-cyan-100 text-cyan-800 border border-cyan-200',
+    };
+
+    departmentGroups.forEach((group) => {
+      group.members.forEach((m) => {
+        const shortTeam = group.team.replace('팀', '');
+        const formattedValue = `${m.name} (${shortTeam})`;
+        list.push({
+          value: formattedValue,
+          label: `${m.name} (${group.team}${m.position ? ` · ${m.position}` : ''})`,
+          badge: group.team,
+          badgeColor: teamBadgeColors[group.team] || 'bg-slate-100 text-slate-700',
+        });
+      });
+    });
+
+    return list;
+  }, [departmentGroups]);
+
+  // Options for Equipment Searchable Select in Edit Modal
+  const equipmentOptions: SelectOption[] = React.useMemo(() => {
+    const list: SelectOption[] = [
+      { value: '', label: '자동 지정 (기본)' },
+      {
+        value: '(외주/협력사)',
+        label: '(외주/협력사)',
+        badge: '외주',
+        badgeColor: 'bg-amber-100 text-amber-800 border border-amber-300',
+      },
+    ];
+
+    MCT_MACHINES.forEach((m) => {
+      list.push({
+        value: m,
+        label: m,
+        badge: 'MCT가공',
+        badgeColor: 'bg-indigo-100 text-indigo-800 border border-indigo-200',
+      });
+    });
+    GRINDER_MACHINES.forEach((m) => {
+      list.push({
+        value: m,
+        label: m,
+        badge: '연마',
+        badgeColor: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      });
+    });
+    CMM_MACHINES.forEach((m) => {
+      list.push({
+        value: m,
+        label: m,
+        badge: '품질CMM',
+        badgeColor: 'bg-purple-100 text-purple-800 border border-purple-200',
+      });
+    });
+
+    return list;
+  }, []);
 
   useEffect(() => {
     if (order) {
       setName(order.name || '');
-      setSelectedTypeId(order.typeId || '');
+      setSelectedTypeId(
+        order.typeId || (order.customProcesses && order.customProcesses.length > 0 ? 'CUSTOM' : '')
+      );
       setQty(order.qty || 1);
       setStartDate(order.startDate || '');
       setStrategy(order.strategy || 'CONTINUOUS');
@@ -1755,10 +1874,32 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       setSpecialNotes(order.specialNotes || '');
 
       if (order.customProcesses && order.customProcesses.length > 0) {
-        setCustomProcesses(order.customProcesses.map((p) => ({ ...p })));
+        setCustomProcesses(
+          order.customProcesses.map((p) => {
+            const workerVal = (p.assignedWorker || p.worker || '').trim();
+            return {
+              ...p,
+              assignedWorker: workerVal,
+              worker: workerVal,
+              assignedMachine: p.assignedMachine || '',
+            };
+          })
+        );
       } else {
         const type = productTypes[order.typeId];
-        setCustomProcesses(type ? type.processes.map((p) => ({ ...p })) : []);
+        setCustomProcesses(
+          type
+            ? type.processes.map((p) => {
+                const workerVal = (p.assignedWorker || p.worker || '').trim();
+                return {
+                  ...p,
+                  assignedWorker: workerVal,
+                  worker: workerVal,
+                  assignedMachine: p.assignedMachine || '',
+                };
+              })
+            : []
+        );
       }
     }
   }, [order, productTypes, isOpen]);
@@ -1767,9 +1908,22 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
   const handleTypeChange = (newTypeId: string) => {
     setSelectedTypeId(newTypeId);
+    if (newTypeId === 'CUSTOM') {
+      return;
+    }
     const newType = productTypes[newTypeId];
     if (newType && newType.processes) {
-      setCustomProcesses(newType.processes.map((p) => ({ ...p })));
+      setCustomProcesses(
+        newType.processes.map((p) => {
+          const workerVal = (p.assignedWorker || p.worker || '').trim();
+          return {
+            ...p,
+            assignedWorker: workerVal,
+            worker: workerVal,
+            assignedMachine: p.assignedMachine || '',
+          };
+        })
+      );
     }
   };
 
@@ -1971,6 +2125,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                 onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-blue-50/50 font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
+                {selectedTypeId === 'CUSTOM' && (
+                  <option value="CUSTOM">✨ 커스텀 공정 (사용자 직접 유연 설계)</option>
+                )}
                 {Object.values(productTypes).map((pt: ProductType) => (
                   <option key={pt.id} value={pt.id}>
                     {pt.name} ({pt.processes ? pt.processes.length : 0}단계 공정)
@@ -2174,12 +2331,12 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               <span className="flex-1 min-w-[130px]">공정명 (Process)</span>
               <span className="w-24 shrink-0">공정 구분</span>
               <span className="w-20 shrink-0 text-center">소요시간</span>
-              <span className="w-36 lg:w-40 shrink-0">지정 설비 (Machine)</span>
-              <span className="w-40 lg:w-48 shrink-0">공정 담당자 (Assignee)</span>
+              <span className="w-44 lg:w-48 shrink-0">지정 설비 (Machine)</span>
+              <span className="w-52 lg:w-60 shrink-0">공정 담당자 (Assignee)</span>
               <span className="w-6 text-center shrink-0">삭제</span>
             </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {customProcesses.map((proc, pIdx) => (
                 <div
                   key={pIdx}
@@ -2197,7 +2354,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       value={proc.name}
                       onChange={(e) => handleProcessChange(pIdx, 'name', e.target.value)}
                       placeholder="공정명 입력"
-                      className="w-full px-2 py-1 border border-slate-300 rounded font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 text-xs"
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 text-xs"
                     />
                   </div>
 
@@ -2207,7 +2364,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                     <select
                       value={proc.category}
                       onChange={(e) => handleProcessChange(pIdx, 'category', e.target.value as ProcessCategory)}
-                      className={`w-full px-2 py-1 border rounded font-black text-[11px] ${
+                      className={`w-full px-2 py-1.5 border rounded-lg font-black text-[11px] ${
                         proc.category === '외주'
                           ? 'bg-amber-50 text-amber-900 border-amber-300'
                           : proc.category === '가공'
@@ -2234,85 +2391,39 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                         step="any"
                         value={proc.durationHours}
                         onChange={(e) => handleProcessChange(pIdx, 'durationHours', parseFloat(e.target.value) || 0)}
-                        className="w-13 px-1.5 py-1 border border-slate-300 rounded font-mono font-bold text-center text-slate-900 text-xs"
+                        className="w-13 px-1.5 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-center text-slate-900 text-xs"
                       />
                       <span className="text-[10px] font-bold text-slate-500">시간</span>
                     </div>
                   </div>
 
-                  {/* Machine Assignment */}
-                  <div className="w-36 lg:w-40 shrink-0">
+                  {/* Machine Assignment (Searchable Select) */}
+                  <div className="w-44 lg:w-48 shrink-0">
                     <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">설비 지정</label>
-                    <select
+                    <SearchableSelect
+                      options={equipmentOptions}
                       value={proc.assignedMachine || ''}
-                      onChange={(e) => handleProcessChange(pIdx, 'assignedMachine', e.target.value)}
-                      className={`w-full px-2 py-1 border rounded font-bold text-[11px] focus:ring-1 focus:ring-blue-500 ${
-                        proc.assignedMachine && proc.assignedMachine !== '(외주/협력사)'
-                          ? 'bg-indigo-50/70 border-indigo-300 text-indigo-950 font-extrabold'
-                          : proc.assignedMachine === '(외주/협력사)'
-                          ? 'bg-amber-50/70 border-amber-300 text-amber-950 font-extrabold'
-                          : 'bg-white border-slate-300 text-slate-800'
-                      }`}
-                      title="담당 설비 지정"
-                    >
-                      <option value="">자동 지정 (기본)</option>
-                      <option value="(외주/협력사)">(외주/협력사)</option>
-                      <optgroup label="--- MCT 가공 설비 ---">
-                        {MCT_MACHINES.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="--- 연마 설비 ---">
-                        {GRINDER_MACHINES.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="--- 품질 CMM ---">
-                        {CMM_MACHINES.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
+                      onChange={(val) => handleProcessChange(pIdx, 'assignedMachine', val)}
+                      placeholder="자동 지정 (기본)"
+                      icon={Cpu}
+                      dropdownClassName="min-w-[220px]"
+                    />
                   </div>
 
-                  {/* Assignee / Worker Selection (담당자 선택) */}
-                  <div className="w-40 lg:w-48 shrink-0">
+                  {/* Assignee / Worker Selection (Searchable Select) */}
+                  <div className="w-52 lg:w-60 shrink-0">
                     <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">담당자 지정</label>
-                    <select
+                    <SearchableSelect
+                      options={operatorOptions}
                       value={proc.assignedWorker || proc.worker || ''}
-                      onChange={(e) => {
-                        handleProcessChange(pIdx, 'assignedWorker', e.target.value);
-                        handleProcessChange(pIdx, 'worker', e.target.value);
+                      onChange={(val) => {
+                        handleProcessChange(pIdx, 'assignedWorker', val);
+                        handleProcessChange(pIdx, 'worker', val);
                       }}
-                      className={`w-full px-2 py-1 border rounded font-bold text-[11px] focus:ring-1 focus:ring-blue-500 ${
-                        (proc.assignedWorker || proc.worker) &&
-                        proc.assignedWorker !== '(외주/협력사)' &&
-                        proc.worker !== '(외주/협력사)'
-                          ? 'bg-blue-50/80 border-blue-300 text-blue-950 font-extrabold'
-                          : proc.assignedWorker === '(외주/협력사)' || proc.worker === '(외주/협력사)'
-                          ? 'bg-amber-50/80 border-amber-300 text-amber-950 font-extrabold'
-                          : 'bg-white border-slate-300 text-slate-700'
-                      }`}
-                      title="공정 담당자 선택"
-                    >
-                      <option value="">담당자 미지정 (현장 배정)</option>
-                      <option value="(외주/협력사)">(외주/협력사)</option>
-                      {departmentGroups.map((group) => (
-                        <optgroup key={group.team} label={`--- ${group.team} ---`}>
-                          {group.members.map((m) => (
-                            <option key={`${group.team}-${m.name}`} value={m.name}>
-                              {m.name} ({m.team}{m.position ? ` · ${m.position}` : ''})
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                      placeholder="담당자 미지정"
+                      icon={UserCheck}
+                      dropdownClassName="min-w-[260px]"
+                    />
                   </div>
 
                   {/* Remove Button */}

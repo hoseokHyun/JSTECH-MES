@@ -73,7 +73,7 @@ const STORAGE_KEY_TYPES = 'junsung_mes_types_v2';
 const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
 
 export default function App() {
-  // 1. Navigation Tab State (Default: Production Executive Dashboard - 대표화면)
+  // 1. Navigation Tab State (Default: Production Executive Dashboard - 메인화면)
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // 2. Core Application Domain State with LocalStorage Persistence
@@ -276,35 +276,6 @@ export default function App() {
     applyTheme(themeMode);
   }, []);
 
-  // Compute approvedOperators list containing ONLY approved floor workers (excluding System Admin & Production Management)
-  const approvedOperators = useMemo(() => {
-    const fieldWorkers = usersList
-      .filter((u) => {
-        if (!u.isApproved) return false;
-        if (u.role === 'ADMIN') return false;
-        const dept = (u.department || '').trim();
-        if (
-          dept === '시스템 관리자' ||
-          dept === '생산 관리' ||
-          dept.includes('관리자') ||
-          dept.includes('생산관리')
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .map((u) => {
-        const deptLabel = u.department ? ` (${u.department.replace('팀', '')})` : '';
-        return `${u.name.trim()}${deptLabel}`;
-      });
-
-    if (fieldWorkers.length > 0) {
-      return Array.from(new Set(fieldWorkers));
-    }
-    // Default floor worker pool fallback if no field operators are registered yet
-    return ['홍길동 (가공)', '김철수 (연마)', '이영희 (품질)', '박민수 (가공)', '최현우 (연마)'];
-  }, [usersList]);
-
   // 3. Selection & Modal States
   const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>(null);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
@@ -357,6 +328,75 @@ export default function App() {
   const { scheduledTasks, taskMap, minStart, maxEnd, totalWorkingHours } = useMemo(() => {
     return calculateSchedule(orders, productTypes, processProgressMap);
   }, [orders, productTypes, processProgressMap]);
+
+  // Compute approvedOperators list containing registered workers and floor operators from Firestore usersList
+  const approvedOperators = useMemo(() => {
+    // Map of clean base name -> fully formatted string: "성명 (팀명)"
+    const operatorMap = new Map<string, string>();
+
+    // Helper to determine field team suffix
+    const getTeamSuffix = (dept: string | undefined, u?: User): string => {
+      const d = (dept || '').trim();
+      if (d.includes('가공')) return '(가공)';
+      if (d.includes('연마')) return '(연마)';
+      if (d.includes('품질') || d.includes('검사')) return '(품질)';
+      if (d.includes('조립') || d.includes('클린룸')) return '(조립)';
+      if (d.includes('생산')) return '(생산관리)';
+
+      // Heuristic based on skill levels if available
+      if (u && (u.skillGrinderLevel || 0) > (u.skillMctLevel || 0)) {
+        return '(연마)';
+      }
+      return '(가공)';
+    };
+
+    // Process registered users strictly from Firestore usersList
+    usersList.forEach((u) => {
+      const rawName = (u.name || '').trim();
+      if (!rawName) return;
+
+      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+      if (!baseName || baseName === '(미지정)' || baseName === '미지정') return;
+
+      // Exclude rejected accounts
+      if (u.status === 'rejected') return;
+
+      // Exclude generic placeholder names
+      if (baseName === '시스템 관리자' || baseName === '시스템관리자') return;
+
+      // Check if user is approved and active
+      const isApproved = u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
+
+      if (isApproved) {
+        const teamSuffix = getTeamSuffix(u.department, u);
+        operatorMap.set(baseName, `${baseName} ${teamSuffix}`);
+      }
+    });
+
+    // 3. Sort operators: (가공) -> (연마) -> (품질) -> (조립) -> Alphabetical
+    const teamOrder: Record<string, number> = {
+      '(가공)': 1,
+      '(연마)': 2,
+      '(품질)': 3,
+      '(조립)': 4,
+      '(생산관리)': 5,
+    };
+
+    const sortedList = Array.from(operatorMap.values()).sort((a, b) => {
+      const getOrder = (str: string) => {
+        for (const [tag, order] of Object.entries(teamOrder)) {
+          if (str.includes(tag)) return order;
+        }
+        return 99;
+      };
+      const orderA = getOrder(a);
+      const orderB = getOrder(b);
+      if (orderA !== orderB) return orderA - orderB;
+      return a.localeCompare(b, 'ko-KR');
+    });
+
+    return sortedList;
+  }, [usersList]);
 
   // Filtered Tasks for Gantt Chart & Dashboard
   const filteredScheduledTasks = useMemo(() => {
@@ -446,6 +486,68 @@ export default function App() {
       [updatedOrder.id]: updatedOrder,
     }));
     saveOrderToFirestore(updatedOrder);
+
+    // Sync progress map workers/machines if updated
+    if (updatedOrder.customProcesses && updatedOrder.customProcesses.length > 0) {
+      setProcessProgressMap((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        const qty = Math.max(1, Number(updatedOrder.qty) || 1);
+
+        updatedOrder.customProcesses?.forEach((p, pIdx) => {
+          const workerVal = (p.assignedWorker || p.worker || '').trim();
+          const machineVal = (p.assignedMachine || '').trim();
+
+          // Sync across all product units (Q1..Qn) and standard key variants
+          for (let q = 1; q <= qty; q++) {
+            const possibleKeys = [
+              `${updatedOrder.id}_Q${q}_P${pIdx}`,
+              `${updatedOrder.id}-Q${q}-${pIdx}`,
+              `${updatedOrder.id}-${pIdx}`,
+              `${updatedOrder.id}_${pIdx}`,
+            ];
+
+            possibleKeys.forEach((key) => {
+              const current = next[key];
+              if (current) {
+                let itemChanged = false;
+                const updatedItem = { ...current };
+                if (workerVal && updatedItem.worker !== workerVal) {
+                  updatedItem.worker = workerVal;
+                  itemChanged = true;
+                }
+                if (machineVal && updatedItem.machine !== machineVal) {
+                  updatedItem.machine = machineVal;
+                  itemChanged = true;
+                }
+                if (itemChanged) {
+                  next[key] = updatedItem;
+                  changed = true;
+                  saveProcessProgressToFirestore(key, updatedItem);
+                }
+              } else if (workerVal || machineVal) {
+                next[key] = {
+                  isCompleted: updatedOrder.status === 'COMPLETED',
+                  worker: workerVal,
+                  machine: machineVal,
+                };
+                changed = true;
+                saveProcessProgressToFirestore(key, next[key]);
+              }
+            });
+          }
+        });
+
+        if (changed) {
+          try {
+            localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(next));
+          } catch (e) {
+            console.error('Failed to save progress map update to localStorage', e);
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
   };
 
   const handleDeleteOrder = (orderId: string) => {
@@ -573,11 +675,15 @@ export default function App() {
 
         // 1. Update standard generated process keys
         for (let q = 1; q <= qty; q++) {
-          baseProcesses.forEach((_, pIdx) => {
+          baseProcesses.forEach((p, pIdx) => {
             const processKey = `${ord.id}_Q${q}_P${pIdx}`;
             const existing = next[processKey] || {};
+            const workerVal = (p?.assignedWorker || p?.worker || existing.worker || '').trim();
+            const machineVal = (p?.assignedMachine || existing.machine || '').trim();
             const updated = {
               ...existing,
+              worker: workerVal || existing.worker,
+              machine: machineVal || existing.machine,
               isCompleted: forceComplete,
               completedAt: forceComplete ? (existing.completedAt || nowStr) : undefined,
             };
@@ -941,6 +1047,7 @@ export default function App() {
                 pendingCopyOrder={pendingCopyOrder}
                 onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
                 approvedOperators={approvedOperators}
+                usersList={usersList}
               />
             )}
 

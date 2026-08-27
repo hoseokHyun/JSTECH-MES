@@ -298,7 +298,7 @@ const DEFAULT_INSPECTION_DATA: InspectionItem[] = [
     inspectTime: '2026-08-18 09:45',
     cmmDevice: 'CMM-02 (Mitutoyo Crysta-Apex V)',
     programName: 'SLOT_DIE_1600_LOWER_V2',
-    inspector: '이영희 선임연구원',
+    inspector: '품질 검사원 (KOLAS)',
     result: 'PASS',
     lipWidthMm: 1600,
     measurements: [
@@ -898,7 +898,7 @@ export function buildProductSpcFromOrder(
 
 const CERTIFIED_INSPECTORS = [
   '김준성 책임연구원 (KOLAS 공인)',
-  '이영희 선임연구원',
+  '품질 검사원 (KOLAS)',
   '박철수 주임연구원',
   '최민지 선임연구원',
   '전민우 선임연구원 (MW.Jeon)',
@@ -959,7 +959,7 @@ const SHIPPING_PROJECTS: ShippingProjectItem[] = [
     issueDate: '2026-08-18',
     material: 'SUS420J2 (HRC 55±1)',
     hardness: 'HRC 55.2',
-    inspector: '이영희 선임연구원',
+    inspector: '품질 검사원 (KOLAS)',
     qaManager: '이준혁 품질보증총괄이사',
     checklist: {
       cmmPointScan: true,
