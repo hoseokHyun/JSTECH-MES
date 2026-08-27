@@ -724,7 +724,14 @@ export default function App() {
     });
   };
 
-  const handleUpdateProgress = (processKey: string, updates: Partial<ProcessProgressMap[string]>) => {
+  const handleUpdateProgress = (
+    processKey: string,
+    updates: Partial<ProcessProgressMap[string]> & {
+      planStart?: string;
+      planEnd?: string;
+      durationHours?: number;
+    }
+  ) => {
     const canExecuteMES =
       !currentUser ||
       currentUser.role === 'ADMIN' ||
@@ -735,6 +742,29 @@ export default function App() {
       return;
     }
 
+    // Parse orderId and process index (pIdx) from processKey
+    let orderId: string | null = null;
+    let pIdx = -1;
+
+    const match1 = processKey.match(/^(.*?)_Q(\d+)_P(\d+)$/i);
+    if (match1) {
+      orderId = match1[1];
+      pIdx = parseInt(match1[3], 10);
+    } else {
+      const match2 = processKey.match(/^(.*?)-Q(\d+)-(\d+)$/i);
+      if (match2) {
+        orderId = match2[1];
+        pIdx = parseInt(match2[3], 10);
+      } else {
+        const match3 = processKey.match(/^(.*?)[-_](\d+)$/);
+        if (match3) {
+          orderId = match3[1];
+          pIdx = parseInt(match3[2], 10);
+        }
+      }
+    }
+
+    // 1. Update processProgressMap state & Firestore (and all sibling unit keys if worker/machine changed)
     setProcessProgressMap((prev) => {
       const existing = prev[processKey] || {};
       const updated = { ...existing, ...updates };
@@ -754,13 +784,141 @@ export default function App() {
         }
       }
 
-      saveProcessProgressToFirestore(processKey, updated);
-
-      return {
+      const nextMap = {
         ...prev,
         [processKey]: updated,
       };
+
+      saveProcessProgressToFirestore(processKey, updated);
+
+      // If worker, machine, memo, or planStart was changed, sync to sibling units for that order & process step
+      if (
+        orderId &&
+        pIdx >= 0 &&
+        (updates.worker !== undefined ||
+          updates.machine !== undefined ||
+          updates.memo !== undefined)
+      ) {
+        const ord = orders[orderId];
+        const totalQty = ord ? Math.max(1, parseInt(String(ord.qty)) || 1) : 10;
+        for (let q = 1; q <= totalQty; q++) {
+          const siblingKeys = [
+            `${orderId}_Q${q}_P${pIdx}`,
+            `${orderId}-Q${q}-${pIdx}`,
+          ];
+          siblingKeys.forEach((sKey) => {
+            if (sKey !== processKey) {
+              const currentSib = nextMap[sKey] || {};
+              const updatedSib = {
+                ...currentSib,
+                ...(updates.worker !== undefined ? { worker: updates.worker } : {}),
+                ...(updates.machine !== undefined ? { machine: updates.machine } : {}),
+                ...(updates.memo !== undefined ? { memo: updates.memo } : {}),
+              };
+              nextMap[sKey] = updatedSib;
+              saveProcessProgressToFirestore(sKey, updatedSib);
+            }
+          });
+        }
+
+        const flatKey = `${orderId}-${pIdx}`;
+        if (flatKey !== processKey) {
+          const currentFlat = nextMap[flatKey] || {};
+          const updatedFlat = {
+            ...currentFlat,
+            ...(updates.worker !== undefined ? { worker: updates.worker } : {}),
+            ...(updates.machine !== undefined ? { machine: updates.machine } : {}),
+            ...(updates.memo !== undefined ? { memo: updates.memo } : {}),
+          };
+          nextMap[flatKey] = updatedFlat;
+          saveProcessProgressToFirestore(flatKey, updatedFlat);
+        }
+      }
+
+      try {
+        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(nextMap));
+      } catch (e) {
+        console.error('Failed to sync progress map to localStorage', e);
+      }
+
+      return nextMap;
     });
+
+    // 2. Bidirectional Sync: Update Central Order & Routing in Single Source of Truth
+    if (orderId && orders[orderId]) {
+      setOrders((prevOrders) => {
+        const ord = prevOrders[orderId!];
+        if (!ord) return prevOrders;
+
+        const type = productTypes[ord.typeId];
+        const baseProcesses: ProcessStep[] =
+          ord.customProcesses && ord.customProcesses.length > 0
+            ? ord.customProcesses.map((p) => ({ ...p }))
+            : (type?.processes || []).map((p) => ({ ...p }));
+
+        let orderModified = false;
+
+        if (pIdx >= 0 && pIdx < baseProcesses.length) {
+          const targetProc = { ...baseProcesses[pIdx] };
+
+          if (updates.worker !== undefined && targetProc.assignedWorker !== updates.worker) {
+            targetProc.assignedWorker = updates.worker;
+            targetProc.worker = updates.worker;
+            orderModified = true;
+          }
+          if (updates.machine !== undefined && targetProc.assignedMachine !== updates.machine) {
+            targetProc.assignedMachine = updates.machine;
+            orderModified = true;
+          }
+          if (
+            updates.durationHours !== undefined &&
+            updates.durationHours > 0 &&
+            targetProc.durationHours !== updates.durationHours
+          ) {
+            targetProc.durationHours = updates.durationHours;
+            orderModified = true;
+          }
+          if (updates.memo !== undefined && targetProc.memo !== updates.memo) {
+            targetProc.memo = updates.memo;
+            orderModified = true;
+          }
+
+          baseProcesses[pIdx] = targetProc;
+        }
+
+        // If planStart of the first step changed, sync order start date
+        let newStartDate = ord.startDate;
+        if (pIdx === 0 && updates.planStart) {
+          newStartDate = updates.planStart;
+          orderModified = true;
+        }
+
+        if (orderModified || !ord.customProcesses || ord.customProcesses.length === 0) {
+          const updatedOrder: Order = {
+            ...ord,
+            startDate: newStartDate,
+            customProcesses: baseProcesses,
+          };
+
+          saveOrderToFirestore(updatedOrder);
+
+          const nextOrders = {
+            ...prevOrders,
+            [orderId!]: updatedOrder,
+          };
+
+          try {
+            localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(nextOrders));
+          } catch (e) {
+            console.error('Failed to sync orders to localStorage', e);
+          }
+
+          return nextOrders;
+        }
+
+        return prevOrders;
+      });
+    }
   };
 
   const handleSaveNewProductType = (newType: ProductType) => {
