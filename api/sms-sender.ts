@@ -81,7 +81,7 @@ async function sendSolapiSms(
   }
 
   if (!cleanFrom) {
-    throw new Error('Solapi에 등록된 사전 인증 발신번호가 필요합니다. (SOLAPI_FROM_NUMBER 또는 SMS_SENDER_NUMBER)');
+    throw new Error('Solapi에 등록된 사전 인증 발신번호가 필요합니다. (SOLAPI_FROM_NUMBER)');
   }
 
   if (!cleanTo || cleanTo.length < 8) {
@@ -119,36 +119,66 @@ async function sendSolapiSms(
   // Primary: api.solapi.com, Fallback: api.coolsms.co.kr
   const endpoint = 'https://api.solapi.com/messages/v4/send';
   
-  let response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
-    body: JSON.stringify(body),
-  });
+  // AbortController for 7-second fetch timeout to prevent serverless hanging
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-  if (!response.ok && response.status !== 400 && response.status !== 401 && response.status !== 402 && response.status !== 403) {
-    // Retry with api.coolsms.co.kr if domain network issue
-    console.warn(`[Solapi] Primary endpoint returned status ${response.status}. Retrying via api.coolsms.co.kr...`);
-    response = await fetch('https://api.coolsms.co.kr/messages/v4/send', {
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: authHeader,
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+  } catch (fetchErr: any) {
+    clearTimeout(timeoutId);
+    if (fetchErr?.name === 'AbortError') {
+      throw new Error('Solapi API 서버 응답 시간 초과 (7초 타임아웃)');
+    }
+    // Network fallback retry
+    console.warn(`[Solapi] Primary endpoint network error: ${fetchErr?.message}. Retrying via api.coolsms.co.kr...`);
+    const fallbackController = new AbortController();
+    const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 7000);
+    try {
+      response = await fetch('https://api.coolsms.co.kr/messages/v4/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader,
+        },
+        body: JSON.stringify(body),
+        signal: fallbackController.signal,
+      });
+      clearTimeout(fallbackTimeoutId);
+    } catch (fallbackErr: any) {
+      clearTimeout(fallbackTimeoutId);
+      throw new Error(`Solapi API 연결 실패: ${fallbackErr?.message || fetchErr?.message}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
     const errText = await response.text();
     console.error(`[Solapi] Transmission failed (${response.status}):`, errText);
-    let errMsg = `Solapi API Error (${response.status}): ${errText}`;
+    let errMsg = `Solapi API 오류 (${response.status}): ${errText}`;
     try {
       const errJson = JSON.parse(errText);
-      if (errJson.errorMessage || errJson.statusMessage) {
-        errMsg = `Solapi 오류 (${response.status}): ${errJson.errorMessage || errJson.statusMessage} (Code: ${errJson.errorCode || errJson.statusCode || 'N/A'})`;
+      const rawMsg = errJson.errorMessage || errJson.statusMessage || errText;
+      const errCode = errJson.errorCode || errJson.statusCode || 'N/A';
+      
+      if (rawMsg.includes('허용되지 않은 IP') || errCode === 'Forbidden' || response.status === 403) {
+        errMsg = `Solapi 접근 거부 (403 IP 제한): ${rawMsg} 👉 [해결방법: solapi.com 로그인 > 개발/API 설정 > API Key 관리에서 'IP 화이트리스트 제한'을 해제(모든 IP 허용)하거나 클라우드 IP를 추가하세요]`;
+      } else if (errCode === 'InvalidApiKey' || rawMsg.includes('API Key') || response.status === 401) {
+        errMsg = `Solapi API 키 인증 실패: ${rawMsg} 👉 [해결방법: SOLAPI_API_KEY 및 SOLAPI_API_SECRET 값을 다시 확인해 주세요]`;
+      } else if (rawMsg.includes('발신번호') || errCode === 'InvalidSender') {
+        errMsg = `Solapi 발신번호 미인증: ${rawMsg} 👉 [해결방법: Solapi에 사전 등록 및 서류 인증된 발신번호(SOLAPI_FROM_NUMBER)를 사용해야 합니다]`;
+      } else {
+        errMsg = `Solapi 오류 (${response.status}): ${rawMsg} (Code: ${errCode})`;
       }
     } catch {
       // Keep errText
@@ -227,3 +257,4 @@ export async function sendSmsNotification(payload: SmsSendPayload): Promise<SmsS
     previewText: payload.text,
   };
 }
+

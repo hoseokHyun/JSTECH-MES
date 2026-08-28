@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import {
   LogIn,
@@ -14,7 +14,9 @@ import {
   ArrowRight,
   Clock,
   ShieldCheck,
-  Info
+  Info,
+  Smartphone,
+  Zap
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -29,6 +31,26 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessionNotice }) => {
   const [tab, setTab] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
+
+  // Detect Deep Link from URL (SMS / Email links)
+  const [deepLinkOrderId, setDeepLinkOrderId] = useState<string | null>(null);
+  const [deepLinkProcessId, setDeepLinkProcessId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const oId = urlParams.get('orderId');
+        const pId = urlParams.get('processId');
+        if (oId) {
+          setDeepLinkOrderId(oId);
+          setDeepLinkProcessId(pId);
+        }
+      } catch (e) {
+        console.error('Error parsing deep link in login screen', e);
+      }
+    }
+  }, []);
 
   // Remember Email State (Only stores email text in local storage)
   const [rememberEmail, setRememberEmail] = useState<boolean>(() => {
@@ -211,6 +233,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
             </p>
           </div>
         </div>
+
+        {/* Deep Link Quick Field Worker Access Banner */}
+        {deepLinkOrderId && (
+          <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl space-y-2 text-xs text-blue-900 animate-in fade-in shadow-xs">
+            <div className="flex items-center gap-2 font-black text-blue-950">
+              <span className="p-1 bg-blue-600 text-white rounded-md shrink-0">
+                <Smartphone className="w-3.5 h-3.5" />
+              </span>
+              <span>현장 공정 알림(딥링크) 수신됨</span>
+            </div>
+            <p className="text-[11px] text-blue-800 leading-snug">
+              수주 번호: <strong>{deepLinkOrderId}</strong>
+              {deepLinkProcessId ? ` · 공정: ${deepLinkProcessId}` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const guestOperator: User = {
+                  uid: `operator_${Date.now()}`,
+                  email: 'operator@jstech.kr',
+                  name: '현장 작업자',
+                  role: 'USER',
+                  isApproved: true,
+                  permissions: {
+                    canExecuteMES: true,
+                    canEditOrder: false,
+                  },
+                };
+                onLoginSuccess(guestOperator, false);
+              }}
+              className="w-full py-2.5 bg-[#0066FF] hover:bg-[#0052CC] text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-[0.99]"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>현장 작업자 원터치 바로가기 (공정 착수)</span>
+            </button>
+          </div>
+        )}
 
         {/* Session Notice / Logout reason if present */}
         {sessionNotice && (

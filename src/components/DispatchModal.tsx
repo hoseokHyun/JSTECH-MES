@@ -301,7 +301,7 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
 
                 {/* Base URL Input for 403 prevention */}
                 {showUrlConfig && (
-                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-blue-200 dark:border-blue-800/80 space-y-1.5 animate-fadeIn">
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-blue-200 dark:border-blue-800/80 space-y-2 animate-fadeIn">
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                         <Globe className="w-3.5 h-3.5 text-blue-600" />
@@ -311,15 +311,35 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                         ✓ 403 오류 방지 공개 도메인 자동 적용
                       </span>
                     </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setCustomBaseUrl('https://jstech-mes.vercel.app')}
+                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer transition"
+                      >
+                        🌐 Vercel 실서버 (권장)
+                      </button>
+                      {typeof window !== 'undefined' && window.location.origin.includes('ais-') && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomBaseUrl(window.location.origin.replace('ais-dev-', 'ais-pre-'))}
+                          className="px-2 py-1 text-[10px] font-bold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer transition"
+                        >
+                          🧪 AI Studio 프리뷰 도메인
+                        </button>
+                      )}
+                    </div>
+
                     <input
                       type="text"
                       value={customBaseUrl || defaultPublicUrl}
                       onChange={(e) => setCustomBaseUrl(e.target.value)}
-                      placeholder="https://..."
+                      placeholder="https://jstech-mes.vercel.app"
                       className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-hidden focus:border-blue-500"
                     />
                     <div className="text-[10px] text-slate-500">
-                      ※ 외부 현장 작업자가 접속할 수 있는 공개 도메인(`ais-pre-...` 또는 Vercel 프로덕션 도메인)이 적용됩니다.
+                      ※ SMS/이메일로 발송되는 딥링크는 스마트폰 외부 브라우저에서도 접근 가능한 실서버 도메인으로 전송됩니다.
                     </div>
                   </div>
                 )}

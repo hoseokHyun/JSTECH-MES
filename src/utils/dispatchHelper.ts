@@ -266,12 +266,18 @@ export async function executeOrderDispatch(
     try {
       apiResponse = JSON.parse(responseText);
     } catch {
-      apiResponse = { error: responseText, message: `서버 응답 파싱 오류 (HTTP ${res.status}): ${responseText}` };
+      apiResponse = {
+        success: false,
+        error: responseText || `HTTP ${res.status}`,
+        message: res.ok
+          ? '알림 발송이 처리되었습니다.'
+          : `서버 응답 오류 (HTTP ${res.status}): ${responseText || '응답 본문 없음'}`,
+      };
     }
 
-    if (!res.ok) {
-      apiCallError = apiResponse?.error || `API 응답 오류 (HTTP ${res.status})`;
-      console.error(`[DispatchHelper] /api/dispatch-notification returned HTTP ${res.status}:`, apiResponse);
+    if (!res.ok || apiResponse?.success === false) {
+      apiCallError = apiResponse?.error || apiResponse?.message || `API 응답 오류 (HTTP ${res.status})`;
+      console.warn(`[DispatchHelper] /api/dispatch-notification returned non-success (HTTP ${res.status}):`, apiResponse);
     } else {
       console.log('[DispatchHelper] /api/dispatch-notification succeeded:', apiResponse);
     }

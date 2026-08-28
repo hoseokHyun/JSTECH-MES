@@ -84,12 +84,20 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   useEffect(() => {
     try {
+      if (typeof window === 'undefined') return;
       const urlParams = new URLSearchParams(window.location.search);
       const orderIdParam = urlParams.get('orderId');
       const processIdParam = urlParams.get('processId');
 
       if (orderIdParam) {
         setSearchQuery(orderIdParam);
+        // Reset restrictive filters so deep linked tasks are never hidden
+        setSelectedCategory('ALL');
+        setSelectedStatus('ALL');
+        setSelectedWorkerFilter('ALL');
+        setSelectedMachineFilter('ALL');
+        setShowOnlyMyTasks(false);
+
         const matchedOrder = orders[orderIdParam];
         setDeepLinkInfo({
           orderId: orderIdParam,
@@ -98,20 +106,26 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
         });
 
         // If specific processId is requested, check if we can auto-open or highlight
-        if (processIdParam && taskList.length > 0) {
-          const matchedTask = taskList.find(
-            (t) =>
-              t.orderId === orderIdParam &&
-              (t.processKey.includes(processIdParam) || `P${t.processIndex}` === processIdParam)
-          );
-          if (matchedTask) {
-            setSelectedTaskForModal(matchedTask);
+        if (taskList.length > 0) {
+          const targetTask = taskList.find((t) => {
+            if (t.orderId !== orderIdParam) return false;
+            if (!processIdParam) return true;
+            return (
+              t.processKey.includes(processIdParam) ||
+              `P${t.processIndex}` === processIdParam ||
+              `P${t.processIndex + 1}` === processIdParam ||
+              t.processKey.endsWith(`_${processIdParam}`)
+            );
+          });
+
+          if (targetTask) {
+            setSelectedTaskForModal(targetTask);
             setIsDetailModalOpen(true);
           }
         }
       }
     } catch (e) {
-      console.error('Failed to parse URL search params', e);
+      console.error('Failed to parse URL search params for deep link', e);
     }
   }, [taskList, orders]);
 
@@ -140,13 +154,18 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     currentUser?.role === 'ADMIN' ||
     currentUser?.permissions?.canExecuteMES !== false;
 
-  // Filter tasks
+  // Filter tasks with complete field search support (orderId, processKey, orderName, worker, machine, memo)
   const filteredTasks = taskList.filter((task) => {
+    const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      task.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.orderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.worker.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.machine.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      (task.orderId && task.orderId.toLowerCase().includes(q)) ||
+      (task.orderName && task.orderName.toLowerCase().includes(q)) ||
+      (task.content && task.content.toLowerCase().includes(q)) ||
+      (task.processKey && task.processKey.toLowerCase().includes(q)) ||
+      (task.worker && task.worker.toLowerCase().includes(q)) ||
+      (task.machine && task.machine.toLowerCase().includes(q)) ||
+      (task.memo && task.memo.toLowerCase().includes(q));
 
     const matchesCategory =
       selectedCategory === 'ALL' || task.category === selectedCategory;
