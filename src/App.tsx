@@ -17,6 +17,7 @@ import {
   MCT_MACHINES
 } from './data/defaultData';
 import { calculateSchedule } from './utils/scheduler';
+import { extractValidApprovedOperators } from './utils/operatorHelper';
 import {
   subscribeOrders,
   saveOrderToFirestore,
@@ -71,6 +72,7 @@ import {
 const STORAGE_KEY_ORDERS = 'junsung_mes_orders_v2';
 const STORAGE_KEY_TYPES = 'junsung_mes_types_v2';
 const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
+const STORAGE_KEY_DELETED_ORDERS = 'junsung_mes_deleted_orders_v2';
 
 export default function App() {
   // 1. Navigation Tab State (Default: Production Executive Dashboard - 메인화면)
@@ -80,7 +82,20 @@ export default function App() {
   const [orders, setOrders] = useState<Record<string, Order>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
+      const deletedIds: string[] = deletedSaved ? JSON.parse(deletedSaved) : [];
+
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          const combined: Record<string, Order> = { ...INITIAL_ORDERS, ...parsed };
+          deletedIds.forEach((id) => delete combined[id]);
+          return combined;
+        }
+      }
+      const initial = { ...INITIAL_ORDERS };
+      deletedIds.forEach((id) => delete initial[id]);
+      return initial;
     } catch {
       return INITIAL_ORDERS;
     }
@@ -120,7 +135,34 @@ export default function App() {
   // 3. Firebase Realtime Subscriptions
   useEffect(() => {
     const unsubOrders = subscribeOrders((fireOrders) => {
-      setOrders(fireOrders);
+      if (fireOrders && Object.keys(fireOrders).length > 0) {
+        setOrders((prev) => {
+          let deletedIds: string[] = [];
+          try {
+            const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
+            deletedIds = deletedSaved ? JSON.parse(deletedSaved) : [];
+          } catch {}
+
+          // Accurately accumulate and merge orders: INITIAL_ORDERS + previous state + incoming firestore data
+          const merged: Record<string, Order> = {
+            ...INITIAL_ORDERS,
+            ...prev,
+            ...fireOrders,
+          };
+          deletedIds.forEach((id) => {
+            if (!fireOrders[id]) {
+              delete merged[id];
+            }
+          });
+
+          try {
+            localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(merged));
+          } catch (e) {
+            console.error('Failed to sync orders to localStorage', e);
+          }
+          return merged;
+        });
+      }
     });
     const unsubTypes = subscribeProductTypes((fireTypes) => {
       setProductTypes(fireTypes);
@@ -329,73 +371,9 @@ export default function App() {
     return calculateSchedule(orders, productTypes, processProgressMap);
   }, [orders, productTypes, processProgressMap]);
 
-  // Compute approvedOperators list containing registered workers and floor operators from Firestore usersList
+  // Compute approvedOperators list containing only valid registered workers and floor operators from Firestore usersList
   const approvedOperators = useMemo(() => {
-    // Map of clean base name -> fully formatted string: "성명 (팀명)"
-    const operatorMap = new Map<string, string>();
-
-    // Helper to determine field team suffix
-    const getTeamSuffix = (dept: string | undefined, u?: User): string => {
-      const d = (dept || '').trim();
-      if (d.includes('가공')) return '(가공)';
-      if (d.includes('연마')) return '(연마)';
-      if (d.includes('품질') || d.includes('검사')) return '(품질)';
-      if (d.includes('조립') || d.includes('클린룸')) return '(조립)';
-      if (d.includes('생산')) return '(생산관리)';
-
-      // Heuristic based on skill levels if available
-      if (u && (u.skillGrinderLevel || 0) > (u.skillMctLevel || 0)) {
-        return '(연마)';
-      }
-      return '(가공)';
-    };
-
-    // Process registered users strictly from Firestore usersList
-    usersList.forEach((u) => {
-      const rawName = (u.name || '').trim();
-      if (!rawName) return;
-
-      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-      if (!baseName || baseName === '(미지정)' || baseName === '미지정') return;
-
-      // Exclude rejected accounts
-      if (u.status === 'rejected') return;
-
-      // Exclude generic placeholder names
-      if (baseName === '시스템 관리자' || baseName === '시스템관리자') return;
-
-      // Check if user is approved and active
-      const isApproved = u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
-
-      if (isApproved) {
-        const teamSuffix = getTeamSuffix(u.department, u);
-        operatorMap.set(baseName, `${baseName} ${teamSuffix}`);
-      }
-    });
-
-    // 3. Sort operators: (가공) -> (연마) -> (품질) -> (조립) -> Alphabetical
-    const teamOrder: Record<string, number> = {
-      '(가공)': 1,
-      '(연마)': 2,
-      '(품질)': 3,
-      '(조립)': 4,
-      '(생산관리)': 5,
-    };
-
-    const sortedList = Array.from(operatorMap.values()).sort((a, b) => {
-      const getOrder = (str: string) => {
-        for (const [tag, order] of Object.entries(teamOrder)) {
-          if (str.includes(tag)) return order;
-        }
-        return 99;
-      };
-      const orderA = getOrder(a);
-      const orderB = getOrder(b);
-      if (orderA !== orderB) return orderA - orderB;
-      return a.localeCompare(b, 'ko-KR');
-    });
-
-    return sortedList;
+    return extractValidApprovedOperators(usersList);
   }, [usersList]);
 
   // Filtered Tasks for Gantt Chart & Dashboard
@@ -458,23 +436,53 @@ export default function App() {
       return;
     }
 
-    setOrders((prev) => ({
-      ...prev,
-      [newOrder.id]: newOrder,
-    }));
+    // 1. Accurately accumulate in State & LocalStorage preserving all existing orders
+    setOrders((prev) => {
+      const next = {
+        ...prev,
+        [newOrder.id]: newOrder,
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save orders to localStorage', e);
+      }
+      return next;
+    });
+
+    // Remove from deleted list if it was deleted previously with the same ID
+    try {
+      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
+      if (deletedSaved) {
+        const deletedIds: string[] = JSON.parse(deletedSaved);
+        const filtered = deletedIds.filter((id) => id !== newOrder.id);
+        localStorage.setItem(STORAGE_KEY_DELETED_ORDERS, JSON.stringify(filtered));
+      }
+    } catch (e) {}
+
+    // 2. Persist to Firestore DB (Save new order)
     saveOrderToFirestore(newOrder);
 
     if (initialProgressMap && Object.keys(initialProgressMap).length > 0) {
-      setProcessProgressMap((prev) => ({
-        ...prev,
-        ...initialProgressMap,
-      }));
+      setProcessProgressMap((prev) => {
+        const next = {
+          ...prev,
+          ...initialProgressMap,
+        };
+        try {
+          localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(next));
+        } catch (e) {
+          console.error('Failed to save progress map to localStorage', e);
+        }
+        return next;
+      });
       Object.entries(initialProgressMap).forEach(([key, val]) => {
         saveProcessProgressToFirestore(key, {
           isCompleted: val.isCompleted ?? false,
           completedAt: val.completedAt,
           worker: val.worker,
           machine: val.machine,
+          status: val.status,
         });
       });
     }
@@ -551,6 +559,17 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
+    try {
+      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
+      const deletedIds: string[] = deletedSaved ? JSON.parse(deletedSaved) : [];
+      if (!deletedIds.includes(orderId)) {
+        deletedIds.push(orderId);
+        localStorage.setItem(STORAGE_KEY_DELETED_ORDERS, JSON.stringify(deletedIds));
+      }
+    } catch (e) {
+      console.error('Failed to update deleted orders in localStorage', e);
+    }
+
     setOrders((prev) => {
       const next = { ...prev };
       delete next[orderId];
@@ -1018,6 +1037,7 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY_ORDERS);
       localStorage.removeItem(STORAGE_KEY_TYPES);
       localStorage.removeItem(STORAGE_KEY_PROGRESS);
+      localStorage.removeItem(STORAGE_KEY_DELETED_ORDERS);
       setSelectedTaskKey(null);
       await resetDataToDefaultInFirestore();
       alert('✅ 수주 및 공정 데이터가 초기 기본 데이터로 원복되었습니다.');

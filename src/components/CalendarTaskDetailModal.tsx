@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ScheduledTaskItem, ProcessProgressItem, PauseReason, User, PauseLog } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
+import { buildOperatorSelectOptions } from '../utils/operatorHelper';
 import {
   X,
   Play,
@@ -98,69 +99,14 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
   // Dynamic operator options for SearchableSelect
   const operatorOptions: SelectOption[] = useMemo(() => {
-    const opts: SelectOption[] = [
-      { value: '', label: '(작업자 미지정)', badge: '미지정', badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' }
-    ];
-    const added = new Set<string>(['']);
-
-    approvedOperators.forEach((op) => {
-      const clean = (op || '').trim();
-      if (!clean || added.has(clean)) return;
-      added.add(clean);
-
-      let badge = '현장';
-      let badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
-      if (clean.includes('(가공)') || clean.includes('가공')) {
-        badge = '가공';
-        badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
-      } else if (clean.includes('(연마)') || clean.includes('연마')) {
-        badge = '연마';
-        badgeColor = 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300';
-      } else if (clean.includes('(품질)') || clean.includes('품질') || clean.includes('검사')) {
-        badge = '품질';
-        badgeColor = 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300';
-      } else if (clean.includes('(조립)') || clean.includes('조립')) {
-        badge = '조립';
-        badgeColor = 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300';
-      } else if (clean.includes('(생산') || clean.includes('생산')) {
-        badge = '생산';
-        badgeColor = 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300';
+    return buildOperatorSelectOptions(
+      approvedOperators,
+      [selectedWorker, task?.worker],
+      {
+        placeholderLabel: '(작업자 미지정)',
+        allowOutsourcing: true,
       }
-
-      opts.push({
-        value: clean,
-        label: clean,
-        badge,
-        badgeColor,
-      });
-    });
-
-    [selectedWorker, task?.worker].forEach((w) => {
-      const clean = (w || '').trim();
-      if (clean && !added.has(clean)) {
-        added.add(clean);
-        let badge = '배정';
-        let badgeColor = 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300';
-        if (clean.includes('연마')) {
-          badge = '연마';
-          badgeColor = 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300';
-        } else if (clean.includes('가공')) {
-          badge = '가공';
-          badgeColor = 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300';
-        } else if (clean.includes('품질')) {
-          badge = '품질';
-          badgeColor = 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300';
-        }
-        opts.push({
-          value: clean,
-          label: clean,
-          badge,
-          badgeColor,
-        });
-      }
-    });
-
-    return opts;
+    );
   }, [approvedOperators, selectedWorker, task?.worker]);
 
   // Dynamic machine options for SearchableSelect

@@ -14,6 +14,7 @@ import {
   CMM_MACHINES
 } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
+import { buildOperatorSelectOptions, extractValidApprovedOperators } from '../utils/operatorHelper';
 import {
   ShoppingCart,
   Plus,
@@ -314,127 +315,22 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     ];
   }, [busyMachinesMap]);
 
-  // Compute live operator options dynamically strictly from Firestore users & approvedOperators
+  // Compute live operator options dynamically strictly from verified registered users & approvedOperators
   const dynamicOperators = useMemo(() => {
-    const excludedDepts = new Set<string>([
-      '시스템 관리자',
-      '시스템관리자',
-      '생산 관리',
-      '생산관리',
-      '생산관리팀',
-      '생산기술',
-    ]);
-
-    const KNOWN_MEMBERS: Record<string, string> = {
-      '김현아': '(가공)',
-      '제갈문정': '(가공)',
-      '전광식': '(가공)',
-      '박준영': '(연마)',
-      '김수현': '(연마)',
-      '박종도': '(품질)',
-    };
-
-    const opMap = new Map<string, string>();
-
-    // 1. Process from live Firestore DB users list (highest priority)
-    dbUsers.forEach((u) => {
-      const rawName = (u.name || '').trim();
-      if (!rawName || rawName === '(미지정)' || rawName === '미지정') return;
-      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-      const email = (u.email || '').toLowerCase().trim();
-      const dept = (u.department || '').trim();
-
-      if (u.status === 'rejected') return;
-      if (
-        email === 'noworriesmate01@gmail.com' ||
-        email.includes('admin@') ||
-        baseName === '시스템 관리자' ||
-        baseName === '시스템관리자' ||
-        baseName === '관리자' ||
-        excludedDepts.has(dept) ||
-        dept.includes('시스템') ||
-        dept.includes('생산')
-      ) {
-        return;
-      }
-
-      const isApproved = u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
-
-      if (isApproved) {
-        let tag = '(가공)';
-        if (dept.includes('가공')) tag = '(가공)';
-        else if (dept.includes('연마')) tag = '(연마)';
-        else if (dept.includes('품질') || dept.includes('검사')) tag = '(품질)';
-        else if (dept.includes('조립')) tag = '(조립)';
-        else if (KNOWN_MEMBERS[baseName]) tag = KNOWN_MEMBERS[baseName];
-        else if (u.skillGrinderLevel && u.skillMctLevel && u.skillGrinderLevel > u.skillMctLevel) tag = '(연마)';
-        else tag = '(가공)';
-
-        opMap.set(baseName, `${baseName} ${tag}`);
-      }
-    });
-
-    // 2. Add from approvedOperators prop if not already mapped
-    approvedOperators.forEach((op) => {
-      const clean = op.trim();
-      if (!clean) return;
-      const baseName = clean.replace(/\s*\([^)]*\)/g, '').trim();
-      if (baseName === '시스템 관리자' || baseName === '시스템관리자' || baseName === '관리자') return;
-      if (!opMap.has(baseName)) {
-        let formatted = clean;
-        if (formatted.includes('(미지정)') || !formatted.includes('(')) {
-          const tag = KNOWN_MEMBERS[baseName] || '(가공)';
-          formatted = `${baseName} ${tag}`;
-        }
-        opMap.set(baseName, formatted);
-      }
-    });
-
-    const teamOrder: Record<string, number> = {
-      '(가공)': 1,
-      '(연마)': 2,
-      '(품질)': 3,
-      '(조립)': 4,
-    };
-
-    return Array.from(opMap.values()).sort((a, b) => {
-      const getOrder = (str: string) => {
-        for (const [t, ord] of Object.entries(teamOrder)) {
-          if (str.includes(t)) return ord;
-        }
-        return 99;
-      };
-      const orderA = getOrder(a);
-      const orderB = getOrder(b);
-      if (orderA !== orderB) return orderA - orderB;
-      return a.localeCompare(b, 'ko-KR');
-    });
+    return extractValidApprovedOperators(dbUsers, approvedOperators);
   }, [dbUsers, approvedOperators]);
 
   // Options for Operator Searchable Select with Busy status indicator
   const operatorOptions: SelectOption[] = useMemo(() => {
-    const list: SelectOption[] = [{ value: '', label: '(미지정)' }];
-    const addedValues = new Set<string>(['']);
-
-    dynamicOperators.forEach((op) => {
-      const cleanOp = op.trim();
-      if (!cleanOp || addedValues.has(cleanOp)) return;
-      addedValues.add(cleanOp);
-
-      const baseName = cleanOp.replace(/\s*\([^)]*\)/g, '').trim();
-      const busy = busyWorkersMap.get(cleanOp) || busyWorkersMap.get(baseName);
-
-      list.push({
-        value: cleanOp,
-        label: busy ? `${cleanOp} ⚠️(작업중)` : cleanOp,
-        badge: busy ? '작업중 충돌주의' : '현장담당자',
-        badgeColor: busy
-          ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
-          : 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-      });
-    });
-
-    return list;
+    return buildOperatorSelectOptions(
+      dynamicOperators,
+      undefined,
+      {
+        placeholderLabel: '(미지정)',
+        allowOutsourcing: true,
+        busyWorkersMap,
+      }
+    );
   }, [dynamicOperators, busyWorkersMap]);
 
   // Phase Definition Interface for Dynamic Phase Blocks
@@ -1567,7 +1463,23 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       return;
     }
 
-    const newId = `ORD-2026-${String(Object.keys(orders).length + 1).padStart(3, '0')}`;
+    // Generate guaranteed unique sequential Order ID (ORD-2026-00X)
+    let maxNum = 0;
+    Object.keys(orders).forEach((id) => {
+      const match = id.match(/ORD-(\d{4})-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[2], 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    const nextNum = Math.max(maxNum + 1, Object.keys(orders).length + 1);
+    let newId = `ORD-2026-${String(nextNum).padStart(3, '0')}`;
+    let counter = 1;
+    while (orders[newId]) {
+      newId = `ORD-2026-${String(nextNum + counter).padStart(3, '0')}`;
+      counter++;
+    }
+
     const firstMachine = stepAssignments[0]?.machine || MCT_MACHINES[0];
 
     const finalProcesses: ProcessStep[] = currentProcesses.map((p, idx) => ({

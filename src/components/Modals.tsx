@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Order, OrderStatus, ProductType, User, UserPermissions, UserDepartment, ProcessCategory, ProcessStep } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
+import { buildOperatorSelectOptions, extractValidApprovedOperators } from '../utils/operatorHelper';
 import {
   Archive,
   X,
@@ -1704,114 +1705,26 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     return () => unsub();
   }, [isOpen]);
 
-  const departmentGroups = React.useMemo(() => {
-    const map: Record<string, { name: string; team: string; position?: string }[]> = {
-      '가공팀': [],
-      '연마팀': [],
-      '품질팀': [],
-      '조립팀': [],
-    };
-
-    const excludedNames = new Set<string>([
-      '시스템 관리자',
-      '시스템관리자',
-      '생산 관리',
-      '생산관리',
-      '생산관리팀',
-      '생산기술',
-      '박세령',
-      '관리자',
-    ]);
-
-    const activeUsers = users.filter((u) => {
-      if (u.status === 'rejected') return false;
-      const email = (u.email || '').toLowerCase().trim();
-      const rawName = (u.name || '').trim();
-      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-      const dept = (u.department || '').trim();
-
-      if (
-        email === 'noworriesmate01@gmail.com' ||
-        email.includes('admin@') ||
-        baseName === '시스템 관리자' ||
-        baseName === '시스템관리자' ||
-        dept === '시스템 관리자' ||
-        dept.includes('시스템관리자') ||
-        dept === '생산 관리' ||
-        dept.includes('생산관리') ||
-        baseName === '박세령'
-      ) {
-        return false;
-      }
-      return u.isApproved === true || u.status === 'approved' || (u.isApproved !== false && u.status !== 'pending');
-    });
-
-    const addedMemberNames = new Set<string>();
-
-    activeUsers.forEach((u) => {
-      const rawName = (u.name || '').trim();
-      const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-      if (!baseName || addedMemberNames.has(baseName)) return;
-      addedMemberNames.add(baseName);
-
-      const dept = (u.department || '').trim();
-      let targetTeam = '가공팀';
-      if (dept.includes('가공')) targetTeam = '가공팀';
-      else if (dept.includes('연마')) targetTeam = '연마팀';
-      else if (dept.includes('품질') || dept.includes('검사')) targetTeam = '품질팀';
-      else if (dept.includes('조립')) targetTeam = '조립팀';
-      else if (u.skillGrinderLevel && u.skillMctLevel && u.skillGrinderLevel > u.skillMctLevel) targetTeam = '연마팀';
-
-      if (!map[targetTeam]) map[targetTeam] = [];
-      map[targetTeam].push({
-        name: baseName,
-        team: targetTeam,
-        position: u.position || '담당자',
-      });
-    });
-
-    return Object.entries(map)
-      .filter(([_, list]) => list.length > 0)
-      .map(([team, members]) => ({
-        team,
-        members,
-      }));
-  }, [users]);
+  // Compute unified operator list strictly from verified registered users and approvedOperators
+  const effectiveOperators = React.useMemo(() => {
+    return extractValidApprovedOperators(users, approvedOperators);
+  }, [approvedOperators, users]);
 
   // Options for Operator Searchable Select in Edit Modal
   const operatorOptions: SelectOption[] = React.useMemo(() => {
-    const list: SelectOption[] = [
-      { value: '', label: '담당자 미지정 (현장 배정)' },
+    const currentAssignedWorkers = customProcesses
+      .map((p) => p.assignedWorker || p.worker)
+      .filter(Boolean) as string[];
+
+    return buildOperatorSelectOptions(
+      effectiveOperators,
+      currentAssignedWorkers,
       {
-        value: '(외주/협력사)',
-        label: '(외주/협력사)',
-        badge: '외주업체',
-        badgeColor: 'bg-amber-100 text-amber-800 border border-amber-300',
-      },
-    ];
-
-    const teamBadgeColors: Record<string, string> = {
-      '가공팀': 'bg-indigo-100 text-indigo-800 border border-indigo-200',
-      '연마팀': 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-      '품질팀': 'bg-purple-100 text-purple-800 border border-purple-200',
-      '조립팀': 'bg-cyan-100 text-cyan-800 border border-cyan-200',
-    };
-
-    departmentGroups.forEach((group) => {
-      group.members.forEach((m) => {
-        const shortTeam = group.team.replace('팀', '');
-        const formattedValue = `${m.name} (${shortTeam})`;
-        list.push({
-          value: formattedValue,
-          label: `${m.name} (${group.team}${m.position ? ` · ${m.position}` : ''})`,
-          badge: group.team,
-          badgeColor: teamBadgeColors[group.team] || 'bg-slate-100 text-slate-700',
-        });
-      });
-    });
-
-    return list;
-  }, [departmentGroups]);
+        placeholderLabel: '담당자 미지정 (현장 배정)',
+        allowOutsourcing: true,
+      }
+    );
+  }, [effectiveOperators, customProcesses]);
 
   // Options for Equipment Searchable Select in Edit Modal
   const equipmentOptions: SelectOption[] = React.useMemo(() => {

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ScheduledTaskItem, User } from '../types';
 import { MCT_MACHINES, ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
+import { buildOperatorSelectOptions } from '../utils/operatorHelper';
 import { Info, X, CheckCircle, RotateCcw, UserCheck, Cpu, Clock, Calendar, Lock } from 'lucide-react';
 
 interface ProcessDetailModalProps {
@@ -37,54 +38,14 @@ export const ProcessDetailModal: React.FC<ProcessDetailModalProps> = ({
   const canModify = isAdmin || isAssignedToMe;
 
   const operatorOptions: SelectOption[] = useMemo(() => {
-    const opts: SelectOption[] = [
-      { value: '', label: '(미지정)', badge: '미지정', badgeColor: 'bg-slate-700 text-slate-300' }
-    ];
-    const added = new Set<string>(['']);
-
-    approvedOperators.forEach((op) => {
-      const clean = (op || '').trim();
-      if (!clean || added.has(clean)) return;
-      added.add(clean);
-
-      let badge = '현장';
-      let badgeColor = 'bg-blue-950 text-blue-300';
-      if (clean.includes('(가공)') || clean.includes('가공')) {
-        badge = '가공';
-        badgeColor = 'bg-blue-950 text-blue-300';
-      } else if (clean.includes('(연마)') || clean.includes('연마')) {
-        badge = '연마';
-        badgeColor = 'bg-emerald-950 text-emerald-300';
-      } else if (clean.includes('(품질)') || clean.includes('품질') || clean.includes('검사')) {
-        badge = '품질';
-        badgeColor = 'bg-purple-950 text-purple-300';
-      } else if (clean.includes('(조립)') || clean.includes('조립')) {
-        badge = '조립';
-        badgeColor = 'bg-teal-950 text-teal-300';
-      } else if (clean.includes('생산')) {
-        badge = '생산';
-        badgeColor = 'bg-amber-950 text-amber-300';
+    return buildOperatorSelectOptions(
+      approvedOperators,
+      selectedItem.worker,
+      {
+        placeholderLabel: '(미지정)',
+        allowOutsourcing: true,
       }
-
-      opts.push({
-        value: clean,
-        label: clean,
-        badge,
-        badgeColor,
-      });
-    });
-
-    if (selectedItem.worker && !added.has(selectedItem.worker.trim())) {
-      const clean = selectedItem.worker.trim();
-      opts.push({
-        value: clean,
-        label: clean,
-        badge: '배정',
-        badgeColor: 'bg-indigo-950 text-indigo-300',
-      });
-    }
-
-    return opts;
+    );
   }, [approvedOperators, selectedItem.worker]);
 
   const machineOptions: SelectOption[] = useMemo(() => {

@@ -36,6 +36,7 @@ export interface ProcessStep {
   assignedWorker?: string;
   phaseId?: string;
   id?: string;
+  memo?: string;
 }
 
 export interface ProductType {

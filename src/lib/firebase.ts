@@ -45,7 +45,7 @@ export function subscribeOrders(
         try {
           const batch = writeBatch(db);
           Object.values(INITIAL_ORDERS).forEach((ord) => {
-            batch.set(doc(db, 'orders', ord.id), ord);
+            batch.set(doc(db, 'orders', ord.id), cleanUndefined(ord));
           });
           await batch.commit();
         } catch (err) {
@@ -59,6 +59,34 @@ export function subscribeOrders(
       snapshot.forEach((docSnap) => {
         ordersMap[docSnap.id] = docSnap.data() as Order;
       });
+
+      // Check if any default INITIAL_ORDERS are missing in Firestore and auto-seed them
+      let deletedIds: string[] = [];
+      try {
+        const delSaved = typeof window !== 'undefined' ? localStorage.getItem('junsung_mes_deleted_orders_v2') : null;
+        deletedIds = delSaved ? JSON.parse(delSaved) : [];
+      } catch {}
+
+      const missingInitial: Order[] = [];
+      Object.values(INITIAL_ORDERS).forEach((initOrd) => {
+        if (!ordersMap[initOrd.id] && !deletedIds.includes(initOrd.id)) {
+          ordersMap[initOrd.id] = initOrd;
+          missingInitial.push(initOrd);
+        }
+      });
+
+      if (missingInitial.length > 0) {
+        try {
+          const batch = writeBatch(db);
+          missingInitial.forEach((ord) => {
+            batch.set(doc(db, 'orders', ord.id), cleanUndefined(ord));
+          });
+          await batch.commit();
+        } catch (e) {
+          console.warn('Background sync of missing initial orders to Firestore', e);
+        }
+      }
+
       onUpdate(ordersMap);
     },
     (err) => {
@@ -559,6 +587,11 @@ export function subscribeUsersList(
         const rawName = (raw.name || '').trim();
         const email = (raw.email || '').toLowerCase().trim();
         const phone = (raw.phoneNumber || raw.phone_number || raw.phone || '').trim();
+
+        // Skip completely empty/ghost documents
+        if (!rawName && !email) {
+          return;
+        }
 
         const isSuperAdmin =
           email === 'noworriesmate01@gmail.com' ||
