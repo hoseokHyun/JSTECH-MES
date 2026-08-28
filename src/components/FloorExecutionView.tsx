@@ -79,6 +79,42 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   const [selectedMachineFilter, setSelectedMachineFilter] = useState<string>('ALL');
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState<boolean>(false);
 
+  // DeepLink detection from URL (e.g. /floor?orderId=ORD-001&processId=P0)
+  const [deepLinkInfo, setDeepLinkInfo] = useState<{ orderId: string; processId?: string; orderName?: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const orderIdParam = urlParams.get('orderId');
+      const processIdParam = urlParams.get('processId');
+
+      if (orderIdParam) {
+        setSearchQuery(orderIdParam);
+        const matchedOrder = orders[orderIdParam];
+        setDeepLinkInfo({
+          orderId: orderIdParam,
+          processId: processIdParam || undefined,
+          orderName: matchedOrder?.name || orderIdParam,
+        });
+
+        // If specific processId is requested, check if we can auto-open or highlight
+        if (processIdParam && taskList.length > 0) {
+          const matchedTask = taskList.find(
+            (t) =>
+              t.orderId === orderIdParam &&
+              (t.processKey.includes(processIdParam) || `P${t.processIndex}` === processIdParam)
+          );
+          if (matchedTask) {
+            setSelectedTaskForModal(matchedTask);
+            setIsDetailModalOpen(true);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse URL search params', e);
+    }
+  }, [taskList, orders]);
+
   // Modals state
   const [selectedTaskForModal, setSelectedTaskForModal] = useState<ScheduledTaskItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -253,6 +289,38 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   return (
     <div className="flex flex-col h-full w-full bg-slate-50 overflow-y-auto p-3 sm:p-5 space-y-4">
+      {/* Deep Link Active Notification Banner */}
+      {deepLinkInfo && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-blue-900 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="p-1.5 bg-blue-600 text-white rounded-lg shrink-0">
+              <Zap className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <span className="font-extrabold text-blue-950">
+                🔗 네이버웍스 공정 지시 딥링크(Deep Link) 연동 접속:
+              </span>{' '}
+              <span className="font-bold">[{deepLinkInfo.orderName}]</span>
+              <span className="text-blue-700 text-[11px] ml-1">
+                (수주 ID: {deepLinkInfo.orderId}
+                {deepLinkInfo.processId ? ` / 공정 단계: ${deepLinkInfo.processId}` : ''})
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDeepLinkInfo(null);
+              setSearchQuery('');
+              window.history.replaceState(null, '', window.location.pathname);
+            }}
+            className="px-2.5 py-1 text-[11px] font-bold bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg cursor-pointer transition shrink-0"
+          >
+            전체 수주 보기
+          </button>
+        </div>
+      )}
+
       {/* Top Main Banner */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

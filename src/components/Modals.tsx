@@ -1775,7 +1775,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       setQty(order.qty || 1);
       setStartDate(order.startDate || '');
       setStrategy(order.strategy || 'CONTINUOUS');
-      setStatus(order.status || 'IN_PROGRESS');
+      setStatus(order.status || 'PENDING');
       setMemo(order.memo || '');
       setCustomer(order.customer || '');
       setPoNumber(order.poNumber || '');
@@ -1984,13 +1984,15 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   };
 
   const handleDelete = () => {
-    onDeleteOrder(order.id);
-    onClose();
+    if (window.confirm(`'${order.name || order.id}' 수주를 정말 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) {
+      onDeleteOrder(order.id);
+      onClose();
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col my-auto">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col my-auto">
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
@@ -2238,118 +2240,120 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               사내 제작 ↔ 외주 가공 변경, 또는 MCT/연마기/CMM 특정 설비 및 공정별 담당자(소속팀 연계) 지정이 가능합니다.
             </p>
 
-            {/* Desktop Column Header */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100/90 rounded-md text-[10px] font-extrabold text-slate-600 border border-slate-200/80">
-              <span className="w-5 text-center shrink-0">#</span>
-              <span className="flex-1 min-w-[130px]">공정명 (Process)</span>
-              <span className="w-24 shrink-0">공정 구분</span>
-              <span className="w-20 shrink-0 text-center">소요시간</span>
-              <span className="w-44 lg:w-48 shrink-0">지정 설비 (Machine)</span>
-              <span className="w-52 lg:w-60 shrink-0">공정 담당자 (Assignee)</span>
-              <span className="w-6 text-center shrink-0">삭제</span>
-            </div>
-
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {customProcesses.map((proc, pIdx) => (
-                <div
-                  key={pIdx}
-                  className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-wrap md:flex-nowrap items-center gap-2 shadow-2xs hover:border-slate-300 transition"
-                >
-                  <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-extrabold flex items-center justify-center shrink-0 text-[10px]">
-                    {pIdx + 1}
-                  </span>
-
-                  {/* Process Name */}
-                  <div className="flex-1 min-w-[130px]">
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">공정명</label>
-                    <input
-                      type="text"
-                      value={proc.name}
-                      onChange={(e) => handleProcessChange(pIdx, 'name', e.target.value)}
-                      placeholder="공정명 입력"
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </div>
-
-                  {/* Process Category */}
-                  <div className="w-24 shrink-0">
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">공정 구분</label>
-                    <select
-                      value={proc.category}
-                      onChange={(e) => handleProcessChange(pIdx, 'category', e.target.value as ProcessCategory)}
-                      className={`w-full px-2 py-1.5 border rounded-lg font-black text-[11px] ${
-                        proc.category === '외주'
-                          ? 'bg-amber-50 text-amber-900 border-amber-300'
-                          : proc.category === '가공'
-                          ? 'bg-indigo-50 text-indigo-900 border-indigo-300'
-                          : proc.category === '연마'
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                          : 'bg-purple-50 text-purple-900 border-purple-300'
-                      }`}
-                    >
-                      <option value="가공">가공 (In-House)</option>
-                      <option value="연마">연마 (In-House)</option>
-                      <option value="외주">외주 (Outsourced)</option>
-                      <option value="품질">품질 (In-House)</option>
-                    </select>
-                  </div>
-
-                  {/* Duration */}
-                  <div className="w-20 shrink-0">
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">소요시간</label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min={0.01}
-                        step="any"
-                        value={proc.durationHours}
-                        onChange={(e) => handleProcessChange(pIdx, 'durationHours', parseFloat(e.target.value) || 0)}
-                        className="w-13 px-1.5 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-center text-slate-900 text-xs"
-                      />
-                      <span className="text-[10px] font-bold text-slate-500">시간</span>
-                    </div>
-                  </div>
-
-                  {/* Machine Assignment (Searchable Select) */}
-                  <div className="w-44 lg:w-48 shrink-0">
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">설비 지정</label>
-                    <SearchableSelect
-                      options={equipmentOptions}
-                      value={proc.assignedMachine || ''}
-                      onChange={(val) => handleProcessChange(pIdx, 'assignedMachine', val)}
-                      placeholder="자동 지정 (기본)"
-                      icon={Cpu}
-                      dropdownClassName="min-w-[220px]"
-                    />
-                  </div>
-
-                  {/* Assignee / Worker Selection (Searchable Select) */}
-                  <div className="w-52 lg:w-60 shrink-0">
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 md:hidden">담당자 지정</label>
-                    <SearchableSelect
-                      options={operatorOptions}
-                      value={proc.assignedWorker || proc.worker || ''}
-                      onChange={(val) => {
-                        handleProcessChange(pIdx, 'assignedWorker', val);
-                        handleProcessChange(pIdx, 'worker', val);
-                      }}
-                      placeholder="담당자 미지정"
-                      icon={UserCheck}
-                      dropdownClassName="min-w-[260px]"
-                    />
-                  </div>
-
-                  {/* Remove Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveProcess(pIdx)}
-                    className="p-1 text-slate-400 hover:text-red-600 rounded transition cursor-pointer shrink-0"
-                    title="공정 삭제"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+            {/* Desktop Column Header + Rows in a unified horizontal/vertical scroll container */}
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-100/50 p-2">
+              <div className="min-w-[760px] space-y-1.5">
+                {/* Column Header */}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-200/80 rounded-lg text-[10px] font-extrabold text-slate-700">
+                  <span className="w-6 text-center shrink-0">#</span>
+                  <span className="flex-1 min-w-[120px]">공정명 (Process)</span>
+                  <span className="w-24 shrink-0">공정 구분</span>
+                  <span className="w-20 shrink-0 text-center">소요시간</span>
+                  <span className="w-40 lg:w-44 shrink-0">지정 설비 (Machine)</span>
+                  <span className="w-44 lg:w-48 shrink-0">공정 담당자 (Assignee)</span>
+                  <span className="w-12 text-center shrink-0 text-red-600 font-black">삭제</span>
                 </div>
-              ))}
+
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5">
+                  {customProcesses.map((proc, pIdx) => (
+                    <div
+                      key={pIdx}
+                      className="p-2 bg-white border border-slate-200 rounded-lg flex items-center gap-2 shadow-2xs hover:border-slate-300 transition"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 font-extrabold flex items-center justify-center shrink-0 text-[10px]">
+                        {pIdx + 1}
+                      </span>
+
+                      {/* Process Name */}
+                      <div className="flex-1 min-w-[120px]">
+                        <input
+                          type="text"
+                          value={proc.name}
+                          onChange={(e) => handleProcessChange(pIdx, 'name', e.target.value)}
+                          placeholder="공정명 입력"
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 text-xs"
+                        />
+                      </div>
+
+                      {/* Process Category */}
+                      <div className="w-24 shrink-0">
+                        <select
+                          value={proc.category}
+                          onChange={(e) => handleProcessChange(pIdx, 'category', e.target.value as ProcessCategory)}
+                          className={`w-full px-2 py-1.5 border rounded-lg font-black text-[11px] ${
+                            proc.category === '외주'
+                              ? 'bg-amber-50 text-amber-900 border-amber-300'
+                              : proc.category === '가공'
+                              ? 'bg-indigo-50 text-indigo-900 border-indigo-300'
+                              : proc.category === '연마'
+                              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                              : 'bg-purple-50 text-purple-900 border-purple-300'
+                          }`}
+                        >
+                          <option value="가공">가공 (In-H)</option>
+                          <option value="연마">연마 (In-H)</option>
+                          <option value="외주">외주 (Out)</option>
+                          <option value="품질">품질 (In-H)</option>
+                        </select>
+                      </div>
+
+                      {/* Duration */}
+                      <div className="w-20 shrink-0">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0.01}
+                            step="any"
+                            value={proc.durationHours}
+                            onChange={(e) => handleProcessChange(pIdx, 'durationHours', parseFloat(e.target.value) || 0)}
+                            className="w-12 px-1 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-center text-slate-900 text-xs"
+                          />
+                          <span className="text-[10px] font-bold text-slate-500">시간</span>
+                        </div>
+                      </div>
+
+                      {/* Machine Assignment (Searchable Select) */}
+                      <div className="w-40 lg:w-44 shrink-0">
+                        <SearchableSelect
+                          options={equipmentOptions}
+                          value={proc.assignedMachine || ''}
+                          onChange={(val) => handleProcessChange(pIdx, 'assignedMachine', val)}
+                          placeholder="자동 지정 (기본)"
+                          icon={Cpu}
+                          dropdownClassName="min-w-[200px]"
+                        />
+                      </div>
+
+                      {/* Assignee / Worker Selection (Searchable Select) */}
+                      <div className="w-44 lg:w-48 shrink-0">
+                        <SearchableSelect
+                          options={operatorOptions}
+                          value={proc.assignedWorker || proc.worker || ''}
+                          onChange={(val) => {
+                            handleProcessChange(pIdx, 'assignedWorker', val);
+                            handleProcessChange(pIdx, 'worker', val);
+                          }}
+                          placeholder="담당자 미지정"
+                          icon={UserCheck}
+                          dropdownClassName="min-w-[230px]"
+                        />
+                      </div>
+
+                      {/* Remove Process Button */}
+                      <div className="w-12 flex justify-center shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProcess(pIdx)}
+                          className="w-7 h-7 flex items-center justify-center text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 rounded-lg transition cursor-pointer shrink-0 shadow-2xs active:scale-95"
+                          title="이 공정 단계 삭제"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2379,28 +2383,30 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-3 flex justify-between items-center shrink-0">
+          {/* Modal Action Buttons Footer */}
+          <div className="border-t border-slate-200 pt-4 mt-2 flex justify-between items-center shrink-0">
             <button
               type="button"
               onClick={handleDelete}
-              className="px-3 py-2 text-xs bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-2 text-xs bg-red-50 hover:bg-red-100 text-red-600 dark:text-red-400 border border-red-200 hover:border-red-300 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+              title="이 수주 건을 영구히 삭제합니다."
             >
-              <Trash2 className="w-3.5 h-3.5 text-red-600" />
+              <Trash2 className="w-4 h-4 text-red-500" />
               <span>수주 삭제</span>
             </button>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-200 rounded-lg font-bold cursor-pointer"
+                className="px-4 py-2 text-xs text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl font-bold transition cursor-pointer shadow-2xs active:scale-95"
               >
                 취소
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg shadow-sm flex items-center gap-1 cursor-pointer"
+                className="px-5 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm shadow-blue-500/20 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-4 h-4" />
                 <span>수정사항 저장</span>
               </button>
             </div>

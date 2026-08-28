@@ -1399,10 +1399,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   }, [pendingCopyOrder]);
 
   // Reset entire form inputs and routing state
-  const handleResetForm = () => {
-    if (!window.confirm('입력한 수주 정보 및 공정 설정을 초기화하시겠습니까?')) {
-      return;
+  const handleResetForm = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+
     setName('');
     setCustomer('');
     setPoNumber('');
@@ -1422,7 +1424,14 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setBatchMachine('');
     setBatchWorker('');
     setBatchDuration('');
-    setBatchSuccessMessage('');
+    setBatchSuccessMessage('✨ 수주 정보 및 공정 라우팅 설정이 깨끗하게 초기화되었습니다.');
+
+    // Auto-dismiss the reset toast after 3 seconds
+    setTimeout(() => {
+      setBatchSuccessMessage((prev) =>
+        prev === '✨ 수주 정보 및 공정 라우팅 설정이 깨끗하게 초기화되었습니다.' ? '' : prev
+      );
+    }, 3000);
 
     const defaultTypeId = productTypes['TYPE_SLIT_NOZZLE']
       ? 'TYPE_SLIT_NOZZLE'
@@ -1504,7 +1513,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       typeId,
       qty: Math.max(1, qty),
       startDate,
-      status: 'DISPATCHED',
+      status: 'PENDING',
       archived: false,
       mctMachine: firstMachine,
       memo: memo.trim(),
@@ -1526,7 +1535,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         const assign = stepAssignments[pIdx] || { machine: '', worker: '' };
         initialProgressMap[processKey] = {
           isCompleted: false,
-          status: 'DISPATCHED',
+          status: 'READY',
           machine: assign.machine,
           worker: assign.worker,
           andonStatus: 'NORMAL',
@@ -1983,6 +1992,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               {/* Accordion Expand/Collapse All & Add Phase Button & Reset */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  id="btn-routing-reset-form"
                   type="button"
                   onClick={handleResetForm}
                   className="px-2.5 py-1.5 text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"

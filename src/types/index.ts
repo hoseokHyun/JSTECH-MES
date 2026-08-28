@@ -46,7 +46,7 @@ export interface ProductType {
   processes: ProcessStep[];
 }
 
-export type OrderStatus = 'DRAFT' | 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
+export type OrderStatus = 'DRAFT' | 'PENDING' | 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
 export type ProductionStrategy = 'SERIAL' | 'CONTINUOUS';
 
 export interface Order {

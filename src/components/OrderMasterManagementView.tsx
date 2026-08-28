@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { EditOrderModal } from './Modals';
 import { ProcessTravelerModal } from './ProcessTravelerModal';
+import { DispatchModal } from './DispatchModal';
 import {
   FileText,
   Search,
@@ -25,6 +26,7 @@ import {
   Printer,
   FileSpreadsheet,
   AlertTriangle,
+  Send,
   X
 } from 'lucide-react';
 
@@ -34,6 +36,7 @@ interface OrderMasterManagementViewProps {
   scheduledTasks?: ScheduledTaskItem[];
   currentUser?: User | null;
   approvedOperators?: string[];
+  usersList?: User[];
   processProgressMap?: ProcessProgressMap;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onDeleteOrder?: (orderId: string) => void;
@@ -62,6 +65,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
   scheduledTasks = [],
   currentUser,
   approvedOperators = [],
+  usersList = [],
   processProgressMap = {},
   onUpdateOrder,
   onDeleteOrder,
@@ -90,6 +94,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [travelerOrder, setTravelerOrder] = useState<Order | null>(null);
+  const [dispatchingOrder, setDispatchingOrder] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
 
   const allOrdersList: Order[] = useMemo(() => {
@@ -348,16 +353,16 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
 
         {/* Master Table */}
         <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 shadow-2xs">
-          <table className="w-full text-left text-xs min-w-[900px]">
+          <table className="w-full text-left text-xs min-w-[1080px]">
             <thead className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold border-b border-slate-200 dark:border-slate-600">
               <tr>
                 <th className="p-3 min-w-[220px]">수주번호 / 프로젝트명</th>
                 <th className="p-3 min-w-[160px]">제품 타입 (BOP)</th>
-                <th className="p-3 text-center w-20">수량</th>
+                <th className="p-3 text-center w-16">수량</th>
                 <th className="p-3 text-center min-w-[130px]">착수 일시</th>
-                <th className="p-3 text-center min-w-[140px]">공정 진행률</th>
-                <th className="p-3 text-center w-24">상태</th>
-                <th className="p-3 text-center min-w-[230px]">수주 관리 및 수정 액션</th>
+                <th className="p-3 text-center min-w-[130px]">공정 진행률</th>
+                <th className="p-3 text-center min-w-[100px] whitespace-nowrap">상태</th>
+                <th className="p-3 text-center min-w-[360px]">수주 관리 및 수정 액션</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 text-slate-800 dark:text-slate-200 font-semibold">
@@ -445,33 +450,63 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                       </td>
 
                       {/* Status Badge */}
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center whitespace-nowrap">
                         {isArch ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                            <Archive className="w-3 h-3" />
-                            보관됨
+                          <span className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black whitespace-nowrap shrink-0 bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-2xs">
+                            <Archive className="w-3.5 h-3.5" />
+                            <span>보관됨</span>
                           </span>
                         ) : isDone ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            <CheckCircle2 className="w-3 h-3" />
-                            완료
+                          <span className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black whitespace-nowrap shrink-0 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>완료</span>
+                          </span>
+                        ) : ord.status === 'DISPATCHED' ? (
+                          <span className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black whitespace-nowrap shrink-0 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-700 shadow-2xs">
+                            <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            <span>배포완료</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                            진행중
+                          <span className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black whitespace-nowrap shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-slate-500" />
+                            <span>배포대기</span>
                           </span>
                         )}
                       </td>
 
                       {/* Actions */}
                       <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
+                          {/* Dispatch Trigger Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!canEditOrder) {
+                                alert('⚠️ 수주 배포 권한이 없습니다.');
+                                return;
+                              }
+                              setDispatchingOrder(ord);
+                            }}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1 shrink-0 shadow-2xs cursor-pointer active:scale-95 ${
+                              ord.status === 'DISPATCHED'
+                                ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 dark:bg-blue-950/50 dark:text-blue-300'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                            }`}
+                            title={
+                              ord.status === 'DISPATCHED'
+                                ? '현장 작업자들에게 배포된 공정 지시 및 딥링크를 재전송합니다.'
+                                : '설비 및 담당자 지정 후 수주를 확정하고 네이버웍스 메일 및 딥링크를 현장 작업자에게 일괄 배포합니다.'
+                            }
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>{ord.status === 'DISPATCHED' ? '재배포' : '현장 배포'}</span>
+                          </button>
+
                           {/* Process Traveler Print Button */}
                           <button
                             type="button"
                             onClick={() => setTravelerOrder(ord)}
-                            className="bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 px-2.5 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                            className="bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 px-2 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 shadow-2xs"
                             title="현장 배포용 공식 공정 이동표(Process Traveler) A4 양식 조회 및 인쇄"
                           >
                             <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -488,7 +523,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                               }
                               setEditingOrder(ord);
                             }}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                            className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0 ${
                               canEditOrder
                                 ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer active:scale-95'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
@@ -507,7 +542,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                                 onCopyOrderToNew(ord);
                               }
                             }}
-                            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
                             title="이 수주의 공정 구성 및 설비/담당자를 신규 수주 등록으로 복사합니다."
                           >
                             <Copy className="w-3 h-3 text-slate-600" />
@@ -525,7 +560,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                                 }
                                 onArchiveOrder(ord.id);
                               }}
-                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                              className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0 ${
                                 canArchive
                                   ? 'bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 cursor-pointer active:scale-95 shadow-2xs'
                                   : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
@@ -544,7 +579,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                               onClick={() => {
                                 setOrderToDelete(ord);
                               }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 transition cursor-pointer"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 border border-transparent hover:border-red-200 dark:hover:border-red-900/50 transition cursor-pointer shrink-0"
                               title="수주 영구 삭제"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -652,6 +687,31 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
           currentUser={currentUser}
           processProgressMap={processProgressMap}
           onUpdateOrder={onUpdateOrder}
+        />
+      )}
+
+      {/* Field Dispatch & Notification Modal */}
+      {dispatchingOrder && (
+        <DispatchModal
+          isOpen={!!dispatchingOrder}
+          onClose={() => setDispatchingOrder(null)}
+          order={dispatchingOrder}
+          processes={
+            dispatchingOrder.customProcesses && dispatchingOrder.customProcesses.length > 0
+              ? dispatchingOrder.customProcesses
+              : productTypes[dispatchingOrder.typeId]?.processes || []
+          }
+          usersList={usersList}
+          currentUser={currentUser}
+          onDispatchSuccess={(res) => {
+            if (onUpdateOrder && dispatchingOrder) {
+              onUpdateOrder({
+                ...dispatchingOrder,
+                status: 'DISPATCHED',
+                dispatchedAt: new Date().toISOString(),
+              });
+            }
+          }}
         />
       )}
     </div>

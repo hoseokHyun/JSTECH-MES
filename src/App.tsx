@@ -75,8 +75,24 @@ const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
 const STORAGE_KEY_DELETED_ORDERS = 'junsung_mes_deleted_orders_v2';
 
 export default function App() {
-  // 1. Navigation Tab State (Default: Production Executive Dashboard - 메인화면)
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // 1. Navigation Tab State (Default: Production Executive Dashboard - 메인화면 or /floor /floor-mes on DeepLink)
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      if (
+        path === '/floor' ||
+        path.startsWith('/floor/') ||
+        path.startsWith('/floor-mes') ||
+        path.includes('/floor') ||
+        search.includes('orderId=') ||
+        search.includes('tab=execution')
+      ) {
+        return 'execution';
+      }
+    }
+    return 'dashboard';
+  });
 
   // 2. Core Application Domain State with LocalStorage Persistence
   const [orders, setOrders] = useState<Record<string, Order>>(() => {
@@ -1245,6 +1261,7 @@ export default function App() {
                 onCopyOrderToNew={handleCopyOrderToNew}
                 currentUser={currentUser}
                 approvedOperators={approvedOperators}
+                usersList={usersList}
               />
             )}
 
