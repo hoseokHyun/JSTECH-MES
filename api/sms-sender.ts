@@ -63,7 +63,7 @@ ${deepLink}
 }
 
 /**
- * Sends an SMS using Solapi / CoolSMS REST API v4
+ * Sends an SMS/LMS using Solapi / CoolSMS REST API v4
  */
 async function sendSolapiSms(
   payload: SmsSendPayload,
@@ -71,30 +71,50 @@ async function sendSolapiSms(
   apiSecret: string,
   fromNumber: string
 ): Promise<SmsSendResult> {
-  const date = new Date().toISOString();
-  const salt = crypto.randomBytes(16).toString('hex');
-  const signature = crypto
-    .createHmac('sha256', apiSecret)
-    .update(date + salt)
-    .digest('hex');
-
-  const authHeader = `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
-
+  const cleanApiKey = apiKey.trim();
+  const cleanApiSecret = apiSecret.trim();
   const cleanTo = normalizePhoneNumber(payload.to);
   const cleanFrom = normalizePhoneNumber(fromNumber || payload.from || '');
 
+  if (!cleanApiKey || !cleanApiSecret) {
+    throw new Error('Solapi API Key 또는 Secret이 누락되었습니다. (SOLAPI_API_KEY, SOLAPI_API_SECRET)');
+  }
+
   if (!cleanFrom) {
-    throw new Error('Solapi/CoolSMS requires a registered sender number (SOLAPI_FROM_NUMBER or COOLSMS_FROM_NUMBER).');
+    throw new Error('Solapi에 등록된 사전 인증 발신번호가 필요합니다. (SOLAPI_FROM_NUMBER 또는 SMS_SENDER_NUMBER)');
+  }
+
+  if (!cleanTo || cleanTo.length < 8) {
+    throw new Error(`유효하지 않은 수신 전화번호입니다: ${payload.to}`);
+  }
+
+  const date = new Date().toISOString();
+  const salt = crypto.randomBytes(16).toString('hex');
+  const signature = crypto
+    .createHmac('sha256', cleanApiSecret)
+    .update(date + salt)
+    .digest('hex');
+
+  const authHeader = `HMAC-SHA256 apiKey=${cleanApiKey}, date=${date}, salt=${salt}, signature=${signature}`;
+
+  // If text is long or subject exists, specify LMS type
+  const isLms = Boolean(payload.subject) || payload.text.length > 80;
+  const messageBody: Record<string, any> = {
+    to: cleanTo,
+    from: cleanFrom,
+    text: payload.text,
+    type: isLms ? 'LMS' : 'SMS',
+  };
+
+  if (payload.subject && isLms) {
+    messageBody.subject = payload.subject;
   }
 
   const body = {
-    message: {
-      to: cleanTo,
-      from: cleanFrom,
-      text: payload.text,
-      subject: payload.subject,
-    },
+    message: messageBody,
   };
+
+  console.log(`[Solapi] Sending SMS/LMS to ${cleanTo} (From: ${cleanFrom}, Type: ${messageBody.type})...`);
 
   // Primary: api.solapi.com, Fallback: api.coolsms.co.kr
   const endpoint = 'https://api.solapi.com/messages/v4/send';
@@ -109,7 +129,8 @@ async function sendSolapiSms(
   });
 
   if (!response.ok && response.status !== 400 && response.status !== 401 && response.status !== 402 && response.status !== 403) {
-    // Retry with legacy api.coolsms.co.kr if network/service error
+    // Retry with api.coolsms.co.kr if domain network issue
+    console.warn(`[Solapi] Primary endpoint returned status ${response.status}. Retrying via api.coolsms.co.kr...`);
     response = await fetch('https://api.coolsms.co.kr/messages/v4/send', {
       method: 'POST',
       headers: {
@@ -122,15 +143,28 @@ async function sendSolapiSms(
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Solapi API Error (${response.status}): ${errText}`);
+    console.error(`[Solapi] Transmission failed (${response.status}):`, errText);
+    let errMsg = `Solapi API Error (${response.status}): ${errText}`;
+    try {
+      const errJson = JSON.parse(errText);
+      if (errJson.errorMessage || errJson.statusMessage) {
+        errMsg = `Solapi 오류 (${response.status}): ${errJson.errorMessage || errJson.statusMessage} (Code: ${errJson.errorCode || errJson.statusCode || 'N/A'})`;
+      }
+    } catch {
+      // Keep errText
+    }
+    throw new Error(errMsg);
   }
 
   const data: any = await response.json();
+  const messageId = data?.groupId || data?.messageId || data?.message?.messageId || `solapi-${Date.now()}`;
+  console.log(`[Solapi] Successfully sent to ${cleanTo}, Message ID: ${messageId}`);
+
   return {
     success: true,
     provider: 'SOLAPI',
     status: 'SENT',
-    messageId: data?.groupId || data?.messageId || `solapi-${Date.now()}`,
+    messageId,
     recipient: payload.to,
     previewText: payload.text,
   };
@@ -140,9 +174,30 @@ async function sendSolapiSms(
  * Dedicated Solapi SMS sender with graceful Sandbox Simulation fallback if unconfigured
  */
 export async function sendSmsNotification(payload: SmsSendPayload): Promise<SmsSendResult> {
-  const apiKey = process.env.SOLAPI_API_KEY || process.env.COOLSMS_API_KEY;
-  const apiSecret = process.env.SOLAPI_API_SECRET || process.env.COOLSMS_API_SECRET;
-  const fromNumber = process.env.SOLAPI_FROM_NUMBER || process.env.COOLSMS_FROM_NUMBER || process.env.SMS_SENDER_NUMBER || '';
+  const apiKey = (
+    process.env.SOLAPI_API_KEY ||
+    process.env.SOLAPI_KEY ||
+    process.env.COOLSMS_API_KEY ||
+    process.env.COOLSMS_KEY ||
+    ''
+  ).trim();
+
+  const apiSecret = (
+    process.env.SOLAPI_API_SECRET ||
+    process.env.SOLAPI_SECRET ||
+    process.env.COOLSMS_API_SECRET ||
+    process.env.COOLSMS_SECRET ||
+    ''
+  ).trim();
+
+  const fromNumber = (
+    process.env.SOLAPI_FROM_NUMBER ||
+    process.env.SOLAPI_SENDER_NUMBER ||
+    process.env.SOLAPI_FROM ||
+    process.env.COOLSMS_FROM_NUMBER ||
+    process.env.SMS_SENDER_NUMBER ||
+    ''
+  ).trim();
 
   // 1. Send via Solapi REST API v4 if configured
   if (apiKey && apiSecret) {
@@ -162,6 +217,7 @@ export async function sendSmsNotification(payload: SmsSendPayload): Promise<SmsS
   }
 
   // 2. Default: Sandbox Simulation when credentials are not yet set
+  console.warn('[SMS] Solapi credentials (SOLAPI_API_KEY, SOLAPI_API_SECRET) not found in environment. Running in SIMULATED mode.');
   return {
     success: true,
     provider: 'SIMULATED',

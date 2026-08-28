@@ -298,11 +298,19 @@ export async function sendDispatchNotification(
 
   const baseUrl = resolveServerBaseUrl(rawBaseUrl);
 
+  const solapiApiKey = (process.env.SOLAPI_API_KEY || process.env.COOLSMS_API_KEY || '').trim();
+  const solapiApiSecret = (process.env.SOLAPI_API_SECRET || process.env.COOLSMS_API_SECRET || '').trim();
+  const solapiFromNumber = (
+    process.env.SOLAPI_FROM_NUMBER ||
+    process.env.SOLAPI_SENDER_NUMBER ||
+    process.env.SOLAPI_FROM ||
+    process.env.COOLSMS_FROM_NUMBER ||
+    process.env.SMS_SENDER_NUMBER ||
+    ''
+  ).trim();
+
   // Check Solapi SMS Configuration
-  const isSmsConfigured = Boolean(
-    (process.env.SOLAPI_API_KEY || process.env.COOLSMS_API_KEY) &&
-    (process.env.SOLAPI_API_SECRET || process.env.COOLSMS_API_SECRET)
-  );
+  const isSmsConfigured = Boolean(solapiApiKey && solapiApiSecret && solapiFromNumber);
 
   // Check SMTP Configuration
   let smtpHost = (process.env.NAVERWORKS_SMTP_HOST || 'smtp.worksmobile.com').trim();
@@ -313,6 +321,17 @@ export async function sendDispatchNotification(
   const smtpUser = (process.env.NAVERWORKS_SMTP_USER || 'noworries004@jstech.kr').trim();
   const smtpPass = (process.env.NAVERWORKS_SMTP_PASS || '').trim();
   const isSmtpConfigured = Boolean(smtpPass && smtpPass !== '');
+
+  console.log(`[Dispatch Notification] Starting dispatch for Order ${order.id} (${order.name})`, {
+    recipientsCount: operatorContacts.length,
+    sendEmail,
+    sendSms,
+    isSmsConfigured,
+    isSmtpConfigured,
+    smtpUser,
+    solapiFromNumber: solapiFromNumber || '(미설정)',
+    resolvedBaseUrl: baseUrl,
+  });
 
   let transporter: nodemailer.Transporter | null = null;
   if (sendEmail && isSmtpConfigured) {
@@ -328,6 +347,9 @@ export async function sendDispatchNotification(
         tls: {
           rejectUnauthorized: false,
         },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       });
     } catch (tErr) {
       console.warn('[SMTP] Transporter initialization warning:', tErr);
@@ -361,6 +383,7 @@ export async function sendDispatchNotification(
     if (sendEmail) {
       if (isSmtpConfigured && transporter && op.email && op.email.includes('@')) {
         try {
+          console.log(`[SMTP] Sending dispatch email to ${op.name} <${op.email}>...`);
           const info = await transporter.sendMail({
             from: `"JS TECH MES 시스템" <${smtpUser}>`,
             to: op.email,
@@ -369,6 +392,7 @@ export async function sendDispatchNotification(
           });
           emailStatus = 'SENT';
           emailMessageId = info.messageId;
+          console.log(`[SMTP] Email successfully sent to ${op.email} (MessageId: ${info.messageId})`);
         } catch (sendErr: any) {
           console.error(`[SMTP] Error sending to ${op.email}:`, sendErr);
           emailStatus = 'FAILED';
@@ -392,6 +416,7 @@ export async function sendDispatchNotification(
 
       if (cleanPhone) {
         try {
+          console.log(`[SMS] Dispatching Solapi SMS to ${op.name} (${cleanPhone})...`);
           const smsResult: SmsSendResult = await sendSmsNotification({
             to: cleanPhone,
             subject: smsSubject,
@@ -399,6 +424,10 @@ export async function sendDispatchNotification(
           });
           smsStatus = smsResult.status;
           smsMessageId = smsResult.messageId;
+          if (smsResult.status === 'FAILED') {
+            smsError = smsResult.error || 'Solapi 문자 발송 실패';
+          }
+          console.log(`[SMS] Solapi result for ${op.name}: status=${smsStatus}, id=${smsMessageId}`);
         } catch (sErr: any) {
           console.error(`[SMS] Error sending to ${op.phoneNumber}:`, sErr);
           smsStatus = 'FAILED';
@@ -412,7 +441,7 @@ export async function sendDispatchNotification(
     const overallStatus: 'SENT' | 'SIMULATED' | 'FAILED' =
       emailStatus === 'SENT' || smsStatus === 'SENT'
         ? 'SENT'
-        : emailStatus === 'FAILED' && smsStatus === 'FAILED'
+        : (emailStatus === 'FAILED' || emailStatus === 'SKIPPED') && (smsStatus === 'FAILED' || smsStatus === 'SKIPPED') && (emailStatus === 'FAILED' || smsStatus === 'FAILED')
         ? 'FAILED'
         : 'SIMULATED';
 
@@ -437,10 +466,10 @@ export async function sendDispatchNotification(
 
   const channelDescriptions: string[] = [];
   if (sendEmail) {
-    channelDescriptions.push(isSmtpConfigured ? '네이버웍스 메일' : '이메일(시뮬레이션)');
+    channelDescriptions.push(isSmtpConfigured ? '네이버웍스 메일(발송완료)' : '이메일(시뮬레이션)');
   }
   if (sendSms) {
-    channelDescriptions.push(isSmsConfigured ? '휴대폰 문자/알림톡' : '휴대폰 문자(시뮬레이션)');
+    channelDescriptions.push(isSmsConfigured ? '솔라피 문자(발송완료)' : '솔라피 문자(시뮬레이션)');
   }
 
   return {
@@ -449,7 +478,7 @@ export async function sendDispatchNotification(
     totalRecipients: operatorContacts.length,
     results,
     overallDeepLinks,
-    message: `총 ${dispatchedCount}명의 공정 담당자에게 ${channelDescriptions.join(' 및 ')}과 403 오류 없는 공개 딥링크가 성공적으로 생성 및 전달되었습니다.`,
+    message: `총 ${dispatchedCount}명의 공정 담당자에게 ${channelDescriptions.join(' 및 ')}과 공개 딥링크가 안전하게 생성 및 전달되었습니다.`,
     smtpConfigured: isSmtpConfigured,
     smsConfigured: isSmsConfigured,
     resolvedBaseUrl: baseUrl,
@@ -460,18 +489,41 @@ export async function sendDispatchNotification(
  * Serverless / Express API Handler
  */
 export default async function handler(req: any, res: any) {
+  // CORS Headers for Vercel / Cloud Run cross-origin requests
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+  );
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. POST required.' });
   }
 
   try {
-    const payload: DispatchNotificationRequest = req.body;
+    let payload: DispatchNotificationRequest = req.body;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch (parseErr) {
+        return res.status(400).json({ error: 'Invalid JSON request body.' });
+      }
+    }
+
     if (!payload || !payload.order || !payload.order.id) {
       return res.status(400).json({ error: 'Invalid payload: order is required.' });
     }
 
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
     const resolvedBase = resolveServerBaseUrl(payload.baseUrl, host);
+
+    console.log(`[API] /api/dispatch-notification -> Processing Order: ${payload.order.id}`);
 
     const result = await sendDispatchNotification({
       ...payload,

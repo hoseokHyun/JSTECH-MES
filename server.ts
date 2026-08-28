@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
@@ -11,11 +12,24 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
 
   // API Routes FIRST
-  app.post('/api/dispatch-notification', dispatchNotificationHandler);
-  app.post('/api/send-sms', sendSmsHandler);
+  app.all('/api/dispatch-notification', dispatchNotificationHandler);
+  app.all('/api/send-sms', sendSmsHandler);
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    const solapiConfigured = Boolean(
+      (process.env.SOLAPI_API_KEY || process.env.COOLSMS_API_KEY) &&
+      (process.env.SOLAPI_API_SECRET || process.env.COOLSMS_API_SECRET)
+    );
+    const smtpConfigured = Boolean(process.env.NAVERWORKS_SMTP_PASS);
+
+    res.json({
+      status: 'ok',
+      time: new Date().toISOString(),
+      solapiConfigured,
+      smtpConfigured,
+      fromNumber: process.env.SOLAPI_FROM_NUMBER || process.env.COOLSMS_FROM_NUMBER || process.env.SMS_SENDER_NUMBER || null,
+      smtpUser: process.env.NAVERWORKS_SMTP_USER || 'noworries004@jstech.kr',
+    });
   });
 
   // Vite middleware for development / static serving in production
@@ -39,3 +53,4 @@ async function startServer() {
 }
 
 startServer();
+

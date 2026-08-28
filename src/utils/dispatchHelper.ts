@@ -224,8 +224,10 @@ export async function executeOrderDispatch(
 
   // 4. Trigger backend notification API (/api/dispatch-notification)
   let apiResponse: any = null;
+  let apiCallError: string | null = null;
 
   try {
+    console.log(`[DispatchHelper] Calling /api/dispatch-notification for ${operatorContacts.length} operators...`);
     const res = await fetch('/api/dispatch-notification', {
       method: 'POST',
       headers: {
@@ -260,13 +262,27 @@ export async function executeOrderDispatch(
       }),
     });
 
-    if (res.ok) {
-      apiResponse = await res.json();
-    } else {
-      console.warn('Dispatch notification API non-OK response:', res.status);
+    const responseText = await res.text();
+    try {
+      apiResponse = JSON.parse(responseText);
+    } catch {
+      apiResponse = { error: responseText, message: `서버 응답 파싱 오류 (HTTP ${res.status}): ${responseText}` };
     }
-  } catch (apiErr) {
-    console.error('Failed to call /api/dispatch-notification:', apiErr);
+
+    if (!res.ok) {
+      apiCallError = apiResponse?.error || `API 응답 오류 (HTTP ${res.status})`;
+      console.error(`[DispatchHelper] /api/dispatch-notification returned HTTP ${res.status}:`, apiResponse);
+    } else {
+      console.log('[DispatchHelper] /api/dispatch-notification succeeded:', apiResponse);
+    }
+  } catch (apiErr: any) {
+    apiCallError = apiErr?.message || '알림 API 서버 연결 실패';
+    console.error('[DispatchHelper] Failed to call /api/dispatch-notification:', apiErr);
+    apiResponse = {
+      success: false,
+      error: apiCallError,
+      message: `알림 발송 서버 연결 중 오류가 발생했습니다: ${apiCallError}`,
+    };
   }
 
   // 5. Build operator summary with deep links and delivery statuses
@@ -287,11 +303,11 @@ export async function executeOrderDispatch(
       processCount: op.assignedProcesses.length,
       processes: op.assignedProcesses.map((p) => p.processName),
       deepLink,
-      emailStatus: apiItem?.emailStatus || (sendEmail ? 'SIMULATED' : 'SKIPPED'),
-      smsStatus: apiItem?.smsStatus || (sendSms ? 'SIMULATED' : 'SKIPPED'),
+      emailStatus: apiItem?.emailStatus || (sendEmail ? (apiCallError ? 'FAILED' : 'SIMULATED') : 'SKIPPED'),
+      smsStatus: apiItem?.smsStatus || (sendSms ? (apiCallError ? 'FAILED' : 'SIMULATED') : 'SKIPPED'),
       smsText: apiItem?.smsText,
-      error: apiItem?.error,
-      smsError: apiItem?.smsError,
+      error: apiItem?.error || (sendEmail && apiCallError ? apiCallError : undefined),
+      smsError: apiItem?.smsError || (sendSms && apiCallError ? apiCallError : undefined),
     };
   });
 

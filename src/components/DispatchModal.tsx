@@ -472,6 +472,53 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                 </div>
               </div>
 
+              {/* Server Config & Simulation Notice */}
+              {dispatchResult.apiResponse && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div
+                    className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                      dispatchResult.apiResponse.smsConfigured
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                    }`}
+                  >
+                    <Smartphone className="w-4 h-4 shrink-0" />
+                    <div>
+                      <div className="font-bold">
+                        솔라피(Solapi) 문자 발송:{' '}
+                        {dispatchResult.apiResponse.smsConfigured ? '실제 연동 완료' : '시뮬레이션 모드'}
+                      </div>
+                      {!dispatchResult.apiResponse.smsConfigured && (
+                        <div className="text-[10px] opacity-80">
+                          ※ 환경변수(SOLAPI_API_KEY, SOLAPI_API_SECRET, SOLAPI_FROM_NUMBER) 설정 필요
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                      dispatchResult.apiResponse.smtpConfigured
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                    }`}
+                  >
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <div>
+                      <div className="font-bold">
+                        네이버웍스 메일:{' '}
+                        {dispatchResult.apiResponse.smtpConfigured ? 'SMTP 연동 완료' : '시뮬레이션 모드'}
+                      </div>
+                      {!dispatchResult.apiResponse.smtpConfigured && (
+                        <div className="text-[10px] opacity-80">
+                          ※ 환경변수(NAVERWORKS_SMTP_PASS) 설정 필요
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Applied Base URL Banner */}
               <div className="px-3.5 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-between text-xs text-blue-900 dark:text-blue-200">
                 <span className="flex items-center gap-1.5">
@@ -499,10 +546,15 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                           <span className="font-black text-slate-900 dark:text-white text-sm">
                             {op.name}
                           </span>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-wrap">
                             {op.emailStatus === 'SENT' && (
                               <span className="text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.2 rounded border border-blue-300 dark:border-blue-700">
                                 메일발송됨
+                              </span>
+                            )}
+                            {op.emailStatus === 'FAILED' && (
+                              <span className="text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 px-1.5 py-0.2 rounded border border-rose-300 dark:border-rose-700">
+                                메일실패
                               </span>
                             )}
                             {op.smsStatus === 'SENT' && (
@@ -510,9 +562,19 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                                 SMS발송됨
                               </span>
                             )}
-                            {(op.emailStatus === 'SIMULATED' || op.smsStatus === 'SIMULATED') && (
+                            {op.smsStatus === 'FAILED' && (
+                              <span className="text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 px-1.5 py-0.2 rounded border border-rose-300 dark:border-rose-700">
+                                SMS실패
+                              </span>
+                            )}
+                            {op.emailStatus === 'SIMULATED' && (
                               <span className="text-[10px] font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded">
-                                전송준비완료
+                                메일(시뮬)
+                              </span>
+                            )}
+                            {op.smsStatus === 'SIMULATED' && (
+                              <span className="text-[10px] font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded">
+                                SMS(시뮬)
                               </span>
                             )}
                           </div>
@@ -533,6 +595,18 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                           {op.phoneNumber || '(휴대폰 미등록)'}
                         </span>
                       </div>
+
+                      {/* Failure Error Messages if Any */}
+                      {op.error && (
+                        <div className="text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-xl border border-rose-200 dark:border-rose-800">
+                          <strong>⚠️ 메일 발송 실패 상세:</strong> {op.error}
+                        </div>
+                      )}
+                      {op.smsError && (
+                        <div className="text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-xl border border-rose-200 dark:border-rose-800">
+                          <strong>⚠️ 문자 발송 실패 상세:</strong> {op.smsError}
+                        </div>
+                      )}
 
                       {/* Deep Link URL Bar */}
                       {op.deepLink && (
