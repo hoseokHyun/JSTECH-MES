@@ -71,13 +71,28 @@ async function sendSolapiSms(
   apiSecret: string,
   fromNumber: string
 ): Promise<SmsSendResult> {
-  const cleanApiKey = apiKey.trim();
-  const cleanApiSecret = apiSecret.trim();
+  let cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '').trim();
+  let cleanApiSecret = apiSecret.trim().replace(/^["']|["']$/g, '').trim();
   const cleanTo = normalizePhoneNumber(payload.to);
   const cleanFrom = normalizePhoneNumber(fromNumber || payload.from || '');
 
   if (!cleanApiKey || !cleanApiSecret) {
     throw new Error('Solapi API Key 또는 Secret이 누락되었습니다. (SOLAPI_API_KEY, SOLAPI_API_SECRET)');
+  }
+
+  // Auto-detect swapped API Key and Secret
+  // Solapi API Key is strictly 16 chars (e.g. NCS...). Secret is 32 chars or longer.
+  if (cleanApiKey.length !== 16 && cleanApiSecret.length === 16) {
+    console.warn(`[Solapi] Auto-correcting swapped API Key (${cleanApiKey.length} chars) and Secret (${cleanApiSecret.length} chars)...`);
+    const temp = cleanApiKey;
+    cleanApiKey = cleanApiSecret;
+    cleanApiSecret = temp;
+  }
+
+  if (cleanApiKey.length !== 16) {
+    throw new Error(
+      `솔라피 API Key 글자수 오류: 현재 SOLAPI_API_KEY 길이가 ${cleanApiKey.length}자입니다. (솔라피 API Key는 정확히 16자리여야 합니다). 👉 [해결방법: 1) Solapi(solapi.com) 콘솔 [API Key 관리]에서 16자리 'API Key(NCS...)'와 32자리 'API Secret'을 확인하세요. 2) Vercel 환경 변수에서 SOLAPI_API_KEY와 SOLAPI_API_SECRET 값이 서로 바뀌었는지 확인하고 재등록해 주세요.]`
+    );
   }
 
   if (!cleanFrom) {

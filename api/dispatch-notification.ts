@@ -101,11 +101,15 @@ export function resolveServerBaseUrl(customBaseUrl?: string, requestHost?: strin
     return url;
   };
 
-  // 1. Explicitly provided custom baseUrl from client (if not an ephemeral internal dev sandbox)
+  // 1. Explicitly provided custom baseUrl from client (if not an ephemeral internal dev sandbox or protected preview branch)
   if (customBaseUrl && customBaseUrl.trim()) {
     let url = normalize(customBaseUrl);
     if (url.includes('ais-dev-') && url.includes('.run.app')) {
       url = url.replace('ais-dev-', 'ais-pre-');
+    }
+    // Prevent Vercel branch preview URLs (-git-) with SSO auth protection from being sent to external SMS/email recipients
+    if (url.includes('-git-') && url.includes('.vercel.app')) {
+      return DEFAULT_PRODUCTION_SERVER_URL;
     }
     return url;
   }
@@ -116,12 +120,16 @@ export function resolveServerBaseUrl(customBaseUrl?: string, requestHost?: strin
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.PUBLIC_APP_URL ||
     process.env.VERCEL_PROJECT_PRODUCTION_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
+    '';
 
   if (envUrl && envUrl.trim()) {
     const normalizedEnv = normalize(envUrl);
-    // If env is set to a real production domain, prioritize it!
-    if (!normalizedEnv.includes('ais-dev-') && !normalizedEnv.includes('localhost')) {
+    // If env is set to a real production domain (not an ephemeral dev sandbox or git branch preview), prioritize it!
+    if (
+      !normalizedEnv.includes('ais-dev-') &&
+      !normalizedEnv.includes('localhost') &&
+      !normalizedEnv.includes('-git-')
+    ) {
       return normalizedEnv;
     }
   }
@@ -129,7 +137,12 @@ export function resolveServerBaseUrl(customBaseUrl?: string, requestHost?: strin
   // 3. Request Host Header
   if (requestHost && requestHost.trim()) {
     let url = normalize(requestHost);
-    if (!url.includes('ais-dev-') && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+    if (
+      !url.includes('ais-dev-') &&
+      !url.includes('localhost') &&
+      !url.includes('127.0.0.1') &&
+      !url.includes('-git-')
+    ) {
       return url;
     }
   }
@@ -302,9 +315,9 @@ async function sendEmailViaNaverWorks(
   pass: string,
   mailOptions: nodemailer.SendMailOptions
 ): Promise<{ messageId: string; usedPort: number }> {
-  const cleanHost = (host || 'smtp.worksmobile.com').trim();
-  const cleanUser = (user || '').trim();
-  const cleanPass = (pass || '').trim();
+  const cleanHost = (host || 'smtp.worksmobile.com').trim().replace(/^["']|["']$/g, '');
+  const cleanUser = (user || '').trim().replace(/^["']|["']$/g, '');
+  const cleanPass = (pass || '').trim().replace(/^["']|["']$/g, '');
 
   // Try primary port first, then automatically fall back to alternate port if needed
   const primaryPort = configuredPort || 465;
@@ -336,16 +349,16 @@ async function sendEmailViaNaverWorks(
           rejectUnauthorized: false,
           minVersion: 'TLSv1.2',
         },
-        connectionTimeout: 6000,
-        greetingTimeout: 6000,
-        socketTimeout: 8000,
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 10000,
       });
 
-      console.log(`[SMTP] Attempting email send via ${cleanHost}:${port} (secure: ${isSecure}) to ${mailOptions.to}...`);
+      console.log(`[SMTP] Attempting email send via ${cleanHost}:${port} (secure: ${isSecure}) from ${cleanUser} to ${mailOptions.to}...`);
 
       const sendPromise = transporter.sendMail(mailOptions);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`네이버웍스 SMTP 발송 시간 초과 (${port}번 포트, 6초)`)), 6500)
+        setTimeout(() => reject(new Error(`네이버웍스 SMTP 발송 시간 초과 (${port}번 포트, 8초)`)), 8500)
       );
 
       const info: any = await Promise.race([sendPromise, timeoutPromise]);
@@ -406,13 +419,13 @@ export async function sendDispatchNotification(
     const isSmsConfigured = Boolean(solapiApiKey && solapiApiSecret && solapiFromNumber);
 
     // Check SMTP Configuration
-    let smtpHost = (process.env.NAVERWORKS_SMTP_HOST || 'smtp.worksmobile.com').trim();
+    let smtpHost = (process.env.NAVERWORKS_SMTP_HOST || 'smtp.worksmobile.com').trim().replace(/^["']|["']$/g, '');
     if (smtpHost === 'smtp.naverworks.com' || smtpHost.includes('naverworks.com')) {
       smtpHost = 'smtp.worksmobile.com';
     }
     const smtpPort = Number(process.env.NAVERWORKS_SMTP_PORT) || 465;
-    const smtpUser = (process.env.NAVERWORKS_SMTP_USER || '').trim();
-    const smtpPass = (process.env.NAVERWORKS_SMTP_PASS || '').trim();
+    const smtpUser = (process.env.NAVERWORKS_SMTP_USER || '').trim().replace(/^["']|["']$/g, '');
+    const smtpPass = (process.env.NAVERWORKS_SMTP_PASS || '').trim().replace(/^["']|["']$/g, '');
     const isSmtpConfigured = Boolean(smtpUser && smtpPass);
 
     console.log(`[Dispatch Notification] Starting dispatch for Order ${order?.id || 'N/A'} (${order?.name || 'N/A'})`, {

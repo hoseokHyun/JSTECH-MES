@@ -24,6 +24,10 @@ export function resolvePublicAppUrl(customUrl?: string): string {
     if (url.includes('ais-dev-') && url.includes('.run.app')) {
       url = url.replace('ais-dev-', 'ais-pre-');
     }
+    // Prevent Vercel branch preview URLs (-git-) with SSO auth protection from being sent to external SMS/email recipients
+    if (url.includes('-git-') && url.includes('.vercel.app')) {
+      return DEFAULT_PRODUCTION_APP_URL;
+    }
     return url;
   }
 
@@ -44,14 +48,17 @@ export function resolvePublicAppUrl(customUrl?: string): string {
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.PUBLIC_APP_URL ||
       process.env.VERCEL_PROJECT_PRODUCTION_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
       '';
   }
 
   if (envUrl && envUrl.trim()) {
     const normalizedEnv = normalize(envUrl);
-    // If env is set to a real production domain, prioritize it!
-    if (!normalizedEnv.includes('ais-dev-') && !normalizedEnv.includes('localhost')) {
+    // If env is set to a real production domain (not an ephemeral dev sandbox or git branch preview), prioritize it!
+    if (
+      !normalizedEnv.includes('ais-dev-') &&
+      !normalizedEnv.includes('localhost') &&
+      !normalizedEnv.includes('-git-')
+    ) {
       return normalizedEnv;
     }
   }
@@ -59,7 +66,15 @@ export function resolvePublicAppUrl(customUrl?: string): string {
   // 3. Client-side browser window origin check
   if (typeof window !== 'undefined' && window.location) {
     let origin = window.location.origin;
-    // If running on Vercel or custom production domain, use origin directly
+    // If running on Vercel preview branch (*-git-*.vercel.app), Vercel Authentication is enabled.
+    // External recipients (SMS / Email) must use the public production domain (https://jstech-mes.vercel.app)!
+    if (origin.includes('-git-') && origin.includes('.vercel.app')) {
+      return DEFAULT_PRODUCTION_APP_URL;
+    }
+    if (origin.includes('jstech-mes.vercel.app')) {
+      return 'https://jstech-mes.vercel.app';
+    }
+    // If running on custom production domain, use origin directly
     if (
       !origin.includes('ais-dev-') &&
       !origin.includes('ais-pre-') &&
