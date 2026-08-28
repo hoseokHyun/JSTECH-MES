@@ -4,7 +4,7 @@ import {
   buildDispatchSmsText,
   normalizePhoneNumber,
   SmsSendResult,
-} from './sms-sender';
+} from './sms-sender.js';
 
 export interface DispatchNotificationRequest {
   order: {

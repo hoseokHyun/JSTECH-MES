@@ -1,4 +1,4 @@
-import { sendSmsNotification, normalizePhoneNumber } from './sms-sender';
+import { sendSmsNotification, normalizePhoneNumber } from './sms-sender.js';
 
 /**
  * Standalone SMS / Alimtalk Sending API Handler (Solapi v4)
