@@ -52,6 +52,8 @@ export type ProductionStrategy = 'SERIAL' | 'CONTINUOUS';
 export interface Order {
   id: string;
   name: string;
+  pjtNo?: string;          // 프로젝트 번호 (예: NN-NNNN-2608-01, PNT-BNSH650L-26-02)
+  pjtName?: string;        // 프로젝트 명 (예: PNT 2P 1300L, Flex Bolt 2P SLOT DIE 상판)
   typeId: string;
   qty: number;
   startDate: string;
@@ -72,7 +74,7 @@ export interface Order {
   material?: string;       // 소재 (예: SUS316L, AL6061)
   tolerance?: string;      // 정밀공차 (예: ±5µm)
   coatingSpec?: string;    // 코팅규격 (예: TiN / DLC 2.5µm)
-  serialNo?: string;       // 각인번호 (예: PNT-BNSH650L-265-02-02)
+  serialNo?: string;       // 각인번호 (예: PNT-BNSH650L-265-02-001~003)
   dueDate?: string;        // 납기 (예: 2026-06-30)
   dispatchedAt?: string;   // 현장 배포 일시
   specialNotes?: string;   // 특이사항 (예: ※ 공정 간 인수인계 철저히 할 것!)

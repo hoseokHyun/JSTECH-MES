@@ -13,9 +13,11 @@ import {
   Send,
   User,
   Clock,
-  RotateCcw
+  RotateCcw,
+  Layers,
+  Tag
 } from 'lucide-react';
-import { ScheduledTaskItem, User as UserType } from '../types';
+import { ScheduledTaskItem, User as UserType, Order } from '../types';
 
 export const ANDON_ISSUE_PRESETS = [
   {
@@ -66,6 +68,7 @@ interface AndonReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   taskItem: ScheduledTaskItem | null;
+  order?: Order;
   currentUser?: UserType | null;
   onSubmitIssue: (
     processKey: string,
@@ -80,6 +83,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
   isOpen,
   onClose,
   taskItem,
+  order,
   currentUser,
   onSubmitIssue,
   onResolveIssue,
@@ -89,17 +93,19 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
   );
   const [issueNote, setIssueNote] = useState<string>('');
   const [resolveNote, setResolveNote] = useState<string>('');
-  const [isResolvingMode, setIsResolvingMode] = useState<boolean>(false);
 
   if (!isOpen || !taskItem) return null;
 
   const isCurrentIssueHold = taskItem.andonStatus === 'ISSUE_HOLD';
   const reporter = currentUser?.name || taskItem.worker || '현장 작업자';
 
+  const effectivePjtNo = order?.pjtNo || order?.poNumber || taskItem.orderId || '프로젝트번호 미지정';
+  const effectivePjtName = order?.pjtName || order?.name || taskItem.orderName || '프로젝트명 미지정';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!issueNote.trim()) {
-      alert('안돈 발령 사유 및 현장 상황을 상세히 입력해 주세요.');
+      alert('이상 발생 사유 및 현장 상황을 상세히 입력해 주세요.');
       return;
     }
     onSubmitIssue(taskItem.processKey, selectedIssueType, issueNote.trim(), reporter);
@@ -128,7 +134,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-black tracking-tight">
-                  실시간 안돈(Andon) 예외/불량 긴급 호출
+                  현장 이상발생 긴급 신고 / 조치
                 </h2>
                 <span className="text-[10px] bg-white text-red-700 px-2 py-0.5 rounded-full font-black uppercase">
                   EMERGENCY
@@ -148,19 +154,35 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
           </button>
         </div>
 
-        {/* Task Details Card */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 text-xs flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500">대상 공정 / 수주:</span>
-            <span className="text-[11px] font-mono font-bold text-slate-700">
-              {taskItem.orderId}
-            </span>
+        {/* Task Details Card with Project Number & Name */}
+        <div className="p-4 bg-slate-50 border-b border-slate-200 text-xs flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">프로젝트 번호</span>
+              <span className="text-xs font-mono font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block">
+                {effectivePjtNo}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">프로젝트 명 (품명)</span>
+              <span className="text-xs font-extrabold text-slate-900 truncate block" title={effectivePjtName}>
+                {effectivePjtName}
+              </span>
+            </div>
           </div>
-          <div className="text-sm font-black text-slate-900 flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[11px] font-extrabold">
-              {taskItem.category}
-            </span>
-            <span>{taskItem.content}</span>
+
+          <div className="text-sm font-black text-slate-900 flex items-center justify-between gap-2 pt-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[11px] font-extrabold">
+                {taskItem.category}
+              </span>
+              <span>{taskItem.content}</span>
+            </div>
+            {order?.customer && (
+              <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded">
+                {order.customer}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4 text-slate-600 text-[11px] pt-1 border-t border-slate-200">
             <div>
@@ -178,7 +200,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-red-800 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-red-600" />
-                현재 발령 중인 안돈 이슈
+                현재 접수된 이상 발생 내역
               </span>
               <span className="text-[10px] text-red-600 font-mono font-bold">
                 {taskItem.andonReportedAt ? new Date(taskItem.andonReportedAt).toLocaleTimeString() : ''}
@@ -192,14 +214,14 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
                 {taskItem.andonIssueNote || '상세 내용 없음'}
               </p>
               <div className="text-[10px] text-slate-500 font-bold">
-                보고자: {taskItem.andonReportedBy || '작업자'}
+                신고자: {taskItem.andonReportedBy || '작업자'}
               </div>
             </div>
 
             {/* Resolve Issue Action Box */}
             <div className="pt-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                조치 완료 내역 (해제 사유):
+                조치 완료 내역 (이상 해제 사유):
               </label>
               <input
                 type="text"
@@ -214,7 +236,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
                 className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>안돈 해제 및 정상 공정 복귀 (Resolve Andon)</span>
+                <span>이상 조치 완료 및 정상 공정 복귀</span>
               </button>
             </div>
           </div>
@@ -227,7 +249,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
             <div className="space-y-1.5">
               <label className="font-extrabold text-slate-800 flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 text-red-600" />
-                불량 / 예외 발생 유형 선택 *
+                이상 발생 유형 선택 *
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ANDON_ISSUE_PRESETS.map((preset) => {
@@ -275,11 +297,11 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
             <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
               <div className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>보고자: <strong>{reporter}</strong></span>
+                <span>신고자: <strong>{reporter}</strong></span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                <span>발령 시점: <strong>{new Date().toLocaleTimeString()}</strong></span>
+                <span>신고 시점: <strong>{new Date().toLocaleTimeString()}</strong></span>
               </div>
             </div>
 
@@ -290,7 +312,7 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
                 className="w-full py-3 px-4 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs font-black shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition"
               >
                 <Flame className="w-4 h-4 animate-bounce" />
-                <span>긴급 안돈 경보 발령 (Trigger Andon Alert)</span>
+                <span>현장 이상 발생 긴급 신고 접수</span>
               </button>
             </div>
           </form>

@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { ProcessTravelerModal } from './ProcessTravelerModal';
 import { subscribeUsersList } from '../lib/firebase';
+import { extractSerialBase, formatSerialRange, getIndividualSerialNo, getSerialNoList } from '../utils/serialHelper';
 
 interface OrderFormProps {
   productTypes: Record<string, ProductType>;
@@ -158,7 +159,31 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+  // Auto-numbered Order ID generation helper (ORD-2026-XXX)
+  const getNextSequentialOrderId = () => {
+    let maxNum = 0;
+    Object.keys(orders).forEach((id) => {
+      const match = id.match(/ORD-(\d{4})-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[2], 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    const nextNum = Math.max(maxNum + 1, Object.keys(orders).length + 1);
+    let newId = `ORD-2026-${String(nextNum).padStart(3, '0')}`;
+    let counter = 1;
+    while (orders[newId]) {
+      newId = `ORD-2026-${String(nextNum + counter).padStart(3, '0')}`;
+      counter++;
+    }
+    return newId;
+  };
+
   // Form Basic Fields
+  const [autoOrderId, setAutoOrderId] = useState<string>(getNextSequentialOrderId);
+  const [customOrderId, setCustomOrderId] = useState<string>(getNextSequentialOrderId);
+  const [pjtNo, setPjtNo] = useState<string>(''); // 프로젝트 번호 (필수: 예: NN-NNNN-2608-01)
+  const [pjtName, setPjtName] = useState<string>(''); // 프로젝트 명 (필수: 예: PNT 2P 1300L)
   const [name, setName] = useState('');
   const [typeId, setTypeId] = useState<string>(() => {
     return productTypes['TYPE_SLIT_NOZZLE'] ? 'TYPE_SLIT_NOZZLE' : Object.keys(productTypes)[0] || 'TYPE_CUSTOM';
@@ -182,9 +207,59 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [showCreatedOrderModal, setShowCreatedOrderModal] = useState<boolean>(false);
   const [isPostCreateTravelerOpen, setIsPostCreateTravelerOpen] = useState<boolean>(false);
 
+  // Keep customOrderId synced with next sequence if orders change and user hasn't typed custom one
+  useEffect(() => {
+    const next = getNextSequentialOrderId();
+    setAutoOrderId(next);
+    if (!customOrderId || customOrderId.startsWith('ORD-2026-')) {
+      setCustomOrderId(next);
+    }
+  }, [orders]);
+
+  // Sync Project Number & Name to Traveler fields & Serial No
+  const handlePjtNoChange = (val: string) => {
+    setPjtNo(val);
+    setPoNumber(val);
+    if (val.trim()) {
+      const generatedSerial = formatSerialRange(val.trim(), qty);
+      setSerialNo(generatedSerial);
+    }
+  };
+
+  const handlePjtNameChange = (val: string) => {
+    setPjtName(val);
+    setName(val);
+    if (!customer) {
+      if (val.includes('삼성')) setCustomer('삼성디스플레이');
+      else if (val.includes('LG')) setCustomer('LG디스플레이');
+      else if (val.includes('SK')) setCustomer('SK온');
+      else if (val.includes('PNT')) setCustomer('PNT');
+    }
+    if (!partName && val.trim()) {
+      setPartName(val.replace(/(삼성디스플레이|LG디스플레이|SK온|PNT)/g, '').trim());
+    }
+    const specMatch = val.match(/(\d+mm|\d+L|\d+세대)/i);
+    if (specMatch && !spec) {
+      setSpec(specMatch[0]);
+    }
+  };
+
+  // When quantity changes, auto update serial number range if base pattern exists
+  const handleQtyChange = (newQty: number) => {
+    const validQty = Math.max(1, newQty);
+    setQty(validQty);
+    if (serialNo.trim()) {
+      const base = extractSerialBase(serialNo);
+      setSerialNo(formatSerialRange(base || pjtNo || 'NN-NNNNN-2608-01', validQty));
+    } else if (pjtNo.trim()) {
+      setSerialNo(formatSerialRange(pjtNo, validQty));
+    }
+  };
+
   // Auto-fill traveler fields when project name is typed
   const handleNameChange = (val: string) => {
     setName(val);
+    setPjtName(val);
     if (!customer) {
       if (val.includes('삼성')) setCustomer('삼성디스플레이');
       else if (val.includes('LG')) setCustomer('LG디스플레이');
@@ -229,6 +304,28 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
   const [copiedSourceOrder, setCopiedSourceOrder] = useState<Order | null>(null);
   const skipTypeResetRef = useRef(false);
+
+  // Standard Process & Custom Routing Dropdown State
+  const [isStandardProcessDropdownOpen, setIsStandardProcessDropdownOpen] = useState<boolean>(false);
+  const standardProcessDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close standard process dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        standardProcessDropdownRef.current &&
+        !standardProcessDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsStandardProcessDropdownOpen(false);
+      }
+    };
+    if (isStandardProcessDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isStandardProcessDropdownOpen]);
 
   // Resource Conflict Confirmation Modal State
   const [pendingConflicts, setPendingConflicts] = useState<ConflictItem[] | null>(null);
@@ -1405,6 +1502,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       e.stopPropagation();
     }
 
+    const nextId = getNextSequentialOrderId();
+    setAutoOrderId(nextId);
+    setCustomOrderId(nextId);
+    setPjtNo('');
+    setPjtName('');
     setName('');
     setCustomer('');
     setPoNumber('');
@@ -1454,7 +1556,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     }
   };
 
-  // Form Submit Handler with Conflict Detection
+  // Form Submit Handler with Conflict Detection & Mandatory Project Fields
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEditOrder) {
@@ -1463,8 +1565,17 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       );
       return;
     }
-    if (!name.trim()) {
-      alert('수주번호 / 프로젝트명을 입력해주세요.');
+
+    const finalPjtNo = pjtNo.trim() || poNumber.trim();
+    const finalPjtName = pjtName.trim() || name.trim();
+
+    // Mandatory Project Validation
+    if (!finalPjtNo) {
+      alert('⚠️ [프로젝트 번호]는 필수 입력 항목입니다. 미작성 시 수주 등록이 불가합니다.\n(예: NN-NNNN-2608-01 또는 PNT-BNSH650L-26-02)');
+      return;
+    }
+    if (!finalPjtName) {
+      alert('⚠️ [프로젝트 명]은 필수 입력 항목입니다. 미작성 시 수주 등록이 불가합니다.\n(예: PNT Flex Bolt 2P SLOT DIE 상판)');
       return;
     }
     if (currentProcesses.length === 0) {
@@ -1472,22 +1583,16 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       return;
     }
 
-    // Generate guaranteed unique sequential Order ID (ORD-2026-00X)
-    let maxNum = 0;
-    Object.keys(orders).forEach((id) => {
-      const match = id.match(/ORD-(\d{4})-(\d+)/i);
-      if (match) {
-        const num = parseInt(match[2], 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
-      }
-    });
-    const nextNum = Math.max(maxNum + 1, Object.keys(orders).length + 1);
-    let newId = `ORD-2026-${String(nextNum).padStart(3, '0')}`;
-    let counter = 1;
-    while (orders[newId]) {
-      newId = `ORD-2026-${String(nextNum + counter).padStart(3, '0')}`;
-      counter++;
+    // Determine unique Order ID (Auto-numbered or custom entered)
+    let targetOrderId = (customOrderId || autoOrderId || '').trim();
+    if (!targetOrderId) {
+      targetOrderId = getNextSequentialOrderId();
     }
+    if (orders[targetOrderId]) {
+      alert(`⚠️ 수주번호 '${targetOrderId}'는 이미 등록되어 있는 번호입니다. 중복되지 않는 수주번호를 입력해 주세요.`);
+      return;
+    }
+    const newId = targetOrderId;
 
     const firstMachine = stepAssignments[0]?.machine || MCT_MACHINES[0];
 
@@ -1498,18 +1603,20 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       assignedWorker: stepAssignments[idx]?.worker || p.worker || p.assignedWorker || '',
     }));
 
-    const computedCustomer = customer.trim() || (name.includes('삼성') ? '삼성디스플레이' : name.includes('LG') ? 'LG디스플레이' : name.includes('SK') ? 'SK온' : name.includes('PNT') ? 'PNT' : '고객사 지정');
-    const computedPo = poNumber.trim() || newId;
-    const computedPartName = partName.trim() || name.trim() || 'SLOT DIE';
+    const computedCustomer = customer.trim() || (finalPjtName.includes('삼성') ? '삼성디스플레이' : finalPjtName.includes('LG') ? 'LG디스플레이' : finalPjtName.includes('SK') ? 'SK온' : finalPjtName.includes('PNT') ? 'PNT' : '고객사 지정');
+    const computedPo = finalPjtNo;
+    const computedPartName = partName.trim() || finalPjtName || 'SLOT DIE';
     const computedPartType = partType.trim() || 'UPPER (상판)';
     const computedSpec = spec.trim() || '650L';
-    const computedSerial = serialNo.trim() || `${computedPo.replace(/[^a-zA-Z0-9-]/g, '')}-01`;
+    const computedSerial = serialNo.trim() || formatSerialRange(finalPjtNo, qty) || `${newId}-001`;
     const computedDueDate = dueDate.trim() || '2026-06-30';
     const computedNotes = specialNotes.trim() || (memo.trim() ? `※ ${memo.trim()}` : '※ 공정 간 인수인계 철저히 할 것!');
 
     const newOrder: Order = {
       id: newId,
-      name: name.trim(),
+      name: finalPjtName,
+      pjtNo: finalPjtNo,
+      pjtName: finalPjtName,
       typeId,
       qty: Math.max(1, qty),
       startDate,
@@ -1626,7 +1733,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       partName: partName.trim() || name.trim() || 'SLOT DIE',
       partType: partType.trim() || 'UPPER (상판)',
       spec: spec.trim() || '650L',
-      serialNo: serialNo.trim() || `${(poNumber || 'PO-2026-001').replace(/[^a-zA-Z0-9-]/g, '')}-01`,
+      serialNo: serialNo.trim() || formatSerialRange(poNumber || pjtNo || 'NN-NNNNN-2608-01', qty),
       dueDate: dueDate.trim() || '2026-06-30',
       specialNotes: specialNotes.trim() || (memo.trim() ? `※ ${memo.trim()}` : '※ 공정 간 인수인계 철저히 할 것!'),
     };
@@ -1737,31 +1844,81 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
         <form id="new-order-form" onSubmit={handleSubmit} className="space-y-5 text-xs">
           {/* Basic Order Info Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            {/* Project Name */}
-            <div className="lg:col-span-2">
-              <label className="block font-bold text-slate-700 mb-1">
-                수주번호 / 프로젝트명 *
-              </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+            {/* 1. Auto-numbered Order ID */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-slate-700 flex items-center gap-1">
+                  <Tag className="w-3.5 h-3.5 text-blue-600" /> 수주번호 (자동 채번)
+                </label>
+                <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded font-bold border border-blue-200">
+                  고유값
+                </span>
+              </div>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="예: PNT Flex Bolt 2P SLOT DIE 상판"
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500"
+                value={customOrderId}
+                onChange={(e) => setCustomOrderId(e.target.value)}
+                placeholder="예: ORD-2026-011"
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-black text-slate-900 bg-white focus:ring-2 focus:ring-blue-500 shadow-2xs"
+              />
+            </div>
+
+            {/* 2. Project Number (MANDATORY) */}
+            <div className="lg:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-black text-blue-900 flex items-center gap-1">
+                  <span>프로젝트 번호 *</span>
+                  <span className="text-red-500 font-extrabold">*필수</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  PO. (PJT) 연동
+                </span>
+              </div>
+              <input
+                type="text"
+                value={pjtNo}
+                onChange={(e) => handlePjtNoChange(e.target.value)}
+                placeholder="예: NN-NNNN-2608-01 또는 PNT-BNSH650L-26-02"
+                className="w-full text-xs px-3 py-2 border-2 border-blue-300 rounded-lg font-mono font-black text-blue-950 bg-blue-50/40 focus:bg-white focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 placeholder:font-normal"
                 required
               />
             </div>
 
-            {/* Product Type (BOP) Select */}
-            <div>
+            {/* 3. Project Name (MANDATORY) */}
+            <div className="lg:col-span-3">
               <div className="flex items-center justify-between mb-1">
-                <label className="font-bold text-slate-700 flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5 text-blue-600" /> 제품 타입 (BOP)
+                <label className="font-black text-blue-900 flex items-center gap-1">
+                  <span>프로젝트 명 (품명) *</span>
+                  <span className="text-red-500 font-extrabold">*필수</span>
                 </label>
-                {typeId === 'TYPE_CUSTOM' && (
+                <span className="text-[10px] text-slate-400 font-medium">
+                  품명 자동 동기화
+                </span>
+              </div>
+              <input
+                type="text"
+                value={pjtName}
+                onChange={(e) => handlePjtNameChange(e.target.value)}
+                placeholder="예: PNT Flex Bolt 2P SLOT DIE 상판 또는 PNT 2P 1300L"
+                className="w-full text-xs px-3 py-2 border-2 border-blue-300 rounded-lg font-black text-slate-900 bg-blue-50/40 focus:bg-white focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 placeholder:font-normal"
+                required
+              />
+            </div>
+
+            {/* 4. Standard Process (BOP / Standard Routing) Select */}
+            <div className="lg:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-black text-indigo-900 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" /> 표준 공정 (BOP 라우팅)
+                </label>
+                {typeId === 'TYPE_CUSTOM' ? (
                   <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded border border-blue-200">
                     커스텀
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-extrabold bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded border border-indigo-200">
+                    표준 공정
                   </span>
                 )}
               </div>
@@ -1769,40 +1926,42 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 id="order-product-type-select"
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs px-3 py-2 border-2 border-indigo-200 rounded-lg bg-indigo-50/30 font-black text-indigo-950 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-2xs cursor-pointer"
               >
-                {/* 1. Custom Process Option */}
-                <option value="TYPE_CUSTOM" className="font-black text-blue-900 bg-blue-50">
-                  ✨ 커스텀 공정 (사용자 직접 유연 설계)
-                </option>
-
-                {/* 2. Registered Standard BOP Product Types */}
-                <optgroup label="--- 등록된 표준 제품 타입 (BOP) ---">
+                {/* 1. Standard Master Routings (Listed First for Instant Selection) */}
+                <optgroup label="--- [표준 공정] 등록된 표준 BOP 라우팅 ---">
                   {(Object.values(productTypes) as ProductType[])
                     .filter((t) => t.id !== 'TYPE_CUSTOM')
                     .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name.replace(/\s*\(\d+단계\)/g, '')} ({t.processes?.length || 0}단계)
+                      <option key={t.id} value={t.id} className="font-bold text-slate-900">
+                        📋 {t.name.replace(/\s*\(\d+단계\)/g, '')} ({t.processes?.length || 0}단계 표준공정)
                       </option>
                     ))}
+                </optgroup>
+
+                {/* 2. Custom Process Option */}
+                <optgroup label="--- [사용자 직접 설계] ---">
+                  <option value="TYPE_CUSTOM" className="font-black text-blue-900 bg-blue-50">
+                    ✨ 커스텀 공정 (사용자 직접 유연 설계)
+                  </option>
                 </optgroup>
               </select>
             </div>
 
-            {/* Quantity */}
+            {/* 5. Quantity */}
             <div>
               <label className="block font-bold text-slate-700 mb-1">생산 수량 (개)</label>
               <input
                 type="number"
                 min={1}
                 value={qty}
-                onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={(e) => handleQtyChange(parseInt(e.target.value) || 1)}
                 className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-black text-slate-900 bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            {/* Start Date */}
-            <div>
+            {/* 6. Start Date */}
+            <div className="lg:col-span-3">
               <div className="flex justify-between items-center mb-1">
                 <label className="font-bold text-slate-700 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-blue-600" /> 생산 시작일시
@@ -1823,8 +1982,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               />
             </div>
 
-            {/* Memo */}
-            <div className="lg:col-span-5">
+            {/* 7. Memo */}
+            <div className="lg:col-span-6">
               <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <FileText className="w-3.5 h-3.5 text-slate-500" /> 수주 주요 비고 / 특이사항
               </label>
@@ -1885,7 +2044,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   <input
                     type="text"
                     value={poNumber}
-                    onChange={(e) => setPoNumber(e.target.value)}
+                    onChange={(e) => {
+                      setPoNumber(e.target.value);
+                      if (!pjtNo) setPjtNo(e.target.value);
+                    }}
                     placeholder="예: PNT-BNSH650L-26-02"
                     className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
                   />
@@ -1897,7 +2059,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   <input
                     type="text"
                     value={partName}
-                    onChange={(e) => setPartName(e.target.value)}
+                    onChange={(e) => {
+                      setPartName(e.target.value);
+                      if (!pjtName) setPjtName(e.target.value);
+                    }}
                     placeholder="예: Flex Bolt 2P SLOT DIE"
                     className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
                   />
@@ -1927,16 +2092,59 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   />
                 </div>
 
-                {/* 각인번호 */}
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">각인번호</label>
-                  <input
-                    type="text"
-                    value={serialNo}
-                    onChange={(e) => setSerialNo(e.target.value)}
-                    placeholder="예: PNT-BNSH650L-265-02-02"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500"
-                  />
+                {/* 각인번호 (수량별 자동 시퀀스 확장) */}
+                <div className="lg:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-black text-slate-800 flex items-center gap-1.5">
+                      <span>🏷️</span>
+                      <span>각인번호 (Serial No.)</span>
+                    </label>
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                      수량({qty}EA) 연동 자동 시퀀스 확장
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={serialNo}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSerialNo(val);
+                      }}
+                      onBlur={() => {
+                        if (serialNo.trim()) {
+                          const base = extractSerialBase(serialNo);
+                          setSerialNo(formatSerialRange(base || pjtNo || 'NN-NNNNN-2608-01', qty));
+                        }
+                      }}
+                      placeholder={`예: ${formatSerialRange(pjtNo || 'NN-NNNNN-2608-01', qty)}`}
+                      className="w-full text-xs px-3 py-2 border-2 border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                  
+                  {/* Sequence Preview Box */}
+                  <div className="mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-600 font-bold flex items-center gap-1">
+                        <span>✨</span>
+                        <span>개별 생산 호기별 각인번호 시퀀스:</span>
+                      </span>
+                      <span className="font-mono font-black text-blue-700">
+                        {formatSerialRange(serialNo || pjtNo || 'NN-NNNNN-2608-01', qty)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {getSerialNoList(serialNo || pjtNo || 'NN-NNNNN-2608-01', qty).map((s, sIdx) => (
+                        <span
+                          key={sIdx}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono font-black text-slate-800 shadow-2xs"
+                        >
+                          <span className="text-[10px] text-blue-600 font-bold">#{sIdx + 1}</span>
+                          <span>{s}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 {/* 납 기 */}
@@ -1989,8 +2197,138 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 </p>
               </div>
 
-              {/* Accordion Expand/Collapse All & Add Phase Button & Reset */}
+              {/* Standard Process Dropdown & Accordion Expand/Collapse All & Add Phase Button & Reset */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* 1. 표준 공정 드롭다운 (초기화 뱃지 왼쪽에 위치) */}
+                <div className="relative" ref={standardProcessDropdownRef}>
+                  <button
+                    id="btn-standard-process-dropdown"
+                    type="button"
+                    onClick={() => setIsStandardProcessDropdownOpen((prev) => !prev)}
+                    className="px-3 py-1.5 text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-2 border shadow-2xs active:scale-95 bg-white hover:bg-indigo-50/90 text-slate-800 border-indigo-200"
+                    title="표준 공정 템플릿 선택 및 커스텀 공정 설계"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="text-slate-500 font-extrabold text-[11px]">표준 공정:</span>
+                    <span className="text-indigo-950 font-black truncate max-w-[130px] sm:max-w-[180px]">
+                      {typeId === 'TYPE_CUSTOM'
+                        ? '✨ 커스텀 직접 설계'
+                        : (productTypes[typeId]?.name?.replace(/\s*\(\d+단계\)/g, '') || '표준 공정 선택')}
+                    </span>
+                    {typeId !== 'TYPE_CUSTOM' && productTypes[typeId] && (
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700">
+                        {productTypes[typeId]?.processes?.length || 0}공정
+                      </span>
+                    )}
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                        isStandardProcessDropdownOpen ? 'rotate-180 text-indigo-600' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {/* 표준 공정 & 커스텀 공정 선택 드롭다운 팝오버 메뉴 */}
+                  {isStandardProcessDropdownOpen && (
+                    <div className="absolute right-0 sm:left-0 sm:right-auto top-full mt-1.5 w-[330px] sm:w-[380px] bg-white rounded-xl shadow-2xl border border-slate-200 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      {/* 드롭다운 상단 헤더 */}
+                      <div className="px-2 py-1.5 border-b border-slate-100 flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="w-4 h-4 text-indigo-600" />
+                          <span className="text-xs font-black text-slate-900">표준 공정 라우팅 선택</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          {Object.values(productTypes).filter((t) => t.id !== 'TYPE_CUSTOM').length}개 마스터 보유
+                        </span>
+                      </div>
+
+                      {/* 1. 표준 마스터 공정 목록 */}
+                      <div className="mb-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider px-2 mb-1 flex items-center gap-1">
+                          <span>📋</span> 등록된 표준 BOP 마스터 템플릿
+                        </div>
+                        <div className="max-h-56 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                          {(Object.values(productTypes) as ProductType[])
+                            .filter((t) => t.id !== 'TYPE_CUSTOM')
+                            .map((t) => {
+                              const isSelected = typeId === t.id;
+                              const cleanName = t.name.replace(/\s*\(\d+단계\)/g, '');
+                              const stepCount = t.processes?.length || 0;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setTypeId(t.id);
+                                    setIsStandardProcessDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-between gap-2 cursor-pointer border ${
+                                    isSelected
+                                      ? 'bg-indigo-50/90 border-indigo-300 text-indigo-950 font-black shadow-2xs'
+                                      : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200 text-slate-700 font-bold'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-sm shrink-0">📋</span>
+                                    <div className="truncate text-xs font-bold">{cleanName}</div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                                        isSelected
+                                          ? 'bg-indigo-200/80 text-indigo-900'
+                                          : 'bg-slate-100 text-slate-600'
+                                      }`}
+                                    >
+                                      {stepCount}공정
+                                    </span>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 font-black" />}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      {/* 2. 커스텀 공정 직접 설계 & 작성 UI */}
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="text-[10px] font-black text-blue-800 uppercase tracking-wider px-2 mb-1.5 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-500" /> 공정 직접 커스텀 작성
+                        </div>
+                        <div
+                          onClick={() => {
+                            setTypeId('TYPE_CUSTOM');
+                            setIsStandardProcessDropdownOpen(false);
+                          }}
+                          className={`p-2.5 rounded-xl border transition cursor-pointer ${
+                            typeId === 'TYPE_CUSTOM'
+                              ? 'bg-blue-50/90 border-blue-300 ring-2 ring-blue-200'
+                              : 'bg-gradient-to-br from-blue-50/40 via-indigo-50/30 to-white hover:bg-blue-50/80 border-blue-200/80 hover:border-blue-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm">✨</span>
+                              <span className="text-xs font-black text-blue-950">커스텀 공정 직접 설계 & 작성</span>
+                            </div>
+                            {typeId === 'TYPE_CUSTOM' ? (
+                              <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full">
+                                현재 적용중
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">
+                                직접 설계
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-snug">
+                            표준 템플릿 없이 공정 단계, 설비, 담당자를 1단계부터 원하는 대로 자유롭게 추가·편집하여 등록합니다.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   id="btn-routing-reset-form"
                   type="button"

@@ -53,6 +53,7 @@ import { OrderMasterManagementView } from './components/OrderMasterManagementVie
 import { GanttChart } from './components/GanttChart';
 import { ProcessDetailModal } from './components/ProcessDetailModal';
 import { FloorExecutionView } from './components/FloorExecutionView';
+import { StandaloneFloorMESLayout } from './components/StandaloneFloorMESLayout';
 import { ProductRoutingView } from './components/ProductRoutingView';
 import { EquipmentView } from './components/EquipmentView';
 import { ArchiveView } from './components/ArchiveView';
@@ -72,7 +73,6 @@ import {
 const STORAGE_KEY_ORDERS = 'junsung_mes_orders_v2';
 const STORAGE_KEY_TYPES = 'junsung_mes_types_v2';
 const STORAGE_KEY_PROGRESS = 'junsung_mes_progress_v2';
-const STORAGE_KEY_DELETED_ORDERS = 'junsung_mes_deleted_orders_v2';
 
 export default function App() {
   // 1. Navigation Tab State (Default: Production Executive Dashboard - 메인화면 or /floor /floor-mes on DeepLink)
@@ -94,26 +94,35 @@ export default function App() {
     return 'dashboard';
   });
 
+  const [isFloorStandaloneMode, setIsFloorStandaloneMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      return (
+        path === '/floor' ||
+        path.startsWith('/floor/') ||
+        path.startsWith('/floor-mes') ||
+        path.includes('/floor') ||
+        search.includes('orderId=') ||
+        search.includes('floor=true')
+      );
+    }
+    return false;
+  });
+
   // 2. Core Application Domain State with LocalStorage Persistence
   const [orders, setOrders] = useState<Record<string, Order>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
-      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
-      const deletedIds: string[] = deletedSaved ? JSON.parse(deletedSaved) : [];
-
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          const combined: Record<string, Order> = { ...INITIAL_ORDERS, ...parsed };
-          deletedIds.forEach((id) => delete combined[id]);
-          return combined;
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
         }
       }
-      const initial = { ...INITIAL_ORDERS };
-      deletedIds.forEach((id) => delete initial[id]);
-      return initial;
+      return {};
     } catch {
-      return INITIAL_ORDERS;
+      return {};
     }
   });
 
@@ -129,9 +138,9 @@ export default function App() {
   const [processProgressMap, setProcessProgressMap] = useState<ProcessProgressMap>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PROGRESS);
-      return saved ? JSON.parse(saved) : INITIAL_PROCESS_PROGRESS;
+      return saved ? JSON.parse(saved) : {};
     } catch {
-      return INITIAL_PROCESS_PROGRESS;
+      return {};
     }
   });
 
@@ -151,40 +160,21 @@ export default function App() {
   // 3. Firebase Realtime Subscriptions
   useEffect(() => {
     const unsubOrders = subscribeOrders((fireOrders) => {
-      if (fireOrders && Object.keys(fireOrders).length > 0) {
-        setOrders((prev) => {
-          let deletedIds: string[] = [];
-          try {
-            const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
-            deletedIds = deletedSaved ? JSON.parse(deletedSaved) : [];
-          } catch {}
-
-          // Accurately accumulate and merge orders: INITIAL_ORDERS + previous state + incoming firestore data
-          const merged: Record<string, Order> = {
-            ...INITIAL_ORDERS,
-            ...prev,
-            ...fireOrders,
-          };
-          deletedIds.forEach((id) => {
-            if (!fireOrders[id]) {
-              delete merged[id];
-            }
-          });
-
-          try {
-            localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(merged));
-          } catch (e) {
-            console.error('Failed to sync orders to localStorage', e);
-          }
-          return merged;
-        });
+      const currentOrders = fireOrders || {};
+      setOrders(currentOrders);
+      try {
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(currentOrders));
+      } catch (e) {
+        console.error('Failed to sync orders to localStorage', e);
       }
     });
     const unsubTypes = subscribeProductTypes((fireTypes) => {
-      setProductTypes(fireTypes);
+      if (fireTypes && Object.keys(fireTypes).length > 0) {
+        setProductTypes(fireTypes);
+      }
     });
     const unsubProgress = subscribeProcessProgress((fireProgress) => {
-      setProcessProgressMap(fireProgress);
+      setProcessProgressMap(fireProgress || {});
     });
     const unsubUsers = subscribeUsersList((uList) => {
       setUsersList(uList);
@@ -452,7 +442,7 @@ export default function App() {
       return;
     }
 
-    // 1. Accurately accumulate in State & LocalStorage preserving all existing orders
+    // 1. Accurately update State & LocalStorage
     setOrders((prev) => {
       const next = {
         ...prev,
@@ -465,16 +455,6 @@ export default function App() {
       }
       return next;
     });
-
-    // Remove from deleted list if it was deleted previously with the same ID
-    try {
-      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
-      if (deletedSaved) {
-        const deletedIds: string[] = JSON.parse(deletedSaved);
-        const filtered = deletedIds.filter((id) => id !== newOrder.id);
-        localStorage.setItem(STORAGE_KEY_DELETED_ORDERS, JSON.stringify(filtered));
-      }
-    } catch (e) {}
 
     // 2. Persist to Firestore DB (Save new order)
     saveOrderToFirestore(newOrder);
@@ -575,17 +555,6 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    try {
-      const deletedSaved = localStorage.getItem(STORAGE_KEY_DELETED_ORDERS);
-      const deletedIds: string[] = deletedSaved ? JSON.parse(deletedSaved) : [];
-      if (!deletedIds.includes(orderId)) {
-        deletedIds.push(orderId);
-        localStorage.setItem(STORAGE_KEY_DELETED_ORDERS, JSON.stringify(deletedIds));
-      }
-    } catch (e) {
-      console.error('Failed to update deleted orders in localStorage', e);
-    }
-
     setOrders((prev) => {
       const next = { ...prev };
       delete next[orderId];
@@ -1053,7 +1022,6 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY_ORDERS);
       localStorage.removeItem(STORAGE_KEY_TYPES);
       localStorage.removeItem(STORAGE_KEY_PROGRESS);
-      localStorage.removeItem(STORAGE_KEY_DELETED_ORDERS);
       setSelectedTaskKey(null);
       await resetDataToDefaultInFirestore();
       alert('✅ 수주 및 공정 데이터가 초기 기본 데이터로 원복되었습니다.');
@@ -1138,6 +1106,34 @@ export default function App() {
       <LoginScreen
         onLoginSuccess={handleLoginSuccess}
         sessionNotice={sessionNotice}
+      />
+    );
+  }
+
+  // Field Operator Isolated View / QR Deep-Link Standalone Mode
+  const isFieldOperator =
+    currentUser.role !== 'ADMIN' &&
+    currentUser.department !== '시스템 관리자' &&
+    currentUser.department !== '생산 관리' &&
+    currentUser.permissions?.canEditOrder !== true;
+
+  const isAdminOrManager =
+    currentUser.role === 'ADMIN' ||
+    currentUser.department === '시스템 관리자' ||
+    currentUser.department === '생산 관리';
+
+  if (isFieldOperator || isFloorStandaloneMode) {
+    return (
+      <StandaloneFloorMESLayout
+        scheduledTasks={scheduledTasks}
+        orders={orders}
+        productTypes={productTypes}
+        processProgressMap={processProgressMap}
+        currentUser={currentUser}
+        approvedOperators={approvedOperators}
+        onUpdateProgress={handleUpdateProgress}
+        onLogout={() => handleLogout()}
+        onSwitchToAdmin={isAdminOrManager ? () => setIsFloorStandaloneMode(false) : undefined}
       />
     );
   }

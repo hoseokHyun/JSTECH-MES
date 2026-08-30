@@ -37,7 +37,9 @@ import {
   Flame,
   QrCode,
   Wifi,
-  Zap
+  Zap,
+  Smartphone,
+  ScanLine
 } from 'lucide-react';
 
 interface FloorExecutionViewProps {
@@ -52,15 +54,6 @@ interface FloorExecutionViewProps {
   onUpdateAssignee?: (taskKey: string, worker: string, machine: string) => void;
   onUpdateProgress: (processKey: string, progress: ProcessProgressItem) => void;
 }
-
-const PAUSE_REASONS: PauseReason[] = [
-  '설비 고장',
-  '자재 부족',
-  '품질 문제',
-  '작업자 부재',
-  '도면 문제',
-  '기타'
-];
 
 export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   items,
@@ -80,7 +73,11 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState<boolean>(false);
 
   // DeepLink detection from URL (e.g. /floor?orderId=ORD-001&processId=P0)
-  const [deepLinkInfo, setDeepLinkInfo] = useState<{ orderId: string; processId?: string; orderName?: string } | null>(null);
+  const [deepLinkInfo, setDeepLinkInfo] = useState<{
+    orderId: string;
+    processId?: string;
+    orderName?: string;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -91,7 +88,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
       if (orderIdParam) {
         setSearchQuery(orderIdParam);
-        // Reset restrictive filters so deep linked tasks are never hidden
+        // Reset restrictive filters so deep linked tasks are immediately visible
         setSelectedCategory('ALL');
         setSelectedStatus('ALL');
         setSelectedWorkerFilter('ALL');
@@ -105,24 +102,15 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
           orderName: matchedOrder?.name || orderIdParam,
         });
 
-        // If specific processId is requested, check if we can auto-open or highlight
-        if (taskList.length > 0) {
-          const targetTask = taskList.find((t) => {
-            if (t.orderId !== orderIdParam) return false;
-            if (!processIdParam) return true;
-            return (
-              t.processKey.includes(processIdParam) ||
-              `P${t.processIndex}` === processIdParam ||
-              `P${t.processIndex + 1}` === processIdParam ||
-              t.processKey.endsWith(`_${processIdParam}`)
-            );
-          });
-
-          if (targetTask) {
-            setSelectedTaskForModal(targetTask);
-            setIsDetailModalOpen(true);
+        // Smooth scroll to the target task card if loaded
+        setTimeout(() => {
+          if (processIdParam) {
+            const targetEl = document.querySelector(`[id*="${processIdParam}"]`) || document.getElementById(`card-${orderIdParam}_Q1_${processIdParam}`);
+            if (targetEl) {
+              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
           }
-        }
+        }, 300);
       }
     } catch (e) {
       console.error('Failed to parse URL search params for deep link', e);
@@ -130,9 +118,6 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   }, [taskList, orders]);
 
   // Modals state
-  const [selectedTaskForModal, setSelectedTaskForModal] = useState<ScheduledTaskItem | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-
   const [travelerTask, setTravelerTask] = useState<ScheduledTaskItem | null>(null);
   const [isTravelerOpen, setIsTravelerOpen] = useState(false);
 
@@ -141,26 +126,21 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   const [isPlcBridgeOpen, setIsPlcBridgeOpen] = useState(false);
 
-  // Live Timer tick
-  const [, setTick] = useState<number>(0);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 10000);
-    return () => clearInterval(timer);
-  }, []);
-
   const canExecuteMES =
-    currentUser?.role === 'ADMIN' ||
-    currentUser?.permissions?.canExecuteMES !== false;
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.canExecuteMES !== false;
 
-  // Filter tasks with complete field search support (orderId, processKey, orderName, worker, machine, memo)
+  // Filter tasks with complete field search support (pjtNo, pjtName, orderId, processKey, orderName, worker, machine, memo)
   const filteredTasks = taskList.filter((task) => {
     const q = searchQuery.trim().toLowerCase();
+    const matchedOrder = orders[task.orderId];
     const matchesSearch =
       !q ||
       (task.orderId && task.orderId.toLowerCase().includes(q)) ||
       (task.orderName && task.orderName.toLowerCase().includes(q)) ||
+      (matchedOrder?.pjtNo && matchedOrder.pjtNo.toLowerCase().includes(q)) ||
+      (matchedOrder?.pjtName && matchedOrder.pjtName.toLowerCase().includes(q)) ||
       (task.content && task.content.toLowerCase().includes(q)) ||
       (task.processKey && task.processKey.toLowerCase().includes(q)) ||
       (task.worker && task.worker.toLowerCase().includes(q)) ||
@@ -307,23 +287,33 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-50 overflow-y-auto p-3 sm:p-5 space-y-4">
-      {/* Deep Link Active Notification Banner */}
+    <div className="flex flex-col h-full w-full space-y-4">
+      {/* ========================================================================= */}
+      {/* 1. QR CODE SCAN DIRECT ENTRY BANNER (IF ACCESSED VIA QR / DEEP LINK)       */}
+      {/* ========================================================================= */}
       {deepLinkInfo && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-blue-900 shadow-xs animate-fadeIn">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="p-1.5 bg-blue-600 text-white rounded-lg shrink-0">
-              <Zap className="w-4 h-4" />
+        <div className="p-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl flex items-center justify-between gap-3 shadow-lg border-2 border-blue-400 animate-fadeIn flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="p-2.5 bg-blue-500 text-white rounded-xl shrink-0 shadow-md">
+              <ScanLine className="w-6 h-6 animate-pulse" />
             </span>
             <div className="min-w-0">
-              <span className="font-extrabold text-blue-950">
-                🔗 네이버웍스 공정 지시 딥링크(Deep Link) 연동 접속:
-              </span>{' '}
-              <span className="font-bold">[{deepLinkInfo.orderName}]</span>
-              <span className="text-blue-700 text-[11px] ml-1">
-                (수주 ID: {deepLinkInfo.orderId}
-                {deepLinkInfo.processId ? ` / 공정 단계: ${deepLinkInfo.processId}` : ''})
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-xs sm:text-sm bg-blue-500/40 text-blue-200 px-2.5 py-0.5 rounded-md tracking-wider">
+                  QR 모바일 스캔 다이렉트 인식
+                </span>
+                <span className="font-mono font-black text-white text-xs sm:text-sm">
+                  [{deepLinkInfo.orderId}]
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight truncate mt-0.5">
+                {deepLinkInfo.orderName}
+              </h2>
+              {deepLinkInfo.processId && (
+                <p className="text-xs text-blue-200 font-semibold mt-0.5">
+                  목표 공정 단계: <strong className="text-white font-mono">{deepLinkInfo.processId}</strong> (자동 포커스 활성화)
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -333,17 +323,19 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               setSearchQuery('');
               window.history.replaceState(null, '', window.location.pathname);
             }}
-            className="px-2.5 py-1 text-[11px] font-bold bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg cursor-pointer transition shrink-0"
+            className="px-4 py-2 text-xs font-black bg-white/20 hover:bg-white/30 text-white rounded-xl cursor-pointer transition shrink-0 active:scale-95 border border-white/30 shadow-xs"
           >
-            전체 수주 보기
+            전체 공정 보기
           </button>
         </div>
       )}
 
-      {/* Top Main Banner */}
+      {/* ========================================================================= */}
+      {/* 2. TOP TOOLBAR & QUICK STATS                                              */}
+      {/* ========================================================================= */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-[#0066FF] text-white shadow-md shrink-0">
+          <div className="p-3 rounded-2xl bg-blue-600 text-white shadow-md shrink-0">
             <Cpu className="w-6 h-6" />
           </div>
           <div>
@@ -351,12 +343,12 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                 현장 모바일 MES 공정 실행 터미널
               </h1>
-              <span className="text-[10px] bg-blue-100 text-[#0066FF] px-2.5 py-0.5 rounded-full font-black">
-                스마트 공정 실행기
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-black">
+                대형 터치 &amp; QR 전용
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              원클릭 대형 터치 버튼, 이지 트래블러 QR 라벨 스캔, 안돈 긴급 호출 및 PLC M100 신호 연동
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+              모바일 원터치 [공정 시작/완료], 계획 vs 실적 실시간 타이머, 안돈 긴급 호출
             </p>
           </div>
         </div>
@@ -370,7 +362,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
             className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
           >
             <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-            <span>PLC IoT 브리지 (M100)</span>
+            <span>PLC IoT 연동 (M100)</span>
           </button>
 
           {/* Quick KPI Strip */}
@@ -379,82 +371,133 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedStatus('ANDON')}
-                className="px-2.5 py-1.5 rounded-xl bg-red-600 text-white flex items-center gap-1 shadow-sm animate-pulse cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-red-600 text-white flex items-center gap-1.5 shadow-sm animate-pulse cursor-pointer"
               >
-                <Flame className="w-3.5 h-3.5" />
+                <Flame className="w-4 h-4" />
                 <span>안돈 {andonCount}건</span>
               </button>
             )}
-            <span className="px-2.5 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-              진행중 {inProgressCount}건
+            <span className="px-3 py-2 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+              <span>진행 {inProgressCount}건</span>
             </span>
-            <span className="px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              완료 {completedCount}건
+            <span className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>완료 {completedCount}건</span>
             </span>
-            <span className="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 border border-slate-300">
+            <span className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-300">
               대기 {readyCount}건
             </span>
           </div>
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+      {/* ========================================================================= */}
+      {/* 2.5. FLOOR EMERGENCY ANDON ALERT STRIP (IF ACTIVE ISSUES EXIST)           */}
+      {/* ========================================================================= */}
+      {andonCount > 0 && (
+        <div className="bg-rose-50 border-2 border-red-500 rounded-2xl p-4 shadow-md space-y-2.5 animate-pulse-subtle">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-200 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping" />
+              <Flame className="w-5 h-5 text-red-600" />
+              <h3 className="text-sm font-black text-red-950">
+                🚨 현장 긴급 이상발생(안돈) 경보 ({andonCount}건 긴급 정지 중)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedStatus('ANDON');
+                setSearchQuery('');
+              }}
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-black transition cursor-pointer shadow-xs active:scale-95"
+            >
+              이상발생 공정만 모아보기
+            </button>
+          </div>
+          <div className="text-xs text-red-900 font-bold flex flex-wrap gap-2">
+            {taskList
+              .filter((t) => t.andonStatus === 'ISSUE_HOLD')
+              .map((t) => (
+                <div
+                  key={t.processKey}
+                  onClick={() => {
+                    const el = document.getElementById(`card-${t.processKey}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
+                  className="bg-white px-2.5 py-1.5 rounded-lg border border-red-300 shadow-2xs hover:bg-red-100/50 cursor-pointer flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>[{t.machine || '설비'}] {t.content}</span>
+                  <span className="text-[10px] text-red-600 bg-red-100 px-1.5 py-0.2 rounded font-black">
+                    {t.andonIssueType || '이상'}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. FILTER & SEARCH CONTROLS                                               */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
-              placeholder="수주명, 공정명, 설비, 작업자 검색..."
+              placeholder="수주 ID, 프로젝트명, 공정명, 설비, 작업자 검색..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0066FF] font-semibold"
+              className="w-full pl-10 pr-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)}
-              className={`px-3 py-2 text-xs font-black rounded-xl border transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-2.5 text-xs font-black rounded-xl border transition flex items-center gap-1.5 cursor-pointer ${
                 showOnlyMyTasks
-                  ? 'bg-[#0066FF] text-white border-[#0066FF] shadow-xs'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                   : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
               }`}
             >
-              <UserCheck className="w-3.5 h-3.5" />
+              <UserCheck className="w-4 h-4" />
               <span>내 배정 공정만</span>
             </button>
 
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+              className="px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option value="ALL">전체 상태</option>
-              <option value="IN_PROGRESS">진행중 (IN_PROGRESS)</option>
+              <option value="IN_PROGRESS">가공 진행 중 (IN_PROGRESS)</option>
               <option value="READY">작업 대기 (READY/PLANNED)</option>
-              <option value="COMPLETED">완료 (COMPLETED)</option>
-              <option value="ANDON">🚨 안돈 긴급 호출 (ISSUE_HOLD)</option>
+              <option value="COMPLETED">공정 완료 (COMPLETED)</option>
+              <option value="ANDON">🚨 안돈 긴급호출 (ISSUE_HOLD)</option>
             </select>
 
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+              className="px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option value="ALL">전체 공정 분류</option>
               <option value="가공">MCT 가공</option>
               <option value="연마">정밀 연마</option>
               <option value="품질">품질 검사</option>
-              <option value="후처리">후처리/세척</option>
+              <option value="외주">외주 가공</option>
             </select>
 
             <select
               value={selectedMachineFilter}
               onChange={(e) => setSelectedMachineFilter(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+              className="px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option value="ALL">전체 설비</option>
               {ALL_EQUIPMENT_LIST.map((m) => (
@@ -467,7 +510,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
             <select
               value={selectedWorkerFilter}
               onChange={(e) => setSelectedWorkerFilter(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+              className="px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option value="ALL">전체 작업자</option>
               {approvedOperators.map((w) => (
@@ -480,16 +523,24 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
         </div>
       </div>
 
-      {/* Unit-by-Unit Floor Process Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* ========================================================================= */}
+      {/* 4. PROCESS CARDS GRID (TOUCH-OPTIMIZED, BANNERS, SIDE-BY-SIDE TIME)        */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {filteredTasks.length === 0 ? (
-          <div className="col-span-full py-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 font-bold text-xs">
+          <div className="col-span-full py-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 font-bold text-sm">
             조건에 일치하는 현장 작업 공정이 없습니다.
           </div>
         ) : (
           filteredTasks.map((task) => {
             const taskOrder = orders[task.orderId];
             const progressItem = processProgressMap[task.processKey];
+            const isTargetFocused =
+              deepLinkInfo &&
+              task.orderId === deepLinkInfo.orderId &&
+              (!deepLinkInfo.processId ||
+                task.processKey.includes(deepLinkInfo.processId) ||
+                task.processKey.endsWith(`_${deepLinkInfo.processId}`));
 
             return (
               <FloorProcessCard
@@ -504,6 +555,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
                 onOpenTraveler={handleOpenTraveler}
                 onOpenAndon={handleOpenAndon}
                 onUpdateDefectQty={handleUpdateDefectQty}
+                isFocused={Boolean(isTargetFocused)}
               />
             );
           })
@@ -538,6 +590,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
             setAndonTask(null);
           }}
           taskItem={andonTask}
+          order={orders[andonTask.orderId]}
           currentUser={currentUser}
           onSubmitIssue={handleSubmitAndonIssue}
           onResolveIssue={handleResolveAndonIssue}

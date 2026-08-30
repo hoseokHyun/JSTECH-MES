@@ -256,6 +256,10 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   }, [scheduledTasks]);
 
   // Alert list items (delayed and paused)
+  const andonTasks = useMemo(() => {
+    return scheduledTasks.filter((t) => t.andonStatus === 'ISSUE_HOLD');
+  }, [scheduledTasks]);
+
   const bottleneckAlertTasks = useMemo(() => {
     let list: ScheduledTaskItem[] = [];
     if (alertFilter === 'ALL') {
@@ -345,6 +349,92 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           )}
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 1.5. EMERGENCY ISSUE NOTIFICATION (안돈 이상발생 관리자 실시간 긴급 경보)   */}
+      {/* ========================================================================= */}
+      {andonTasks.length > 0 && (
+        <div className="bg-rose-50 border-2 border-red-500 rounded-2xl p-4 shadow-md space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-200 pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-red-600 text-white rounded-xl shadow-xs">
+                <Flame className="w-5 h-5 animate-bounce" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-black text-red-950">
+                    🚨 현장 긴급 이상발생(안돈) 경보 접수
+                  </h2>
+                  <span className="bg-red-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full animate-pulse shadow-2xs">
+                    {andonTasks.length}건 정지 중
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 font-semibold mt-0.5">
+                  현장 작업자가 설비 또는 품질 이상을 신고하여 공정이 긴급 정지 상태입니다. 내용을 확인하고 조치해 주십시오.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {andonTasks.map((task) => {
+              const matchedOrder = orders[task.orderId];
+              const pjtNoDisplay = matchedOrder?.pjtNo || matchedOrder?.poNumber || task.orderId;
+              const pjtNameDisplay = matchedOrder?.pjtName || matchedOrder?.name || task.orderName;
+
+              return (
+                <div
+                  key={task.processKey}
+                  onClick={() => handleOpenTaskDetail(task)}
+                  className="bg-white rounded-xl p-3.5 border-2 border-red-400 hover:border-red-600 shadow-xs hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-2 group"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[10px] font-black bg-red-100 text-red-900 px-2 py-0.5 rounded border border-red-300">
+                        {task.andonIssueType || '현장 이상 발생'}
+                      </span>
+                      {task.andonReportedAt && (
+                        <span className="text-[10px] text-slate-500 font-bold">
+                          {new Date(task.andonReportedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 접수
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs font-black text-slate-900 group-hover:text-red-600 transition truncate">
+                      {task.content || task.groupName}
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 mt-1 space-y-0.5">
+                      <div className="truncate">
+                        <span className="font-bold text-slate-500">PJT: </span>
+                        <strong className="text-blue-900">{pjtNoDisplay}</strong> ({pjtNameDisplay})
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-500">설비/작업자: </span>
+                        <strong>{task.machine || '설비 미정'}</strong> / <strong>{task.worker || '작업자 미정'}</strong>
+                      </div>
+                    </div>
+
+                    {task.andonIssueNote && (
+                      <div className="mt-2 bg-red-50 p-2 rounded-lg border border-red-200 text-xs text-red-950 font-bold">
+                        "{task.andonIssueNote}"
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-red-700 font-black">
+                    <span>신고자: {task.andonReportedBy || '현장 작업자'}</span>
+                    <span className="flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                      <span>조치/확인</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 2. 간략한 수주 현황 요약 카드 (4대 핵심 지표 그리드)                         */}
@@ -539,11 +629,14 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                   {/* Order Overview Header Bar */}
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                     <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-mono font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                        {ord.pjtNo || ord.poNumber || ord.id}
+                      </span>
                       <span className="text-xs font-black text-slate-900 truncate">
-                        {ord.name}
+                        {ord.pjtName || ord.name}
                       </span>
                       <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                        {type ? type.name : '표준'} | {ord.qty}개
+                        {ord.customer ? `${ord.customer} | ` : ''}{type ? type.name : '표준'} | {ord.qty}개
                       </span>
                       {prog.delayed > 0 && (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-600 text-white animate-pulse">

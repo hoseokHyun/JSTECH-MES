@@ -150,6 +150,11 @@ export function calculateSchedule(
             delayMinutes: pInfo.delayMinutes,
             delayReason: pInfo.delayReason,
             memo: pInfo.memo,
+            andonStatus: pInfo.andonStatus || 'NORMAL',
+            andonIssueType: pInfo.andonIssueType,
+            andonIssueNote: pInfo.andonIssueNote,
+            andonReportedAt: pInfo.andonReportedAt,
+            andonReportedBy: pInfo.andonReportedBy,
           };
 
           items.push(itemData);
@@ -245,6 +250,11 @@ export function calculateSchedule(
             delayMinutes: pInfo.delayMinutes,
             delayReason: pInfo.delayReason,
             memo: pInfo.memo,
+            andonStatus: pInfo.andonStatus || 'NORMAL',
+            andonIssueType: pInfo.andonIssueType,
+            andonIssueNote: pInfo.andonIssueNote,
+            andonReportedAt: pInfo.andonReportedAt,
+            andonReportedBy: pInfo.andonReportedBy,
           };
 
           items.push(itemData);

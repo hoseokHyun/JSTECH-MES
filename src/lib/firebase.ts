@@ -39,54 +39,11 @@ export function subscribeOrders(
 
   return onSnapshot(
     ordersRef,
-    async (snapshot) => {
-      if (snapshot.empty) {
-        // Seed initial orders if empty
-        try {
-          const batch = writeBatch(db);
-          Object.values(INITIAL_ORDERS).forEach((ord) => {
-            batch.set(doc(db, 'orders', ord.id), cleanUndefined(ord));
-          });
-          await batch.commit();
-        } catch (err) {
-          console.error('Failed to seed initial orders to Firestore', err);
-        }
-        onUpdate(INITIAL_ORDERS);
-        return;
-      }
-
+    (snapshot) => {
       const ordersMap: Record<string, Order> = {};
       snapshot.forEach((docSnap) => {
         ordersMap[docSnap.id] = docSnap.data() as Order;
       });
-
-      // Check if any default INITIAL_ORDERS are missing in Firestore and auto-seed them
-      let deletedIds: string[] = [];
-      try {
-        const delSaved = typeof window !== 'undefined' ? localStorage.getItem('junsung_mes_deleted_orders_v2') : null;
-        deletedIds = delSaved ? JSON.parse(delSaved) : [];
-      } catch {}
-
-      const missingInitial: Order[] = [];
-      Object.values(INITIAL_ORDERS).forEach((initOrd) => {
-        if (!ordersMap[initOrd.id] && !deletedIds.includes(initOrd.id)) {
-          ordersMap[initOrd.id] = initOrd;
-          missingInitial.push(initOrd);
-        }
-      });
-
-      if (missingInitial.length > 0) {
-        try {
-          const batch = writeBatch(db);
-          missingInitial.forEach((ord) => {
-            batch.set(doc(db, 'orders', ord.id), cleanUndefined(ord));
-          });
-          await batch.commit();
-        } catch (e) {
-          console.warn('Background sync of missing initial orders to Firestore', e);
-        }
-      }
-
       onUpdate(ordersMap);
     },
     (err) => {
@@ -121,10 +78,24 @@ export async function saveOrderToFirestore(order: Order) {
   }
 }
 
-// Delete Order from Firestore
+// Delete Order from Firestore permanently
 export async function deleteOrderFromFirestore(orderId: string) {
   try {
     await deleteDoc(doc(db, 'orders', orderId));
+    // Also delete any matching process progress docs
+    const progressSnap = await getDocs(collection(db, 'processProgress'));
+    const b = writeBatch(db);
+    let count = 0;
+    progressSnap.forEach((d) => {
+      const id = d.id;
+      if (id.startsWith(`${orderId}-`) || id.startsWith(`${orderId}_`) || id.includes(`-${orderId}-`)) {
+        b.delete(d.ref);
+        count++;
+      }
+    });
+    if (count > 0) {
+      await b.commit();
+    }
   } catch (err) {
     console.error('Error deleting order from Firestore:', err);
   }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import QRCode from 'qrcode';
 import {
   X,
   Printer,
@@ -13,9 +14,13 @@ import {
   FileCheck2,
   ChevronDown,
   Layers,
-  FileText
+  FileText,
+  QrCode,
+  Smartphone,
+  ScanLine
 } from 'lucide-react';
 import { Order, ProductType, ProcessStep, User, ProcessProgressMap } from '../types';
+import { extractSerialBase, formatSerialRange, getIndividualSerialNo, getSerialNoList } from '../utils/serialHelper';
 
 const MIN_ROWS_PER_PAGE = 10;
 const MAX_ROWS_PER_PAGE = 22;
@@ -189,8 +194,8 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   }, [order]);
 
   const defaultSerialNo = useMemo(() => {
-    if (order.serialNo) return order.serialNo;
-    return `${defaultPoNumber.replace(/[^a-zA-Z0-9-]/g, '')}-01`;
+    if (order.serialNo) return formatSerialRange(order.serialNo, order.qty || 1);
+    return formatSerialRange(defaultPoNumber || 'NN-NNNNN-2608-01', order.qty || 1);
   }, [order, defaultPoNumber]);
 
   const defaultDueDate = useMemo(() => {
@@ -230,11 +235,27 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
   // Preview & print settings
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedPiece, setSelectedPiece] = useState<'ALL' | number>('ALL');
   const [rowsPerPage, setRowsPerPage] = useState<number>(18);
   const [showBlankRows, setShowBlankRows] = useState<boolean>(true);
   const [selectedPageView, setSelectedPageView] = useState<'ALL' | number>('ALL');
   const [savedNotice, setSavedNotice] = useState<string>('');
   const [isPreparingPrint, setIsPreparingPrint] = useState<boolean>(false);
+
+  // Synchronize serial range when quantity is modified in editing mode
+  const handleQtyChange = (newQty: number) => {
+    const validQty = Math.max(1, newQty);
+    setQty(validQty);
+    const base = extractSerialBase(serialNo) || defaultPoNumber || 'NN-NNNNN-2608-01';
+    setSerialNo(formatSerialRange(base, validQty));
+  };
+
+  const handleSerialBlur = () => {
+    if (serialNo.trim()) {
+      const base = extractSerialBase(serialNo);
+      setSerialNo(formatSerialRange(base || defaultPoNumber || 'NN-NNNNN-2608-01', qty));
+    }
+  };
 
   // Attach body class for print isolation
   useEffect(() => {
@@ -261,6 +282,45 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     setReviewerName(order.reviewerName || '검토자');
     setApproverName(order.approverName || '승인자');
   }, [order, defaultCustomer, defaultPoNumber, defaultPartName, defaultPartType, defaultSpec, defaultSerialNo, defaultDueDate, defaultSpecialNotes, currentUser]);
+
+  // Per-Process Auto QR Code generation
+  const [qrCodeMap, setQrCodeMap] = useState<Record<string, string>>({});
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [activeQrStep, setActiveQrStep] = useState<{
+    name: string;
+    key: string;
+    qrUrl: string;
+    link: string;
+    machine?: string;
+    worker?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !order) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://jstech-mes.vercel.app';
+    const newMap: Record<string, string> = {};
+
+    baseProcesses.forEach((proc, idx) => {
+      const processKey = `${order.id}_Q1_P${idx}`;
+      const directUrl = `${origin}/floor?orderId=${encodeURIComponent(order.id)}&processId=${encodeURIComponent(processKey)}`;
+
+      QRCode.toDataURL(
+        directUrl,
+        {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 140,
+          color: { dark: '#000000', light: '#FFFFFF' },
+        },
+        (err, url) => {
+          if (!err && url) {
+            newMap[processKey] = url;
+            setQrCodeMap((prev) => ({ ...prev, [processKey]: url }));
+          }
+        }
+      );
+    });
+  }, [isOpen, order, baseProcesses]);
 
   // Dynamic continuous row sizing & font density based on rowsPerPage (10 ~ 22)
   const tableDensity = useMemo(() => {
@@ -499,6 +559,16 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
             <button
               type="button"
+              onClick={() => setShowQrModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-black shadow-md transition cursor-pointer border border-amber-400/30"
+              title="각 공정별 스마트폰 스캔용 대형 QR 코드를 조회합니다."
+            >
+              <Smartphone className="w-4 h-4 text-amber-400" />
+              <span>모바일 QR 일괄 보기</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handlePrint}
               disabled={isPreparingPrint}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
@@ -553,6 +623,38 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* Individual Piece Serial No Selector (When Qty > 1) */}
+            {qty > 1 && (
+              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-300 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-500 px-1">호기별 각인:</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPiece('ALL')}
+                  className={`px-2 py-0.5 rounded text-xs font-bold transition cursor-pointer ${
+                    selectedPiece === 'ALL'
+                      ? 'bg-emerald-600 text-white shadow-2xs font-black'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  전체 로트 ({formatSerialRange(serialNo, qty)})
+                </button>
+                {Array.from({ length: qty }, (_, i) => i + 1).map((pieceNum) => (
+                  <button
+                    key={`piece-btn-${pieceNum}`}
+                    type="button"
+                    onClick={() => setSelectedPiece(pieceNum)}
+                    className={`px-2 py-0.5 rounded text-xs font-mono font-bold transition cursor-pointer ${
+                      selectedPiece === pieceNum
+                        ? 'bg-blue-600 text-white shadow-2xs font-black'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    #{pieceNum} ({getIndividualSerialNo(serialNo, pieceNum, qty).split('-').slice(-1)[0]})
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Rows Per Page Selector & Direct Custom Number Input (10 ~ 22) */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-300 flex-wrap">
@@ -856,16 +958,33 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             각인번호
                           </td>
-                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-mono font-bold text-xs`}>
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-2 font-mono font-bold text-xs`}>
                             {isEditing ? (
-                              <input
-                                type="text"
-                                value={serialNo}
-                                onChange={(e) => setSerialNo(e.target.value)}
-                                className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-bold"
-                              />
+                              <div className="space-y-0.5">
+                                <input
+                                  type="text"
+                                  value={serialNo}
+                                  onChange={(e) => setSerialNo(e.target.value)}
+                                  onBlur={handleSerialBlur}
+                                  className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-bold font-mono"
+                                />
+                                <div className="text-[9px] text-slate-500 font-sans">
+                                  {formatSerialRange(serialNo || defaultPoNumber, qty)}
+                                </div>
+                              </div>
                             ) : (
-                              <span>{serialNo}</span>
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="font-bold text-xs tracking-tight">
+                                  {selectedPiece === 'ALL'
+                                    ? (formatSerialRange(serialNo, qty) || serialNo)
+                                    : getIndividualSerialNo(serialNo || defaultPoNumber, selectedPiece, qty)}
+                                </span>
+                                {qty > 1 && selectedPiece !== 'ALL' && (
+                                  <span className="text-[9.5px] text-blue-700 font-bold font-sans">
+                                    (#{selectedPiece}호기 / 총 {qty}EA)
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -896,7 +1015,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 type="number"
                                 min={1}
                                 value={qty}
-                                onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                                onChange={(e) => handleQtyChange(parseInt(e.target.value) || 1)}
                                 className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-black"
                               />
                             ) : (
@@ -929,16 +1048,17 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                   </div>
 
                   {/* ------------------------------------------------------------- */}
-                  {/* 3. PROCESS ROUTING TABLE (구분, 공정명, 작업자, 설비명, 시작, 종료, 소요시간) */}
+                  {/* 3. PROCESS ROUTING TABLE (구분, 공정명, QR, 작업자, 설비명, 시작, 종료, 소요시간) */}
                   {/* ------------------------------------------------------------- */}
                   <div className="mb-2">
                     <table className="traveler-table w-full border-collapse border-2 border-black text-xs table-fixed">
                       <thead>
                         <tr className="bg-slate-100 font-bold text-center text-xs">
-                          <th className={`border border-black ${tableDensity.headerPadding} w-[7%] text-center`}>구분</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-[33%] text-center`}>공정명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[6%] text-center`}>구분</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[28%] text-center`}>공정명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[7%] text-center`}>QR</th>
                           <th className={`border border-black ${tableDensity.headerPadding} w-[11%] text-center`}>작업자</th>
-                          <th className={`border border-black ${tableDensity.headerPadding} w-[16%] text-center`}>설비명</th>
+                          <th className={`border border-black ${tableDensity.headerPadding} w-[15%] text-center`}>설비명</th>
                           <th className={`border border-black ${tableDensity.headerPadding} w-[13.5%] text-center leading-tight`}>
                             <div>작업시작</div>
                             <div className={tableDensity.stampDateSize}>시간 (a)</div>
@@ -958,6 +1078,9 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                         {pageInfo.processes.map(({ proc, globalIndex, originalIndex }) => {
                           const processKey = `${order.id}_Q1_P${originalIndex}`;
                           const progressItem = processProgressMap[processKey];
+                          const origin = typeof window !== 'undefined' ? window.location.origin : 'https://jstech-mes.vercel.app';
+                          const stepQrUrl = qrCodeMap[processKey];
+                          const directUrl = `${origin}/floor?orderId=${encodeURIComponent(order.id)}&processId=${encodeURIComponent(processKey)}`;
 
                           // 1. Worker Resolution
                           const boundWorker =
@@ -1001,6 +1124,35 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               {/* 공정명 - 원본 100% 보존, 1행(Single Line) 강제, 폰트 자동 축소(Auto-fitting) */}
                               <td className={`border border-black process-name-cell ${tableDensity.rowPadding} text-left font-bold text-black whitespace-nowrap overflow-hidden`}>
                                 <ProcessNameAutoFit name={proc.name} rowsPerPage={rowsPerPage} />
+                              </td>
+
+                              {/* QR Code Column (자동 생성된 개별 공정 QR 코드) */}
+                              <td className="border border-black p-0.5 text-center align-middle">
+                                {stepQrUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setActiveQrStep({
+                                        name: proc.name,
+                                        key: processKey,
+                                        qrUrl: stepQrUrl,
+                                        link: directUrl,
+                                        machine: boundMachine,
+                                        worker: boundWorker,
+                                      })
+                                    }
+                                    className="cursor-pointer hover:opacity-80 transition inline-block"
+                                    title="스마트폰 카메라로 스캔 시 현장 공정 자동 진입 (클릭 시 확대)"
+                                  >
+                                    <img
+                                      src={stepQrUrl}
+                                      alt={`QR ${proc.name}`}
+                                      className="w-6 h-6 sm:w-7 sm:h-7 mx-auto block object-contain"
+                                    />
+                                  </button>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 font-mono">QR</span>
+                                )}
                               </td>
 
                               {/* 작업자 */}
@@ -1068,6 +1220,8 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </td>
                               {/* 공정명 */}
                               <td className={`border border-black process-name-cell ${tableDensity.rowPadding} text-left ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
+                              {/* QR */}
+                              <td className="border border-black"></td>
                               {/* 작업자 */}
                               <td className={`border border-black ${tableDensity.rowPadding} ${tableDensity.fontSize} whitespace-nowrap overflow-hidden`}></td>
                               {/* 설비명 */}
@@ -1114,6 +1268,143 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
           })}
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 4. MODAL: SINGLE PROCESS LARGE QR VIEWER                                  */}
+      {/* ========================================================================= */}
+      {activeQrStep && (
+        <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                모바일 현장 진입 QR
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveQrStep(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <span className="text-xs font-mono font-bold text-slate-500">[{order?.id}]</span>
+              <h3 className="text-base font-black text-slate-900 leading-snug mt-1">
+                {activeQrStep.name}
+              </h3>
+              <p className="text-xs text-slate-600 font-semibold mt-1">
+                설비: {activeQrStep.machine || '미배정'} • 작업자: {activeQrStep.worker || '미지정'}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-center shadow-inner">
+              <img
+                src={activeQrStep.qrUrl}
+                alt="QR Code"
+                className="w-48 h-48 object-contain rounded-xl"
+              />
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium">
+              현장 작업자가 스마트폰 카메라로 스캔하면 이 공정의 모바일 실행 화면으로 즉시 연결됩니다.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setActiveQrStep(null)}
+              className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs cursor-pointer hover:bg-slate-800"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. MODAL: ALL PROCESSES QR GALLERY                                       */}
+      {/* ========================================================================= */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-[100] bg-black/75 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-md">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    전 공정 모바일 QR 스캔 라벨 일괄 보기
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    수주 [{order?.id}] {order?.name} — 각 공정별 고유 QR 코드
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pr-1">
+              {baseProcesses.map((proc, idx) => {
+                const processKey = `${order?.id}_Q1_P${idx}`;
+                const qrUrl = qrCodeMap[processKey];
+                const boundMachine = proc.assignedMachine || (proc.category === '외주' ? '(외주)' : '미배정');
+                const boundWorker = proc.worker || proc.assignedWorker || '미지정';
+
+                return (
+                  <div
+                    key={`all-qr-${idx}`}
+                    className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center text-center justify-between space-y-2 shadow-xs"
+                  >
+                    <div className="w-full text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-md">
+                          STEP {idx + 1}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">{proc.category}</span>
+                      </div>
+                      <h4 className="text-xs font-black text-slate-900 truncate mt-1" title={proc.name}>
+                        {proc.name}
+                      </h4>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                      {qrUrl ? (
+                        <img src={qrUrl} alt={proc.name} className="w-32 h-32 object-contain" />
+                      ) : (
+                        <div className="w-32 h-32 flex items-center justify-center text-slate-400 text-xs">
+                          QR 생성중...
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-full text-[11px] text-slate-600 font-semibold">
+                      <div>설비: <strong className="text-slate-900">{boundMachine}</strong></div>
+                      <div>작업자: <strong className="text-slate-900">{boundWorker}</strong></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs cursor-pointer shadow-md"
+              >
+                확인 및 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

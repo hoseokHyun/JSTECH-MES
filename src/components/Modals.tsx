@@ -3,6 +3,7 @@ import { Order, OrderStatus, ProductType, User, UserPermissions, UserDepartment,
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { buildOperatorSelectOptions, extractValidApprovedOperators } from '../utils/operatorHelper';
+import { extractSerialBase, formatSerialRange } from '../utils/serialHelper';
 import {
   Archive,
   X,
@@ -2191,7 +2192,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                   type="text"
                   value={serialNo}
                   onChange={(e) => setSerialNo(e.target.value)}
-                  placeholder="예: PNT-01"
+                  onBlur={() => {
+                    if (serialNo.trim()) {
+                      const base = extractSerialBase(serialNo);
+                      setSerialNo(formatSerialRange(base || poNumber || name, qty));
+                    }
+                  }}
+                  placeholder={`예: ${formatSerialRange(poNumber || 'NN-NNNNN-2608-01', qty)}`}
                   className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-white"
                 />
               </div>
