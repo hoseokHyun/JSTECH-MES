@@ -199,6 +199,13 @@ export function subscribeProcessProgress(
           delayMinutes: data.delayMinutes,
           delayReason: data.delayReason,
           memo: data.memo,
+          defectQty: data.defectQty,
+          andonStatus: data.andonStatus || 'NORMAL',
+          andonIssueType: data.andonIssueType || '',
+          andonIssueNote: data.andonIssueNote || '',
+          andonReportedAt: data.andonReportedAt || null,
+          andonReportedBy: data.andonReportedBy || '',
+          andonHistory: data.andonHistory || [],
         };
       });
       onUpdate(progressMap);
@@ -231,6 +238,13 @@ export async function saveProcessProgressToFirestore(
       delayMinutes: progress.delayMinutes,
       delayReason: progress.delayReason,
       memo: progress.memo,
+      defectQty: progress.defectQty,
+      andonStatus: progress.andonStatus || 'NORMAL',
+      andonIssueType: progress.andonIssueType || null,
+      andonIssueNote: progress.andonIssueNote || null,
+      andonReportedAt: progress.andonReportedAt || null,
+      andonReportedBy: progress.andonReportedBy || null,
+      andonHistory: progress.andonHistory || [],
     });
     await setDoc(doc(db, 'processProgress', processKey), payload, { merge: true });
   } catch (err) {

@@ -310,10 +310,12 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
     const nowIso = new Date().toISOString();
     const reasonText =
       selectedPauseReason === '기타' ? customPauseReason || '기타 사유' : selectedPauseReason;
+    const operatorName = selectedWorker || currentUser?.name || activeTask.worker || '현장 작업자';
     const currentHistory: PauseLog[] = [...(activeTask.pauseHistory || [])];
     currentHistory.push({
       pausedAt: nowIso,
       reason: reasonText,
+      operator: operatorName,
     });
 
     setLocalTaskOverride({

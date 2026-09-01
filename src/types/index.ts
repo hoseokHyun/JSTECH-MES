@@ -3,6 +3,11 @@ export type ProcessCategory = '가공' | '연마' | '외주' | '품질';
 export type TaskExecutionStatus = 'READY' | 'PLANNED' | 'DISPATCHED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'DELAYED' | 'ISSUE_HOLD';
 
 export type PauseReason =
+  | '설비 점검/고장'
+  | '원소재/자재 대기'
+  | '품질/도면 확인'
+  | '작업자 교대/휴게'
+  | '공구 교체/세팅'
   | '설비 고장'
   | '자재 부족'
   | '품질 문제'
@@ -15,6 +20,7 @@ export interface PauseLog {
   resumedAt?: string;
   reason: PauseReason | string;
   durationMinutes?: number;
+  operator?: string;
 }
 
 export interface IncidentIssueLog {

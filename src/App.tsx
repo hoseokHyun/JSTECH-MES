@@ -739,7 +739,7 @@ export default function App() {
     const canExecuteMES =
       !currentUser ||
       currentUser.role === 'ADMIN' ||
-      currentUser.permissions?.canExecuteMES === true;
+      currentUser.permissions?.canExecuteMES !== false;
 
     if (!canExecuteMES) {
       alert('⚠️ 공정 상태 변경 권한이 없습니다.');

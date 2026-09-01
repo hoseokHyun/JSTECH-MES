@@ -13,6 +13,7 @@ import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
 import { FloorProcessCard } from './FloorProcessCard';
 import { EasyTravelerModal } from './EasyTravelerModal';
 import { AndonReportModal } from './AndonReportModal';
+import { PausePromptModal } from './PausePromptModal';
 import { PlcBridgeModal } from './PlcBridgeModal';
 import {
   Play,
@@ -124,6 +125,9 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   const [andonTask, setAndonTask] = useState<ScheduledTaskItem | null>(null);
   const [isAndonOpen, setIsAndonOpen] = useState(false);
 
+  const [pauseTask, setPauseTask] = useState<ScheduledTaskItem | null>(null);
+  const [isPauseOpen, setIsPauseOpen] = useState(false);
+
   const [isPlcBridgeOpen, setIsPlcBridgeOpen] = useState(false);
 
   const canExecuteMES =
@@ -172,6 +176,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   const completedCount = taskList.filter((i) => i.isCompleted || i.status === 'COMPLETED').length;
   const inProgressCount = taskList.filter((i) => i.status === 'IN_PROGRESS').length;
+  const pausedCount = taskList.filter((i) => i.status === 'PAUSED').length;
   const andonCount = taskList.filter((i) => i.andonStatus === 'ISSUE_HOLD').length;
   const readyCount = taskList.filter((i) => i.status === 'READY' || i.status === 'PLANNED' || !i.status).length;
 
@@ -190,6 +195,65 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       machine: task?.machine || existing.machine,
       isCompleted: false,
       completedAt: null,
+      pauseReason: undefined,
+    });
+  };
+
+  const handleOpenPauseModal = (task: ScheduledTaskItem) => {
+    setPauseTask(task);
+    setIsPauseOpen(true);
+  };
+
+  const handleConfirmPause = (
+    processKey: string,
+    reason: string,
+    operatorName: string,
+    detailNote?: string
+  ) => {
+    const existing = processProgressMap[processKey] || {};
+    const task = taskList.find((t) => t.processKey === processKey);
+    const nowIso = new Date().toISOString();
+
+    const newPauseLog: PauseLog = {
+      pausedAt: nowIso,
+      reason,
+      operator: operatorName,
+    };
+    const updatedPauseHistory = [...(existing.pauseHistory || task?.pauseHistory || []), newPauseLog];
+
+    onUpdateProgress(processKey, {
+      ...existing,
+      status: 'PAUSED',
+      pauseReason: reason,
+      pauseHistory: updatedPauseHistory,
+      worker: operatorName || existing.worker || task?.worker,
+      memo: detailNote ? `${existing.memo || ''} [일시정지: ${detailNote}]`.trim() : existing.memo,
+    });
+  };
+
+  const handleResumeProcess = (processKey: string) => {
+    const existing = processProgressMap[processKey] || {};
+    const task = taskList.find((t) => t.processKey === processKey);
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    const currentHistory: PauseLog[] = [...(existing.pauseHistory || task?.pauseHistory || [])];
+    if (currentHistory.length > 0) {
+      const last = currentHistory[currentHistory.length - 1];
+      if (!last.resumedAt) {
+        last.resumedAt = nowIso;
+        const pStart = new Date(last.pausedAt).getTime();
+        const pDur = Math.max(1, Math.round((now.getTime() - pStart) / 60000));
+        last.durationMinutes = pDur;
+      }
+    }
+
+    onUpdateProgress(processKey, {
+      ...existing,
+      status: 'IN_PROGRESS',
+      pauseHistory: currentHistory,
+      pauseReason: undefined,
+      worker: currentUser?.name || existing.worker || task?.worker,
     });
   };
 
@@ -198,9 +262,24 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     const now = new Date();
     const nowIso = now.toISOString();
     const existing = processProgressMap[processKey] || {};
-    const start = task?.actualStart ? new Date(task.actualStart).getTime() : Date.now() - 3600000;
+    const startIso = existing.actualStart || task?.actualStart;
+    const start = startIso ? new Date(startIso).getTime() : Date.now() - 3600000;
     const rawMinutes = Math.max(1, Math.round((now.getTime() - start) / 60000));
-    const plannedMins = task?.plannedMinutes || (task?.duration ? task.duration * 60 : 60);
+
+    // Deduct total pause time so pure work time is recorded
+    const currentHistory: PauseLog[] = [...(existing.pauseHistory || task?.pauseHistory || [])];
+    if (currentHistory.length > 0) {
+      const last = currentHistory[currentHistory.length - 1];
+      if (!last.resumedAt) {
+        last.resumedAt = nowIso;
+        const pStart = new Date(last.pausedAt).getTime();
+        last.durationMinutes = Math.max(1, Math.round((now.getTime() - pStart) / 60000));
+      }
+    }
+
+    const totalPauseMins = currentHistory.reduce((acc, p) => acc + (p.durationMinutes || 0), 0);
+    const finalActualMins = Math.max(1, rawMinutes - totalPauseMins);
+    const plannedMins = task?.plannedMinutes || (task?.duration ? Math.round(task.duration * 60) : 60);
 
     onUpdateProgress(processKey, {
       ...existing,
@@ -208,8 +287,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       isCompleted: true,
       completedAt: nowIso,
       actualEnd: nowIso,
-      actualMinutes: rawMinutes,
-      delayMinutes: rawMinutes > plannedMins ? rawMinutes - plannedMins : 0,
+      actualMinutes: finalActualMins,
+      delayMinutes: finalActualMins > plannedMins ? finalActualMins - plannedMins : 0,
+      pauseHistory: currentHistory,
+      pauseReason: undefined,
       worker: task?.worker || currentUser?.name || existing.worker,
       machine: task?.machine || existing.machine,
     });
@@ -428,6 +509,12 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
               <span>진행 {inProgressCount}건</span>
             </span>
+            {pausedCount > 0 && (
+              <span className="px-3 py-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1.5">
+                <Pause className="w-3.5 h-3.5 fill-amber-700 text-amber-700" />
+                <span>일시정지 {pausedCount}건</span>
+              </span>
+            )}
             <span className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>완료 {completedCount}건</span>
@@ -524,6 +611,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
             >
               <option value="ALL">전체 상태</option>
               <option value="IN_PROGRESS">가공 진행 중 (IN_PROGRESS)</option>
+              <option value="PAUSED">일시정지 (PAUSED)</option>
               <option value="READY">작업 대기 (READY/PLANNED)</option>
               <option value="COMPLETED">공정 완료 (COMPLETED)</option>
               <option value="ANDON">🚨 긴급 이상발생 (ISSUE_HOLD)</option>
@@ -597,6 +685,8 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
                 progressItem={progressItem}
                 canExecuteMES={canExecuteMES}
                 onStartProcess={handleStartProcess}
+                onPauseProcess={handleOpenPauseModal}
+                onResumeProcess={handleResumeProcess}
                 onCompleteProcess={handleCompleteProcess}
                 onResetProcess={handleResetProcess}
                 onOpenTraveler={handleOpenTraveler}
@@ -642,6 +732,22 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
           approvedOperators={approvedOperators}
           onSubmitIssue={handleSubmitAndonIssue}
           onResolveIssue={handleResolveAndonIssue}
+        />
+      )}
+
+      {/* Pause Prompt Modal */}
+      {isPauseOpen && pauseTask && (
+        <PausePromptModal
+          isOpen={isPauseOpen}
+          onClose={() => {
+            setIsPauseOpen(false);
+            setPauseTask(null);
+          }}
+          taskItem={pauseTask}
+          order={orders[pauseTask.orderId]}
+          currentUser={currentUser}
+          approvedOperators={approvedOperators}
+          onConfirmPause={handleConfirmPause}
         />
       )}
 
