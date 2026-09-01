@@ -223,7 +223,7 @@ export interface BuildOperatorOptionsConfig {
 
 /**
  * Builds unified SelectOption[] for Operator Dropdown across all modals:
- * - 수주 및 공정 라우팅 수정 (EditOrderModal)
+ * - 수주 및 공정 구성 수정 (EditOrderModal)
  * - 신규 수주 등록 (OrderForm)
  * - 캘린더 공정 상세 (CalendarTaskDetailModal)
  * - 공정 타임라인 상세 (ProcessDetailModal)

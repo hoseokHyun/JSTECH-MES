@@ -486,7 +486,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-              <span>공정 라우팅 & 표준시간 관리 (BOP Master)</span>
+              <span>공정 구성 & 표준시간 관리 (Master)</span>
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 총 {Object.keys(productTypes).length}개 마스터
               </span>
@@ -524,7 +524,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <Layers className="w-4 h-4 text-indigo-600" />
-              <span>제품 라우팅 마스터 목록 ({filteredMasterList.length})</span>
+              <span>제품 공정 구성 마스터 목록 ({filteredMasterList.length})</span>
             </span>
           </div>
 
@@ -875,7 +875,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
           ) : (
             <div className="text-center py-20 text-slate-400 space-y-3">
               <Layers className="w-12 h-12 text-slate-300 mx-auto" />
-              <p className="text-sm font-bold">선택된 제품 라우팅 마스터가 없습니다.</p>
+              <p className="text-sm font-bold">선택된 제품 공정 구성 마스터가 없습니다.</p>
               <button
                 onClick={handleOpenNewModal}
                 className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-500 transition cursor-pointer shadow-sm"
@@ -900,7 +900,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900">마스터 이름 수정</h3>
-                  <p className="text-[11px] text-slate-500">제품 라우팅 마스터의 명칭을 변경합니다.</p>
+                  <p className="text-[11px] text-slate-500">제품 공정 구성 마스터의 명칭을 변경합니다.</p>
                 </div>
               </div>
               <button
@@ -988,8 +988,8 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                   <Copy className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">마스터 라우팅 복사</h3>
-                  <p className="text-[11px] text-slate-500">기존 마스터의 공정 라우팅을 기반으로 새 마스터를 복제합니다.</p>
+                  <h3 className="text-sm font-black text-slate-900">마스터 공정 구성 복사</h3>
+                  <p className="text-[11px] text-slate-500">기존 마스터의 공정 구성을 기반으로 새 마스터를 복제합니다.</p>
                 </div>
               </div>
               <button
@@ -1198,7 +1198,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-red-900">마스터 삭제 확인</h3>
-                    <p className="text-[11px] text-red-700">제품 라우팅 마스터를 영구히 삭제합니다.</p>
+                    <p className="text-[11px] text-red-700">제품 공정 구성 마스터를 영구히 삭제합니다.</p>
                   </div>
                 </div>
 
@@ -1209,7 +1209,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                   <div className="p-3 bg-red-50/60 rounded-xl border border-red-200 text-red-800 text-[11px] space-y-1">
                     <div className="font-bold">⚠️ 삭제 시 주의사항:</div>
                     <p>
-                      해당 마스터에 등록되어 있는 {targetTypeToDelete.processes.length}개 공정 라우팅 정보가 모두 삭제됩니다.
+                      해당 마스터에 등록되어 있는 {targetTypeToDelete.processes.length}개 공정 구성 정보가 모두 삭제됩니다.
                     </p>
                   </div>
                 </div>
@@ -1248,7 +1248,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-black text-rose-900">공정 단계 삭제 확인</h3>
-                <p className="text-[11px] text-rose-700">마스터 라우팅에서 해당 공정을 삭제합니다.</p>
+                <p className="text-[11px] text-rose-700">마스터 공정 구성에서 해당 공정을 삭제합니다.</p>
               </div>
             </div>
 
@@ -1312,7 +1312,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                   <Plus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">신규 제품 라우팅 마스터 생성</h3>
+                  <h3 className="text-sm font-black text-slate-900">신규 제품 공정 구성 마스터 생성</h3>
                   <p className="text-[11px] text-slate-500">새 제품 타입과 기본 공정 단계를 설정합니다.</p>
                 </div>
               </div>

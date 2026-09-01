@@ -46,6 +46,8 @@ import {
 } from 'lucide-react';
 import { EditOrderModal } from './Modals';
 import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
+import { AndonReportModal } from './AndonReportModal';
+import { IncidentIssueLog } from '../types';
 
 interface ExecutiveSummaryProps {
   orders: Record<string, Order>;
@@ -100,6 +102,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   onUpdateProgress,
   currentUser,
   approvedOperators = [],
+  processProgressMap = {},
 }) => {
   const completeAllFn = onCompleteAllOrderProcesses || onCompleteAllProcesses;
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -107,6 +110,10 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   // Task Detail Modal State for Direct Executive Action
   const [selectedTaskForModal, setSelectedTaskForModal] = useState<ScheduledTaskItem | null>(null);
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+
+  // Incident Modal State for Direct Emergency Resolution Action
+  const [selectedTaskForIncident, setSelectedTaskForIncident] = useState<ScheduledTaskItem | null>(null);
+  const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
   // Alert tab filter: 'ALL' | 'DELAYED' | 'PAUSED'
   const [alertFilter, setAlertFilter] = useState<'ALL' | 'DELAYED' | 'PAUSED'>('ALL');
@@ -116,6 +123,92 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     if (!selectedTaskForModal) return null;
     return scheduledTasks.find((t) => t.processKey === selectedTaskForModal.processKey) || selectedTaskForModal;
   }, [scheduledTasks, selectedTaskForModal]);
+
+  const currentTaskForIncident = useMemo(() => {
+    if (!selectedTaskForIncident) return null;
+    return scheduledTasks.find((t) => t.processKey === selectedTaskForIncident.processKey) || selectedTaskForIncident;
+  }, [scheduledTasks, selectedTaskForIncident]);
+
+  const handleOpenIncidentModal = (task: ScheduledTaskItem) => {
+    setSelectedTaskForIncident(task);
+    setIsIncidentModalOpen(true);
+  };
+
+  const handleSubmitIncidentIssue = (
+    processKey: string,
+    issueType: string,
+    note: string,
+    reporterName: string
+  ) => {
+    if (!onUpdateProgress) return;
+    const existing = (processProgressMap && processProgressMap[processKey]) || {};
+    const nowIso = new Date().toISOString();
+    const newIssue: IncidentIssueLog = {
+      id: `ISSUE-${Date.now()}`,
+      issueType,
+      note,
+      reportedAt: nowIso,
+      reportedBy: reporterName,
+      isResolved: false,
+    };
+    const updatedHistory = [...(existing.andonHistory || []), newIssue];
+    onUpdateProgress(processKey, {
+      ...existing,
+      andonStatus: 'ISSUE_HOLD',
+      andonIssueType: issueType,
+      andonIssueNote: note,
+      andonReportedAt: nowIso,
+      andonReportedBy: reporterName,
+      andonHistory: updatedHistory,
+    });
+  };
+
+  const handleResolveIncidentIssue = (
+    processKey: string,
+    resolveNote: string,
+    resolverName?: string
+  ) => {
+    if (!onUpdateProgress) return;
+    const existing = (processProgressMap && processProgressMap[processKey]) || {};
+    const nowIso = new Date().toISOString();
+    const effectiveResolver = resolverName || currentUser?.name || '시스템 관리자';
+
+    let foundUnresolved = false;
+    const updatedHistory = (existing.andonHistory || []).map((item: IncidentIssueLog) => {
+      if (!item.isResolved && !foundUnresolved) {
+        foundUnresolved = true;
+        return {
+          ...item,
+          isResolved: true,
+          resolvedAt: nowIso,
+          resolvedBy: effectiveResolver,
+          resolvedNote: resolveNote,
+        };
+      }
+      return item;
+    });
+
+    if (!foundUnresolved) {
+      updatedHistory.push({
+        id: `ISSUE-${Date.now()}`,
+        issueType: existing.andonIssueType || '현장 이상 발생',
+        note: existing.andonIssueNote || '현장 작업자 보고',
+        reportedAt: existing.andonReportedAt || nowIso,
+        reportedBy: existing.andonReportedBy || '작업자',
+        isResolved: true,
+        resolvedAt: nowIso,
+        resolvedBy: effectiveResolver,
+        resolvedNote: resolveNote,
+      });
+    }
+
+    onUpdateProgress(processKey, {
+      ...existing,
+      andonStatus: 'RESOLVED',
+      andonIssueNote: `${existing.andonIssueNote || ''} [해제 조치 (${effectiveResolver}): ${resolveNote}]`,
+      andonHistory: updatedHistory,
+    });
+  };
 
   // Local fallback filter options
   const [localFilterOptions, setLocalFilterOptions] = useState<FilterOptions>({
@@ -311,7 +404,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             <button
               onClick={onNavigateToOrderMaster}
               className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="상세 수주 목록 및 공정 라우팅 마스터로 이동"
+              title="상세 수주 목록 및 공정 구성 마스터로 이동"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600" />
               <span>수주관리 상세</span>
@@ -351,7 +444,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 1.5. EMERGENCY ISSUE NOTIFICATION (안돈 이상발생 관리자 실시간 긴급 경보)   */}
+      {/* 1.5. EMERGENCY ISSUE NOTIFICATION (현장 이상발생 관리자 실시간 긴급 경보)   */}
       {/* ========================================================================= */}
       {andonTasks.length > 0 && (
         <div className="bg-rose-50 border-2 border-red-500 rounded-2xl p-4 shadow-md space-y-3">
@@ -363,7 +456,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm sm:text-base font-black text-red-950">
-                    🚨 현장 긴급 이상발생(안돈) 경보 접수
+                    🚨 현장 긴급 이상발생 경보 접수
                   </h2>
                   <span className="bg-red-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full animate-pulse shadow-2xs">
                     {andonTasks.length}건 정지 중
@@ -385,7 +478,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               return (
                 <div
                   key={task.processKey}
-                  onClick={() => handleOpenTaskDetail(task)}
+                  onClick={() => handleOpenIncidentModal(task)}
                   className="bg-white rounded-xl p-3.5 border-2 border-red-400 hover:border-red-600 shadow-xs hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-2 group"
                 >
                   <div>
@@ -994,6 +1087,23 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           onUpdateProgress={onUpdateProgress || (() => {})}
           currentUser={currentUser}
           approvedOperators={approvedOperators}
+        />
+      )}
+
+      {/* Direct Emergency Incident Report / Action Modal */}
+      {isIncidentModalOpen && currentTaskForIncident && (
+        <AndonReportModal
+          isOpen={isIncidentModalOpen}
+          onClose={() => {
+            setIsIncidentModalOpen(false);
+            setSelectedTaskForIncident(null);
+          }}
+          taskItem={currentTaskForIncident}
+          order={orders[currentTaskForIncident.orderId]}
+          currentUser={currentUser}
+          approvedOperators={approvedOperators}
+          onSubmitIssue={handleSubmitIncidentIssue}
+          onResolveIssue={handleResolveIncidentIssue}
         />
       )}
     </div>

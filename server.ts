@@ -4,6 +4,8 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dispatchNotificationHandler from './api/dispatch-notification';
 import sendSmsHandler from './api/send-sms';
+import testSmtpHandler from './api/test-smtp';
+import { getSmtpConfig } from './api/smtp-service';
 
 async function startServer() {
   const app = express();
@@ -14,21 +16,25 @@ async function startServer() {
   // API Routes FIRST
   app.all('/api/dispatch-notification', dispatchNotificationHandler);
   app.all('/api/send-sms', sendSmsHandler);
+  app.all('/api/test-smtp', testSmtpHandler);
 
   app.get('/api/health', (_req, res) => {
     const solapiConfigured = Boolean(
       (process.env.SOLAPI_API_KEY || process.env.COOLSMS_API_KEY) &&
       (process.env.SOLAPI_API_SECRET || process.env.COOLSMS_API_SECRET)
     );
-    const smtpConfigured = Boolean(process.env.NAVERWORKS_SMTP_PASS);
+    const smtpConfig = getSmtpConfig();
 
     res.json({
       status: 'ok',
       time: new Date().toISOString(),
       solapiConfigured,
-      smtpConfigured,
+      smtpConfigured: smtpConfig.isConfigured,
+      smtpHost: smtpConfig.host,
+      smtpPort: smtpConfig.port,
+      smtpUser: smtpConfig.user,
+      smtpDetectedEnvKey: smtpConfig.detectedEnvKey,
       fromNumber: process.env.SOLAPI_FROM_NUMBER || process.env.COOLSMS_FROM_NUMBER || process.env.SMS_SENDER_NUMBER || null,
-      smtpUser: process.env.NAVERWORKS_SMTP_USER || 'noworries004@jstech.kr',
     });
   });
 

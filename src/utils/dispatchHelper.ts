@@ -69,7 +69,7 @@ export function validateOrderForDispatch(
   }
 
   if (!processes || processes.length === 0) {
-    errors.push('배포할 공정 라우팅 단계가 존재하지 않습니다.');
+    errors.push('배포할 공정 구성 단계가 존재하지 않습니다.');
     return { valid: false, errors, warnings, unassignedMachines, unassignedWorkers };
   }
 
@@ -333,3 +333,155 @@ export async function executeOrderDispatch(
     sendSms,
   };
 }
+
+/**
+ * Tests SMTP connectivity via /api/test-smtp
+ */
+export async function testSmtpConnectionViaApi(options?: {
+  sendTestEmailTo?: string;
+  customPort?: number;
+}): Promise<{
+  success: boolean;
+  smtpConfigured: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  detectedEnvKey: string;
+  hasPassword: boolean;
+  steps: Array<{
+    step: string;
+    name: string;
+    status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+    message: string;
+    durationMs?: number;
+    errorCode?: string;
+  }>;
+  error?: string;
+  errorCode?: string;
+  diagnosticAdvice?: string[];
+  testEmailSent?: boolean;
+  testEmailRecipient?: string;
+  messageId?: string;
+  timestamp: string;
+}> {
+  try {
+    const res = await fetch('/api/test-smtp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      smtpConfigured: false,
+      smtpHost: 'smtp.worksmobile.com',
+      smtpPort: 465,
+      smtpUser: 'noworries004@jstech.kr',
+      detectedEnvKey: 'NONE',
+      hasPassword: false,
+      steps: [
+        {
+          step: 'SERVER_CONNECT',
+          name: '1. SMTP 서버 연결',
+          status: 'FAILED',
+          message: `API 호출 실패: ${err?.message || err}`,
+        },
+      ],
+      error: err?.message || 'SMTP 테스트 API 호출 실패',
+      errorCode: 'API_FETCH_FAILED',
+      diagnosticAdvice: ['서버가 실행 중인지 확인하세요.'],
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * Retries dispatch notification for a specific operator or channel (Email/SMS)
+ */
+export async function retryOperatorNotification(
+  order: Order,
+  operator: OperatorDispatchDetail,
+  channel: 'EMAIL' | 'SMS' | 'ALL',
+  customBaseUrl?: string
+): Promise<{
+  success: boolean;
+  emailStatus?: 'SENT' | 'SIMULATED' | 'FAILED' | 'SKIPPED';
+  emailError?: string;
+  smsStatus?: 'SENT' | 'SIMULATED' | 'FAILED' | 'SKIPPED';
+  smsError?: string;
+  message?: string;
+}> {
+  const currentBaseUrl = resolvePublicAppUrl(customBaseUrl);
+  const operatorContact = {
+    name: operator.name,
+    email: operator.email,
+    phoneNumber: operator.phoneNumber,
+    department: operator.department,
+    assignedProcesses: (order.customProcesses || [])
+      .map((p, idx) => ({ ...p, originalIndex: idx + 1 }))
+      .filter((p) => (p.worker || '작업자 미지정') === operator.name)
+      .map((p) => ({
+        index: p.originalIndex,
+        processName: p.name,
+        category: p.category || '가공',
+        machine: p.assignedMachine || '설비 미지정',
+        durationHours: p.durationHours || 1,
+        phaseId: p.phaseId,
+      })),
+  };
+
+  try {
+    const res = await fetch('/api/dispatch-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order: {
+          id: order.id,
+          name: order.name,
+          customer: order.customer,
+          poNumber: order.poNumber,
+          partName: order.partName,
+          partType: order.partType,
+          spec: order.spec,
+          material: order.material,
+          tolerance: order.tolerance,
+          coatingSpec: order.coatingSpec,
+          serialNo: order.serialNo,
+          dueDate: order.dueDate,
+          startDate: order.startDate,
+          qty: order.qty,
+          specialNotes: order.specialNotes,
+          memo: order.memo,
+          customProcesses: order.customProcesses,
+        },
+        operatorContacts: [operatorContact],
+        dispatchedBy: '생산관리팀',
+        dispatchedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+        baseUrl: currentBaseUrl,
+        sendEmail: channel === 'EMAIL' || channel === 'ALL',
+        sendSms: channel === 'SMS' || channel === 'ALL',
+      }),
+    });
+
+    const data = await res.json();
+    const item = data?.results?.[0];
+
+    return {
+      success: data?.success !== false,
+      emailStatus: item?.emailStatus,
+      emailError: item?.error,
+      smsStatus: item?.smsStatus,
+      smsError: item?.smsError,
+      message: data?.message,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      emailError: channel !== 'SMS' ? err?.message || '네트워크 오류' : undefined,
+      smsError: channel !== 'EMAIL' ? err?.message || '네트워크 오류' : undefined,
+      message: err?.message || '알림 재시도 중 오류가 발생했습니다.',
+    };
+  }
+}
+

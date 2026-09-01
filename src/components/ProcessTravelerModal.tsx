@@ -160,6 +160,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   }, [order, productType]);
 
   // 2. Derive smart default metadata
+  const defaultOrderId = useMemo(() => {
+    return order.id || 'ORD-2026-001';
+  }, [order]);
+
   const defaultCustomer = useMemo(() => {
     if (order.customer) return order.customer;
     if (order.name.includes('삼성')) return '삼성디스플레이';
@@ -169,34 +173,20 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     return '고객사 지정';
   }, [order]);
 
-  const defaultPoNumber = useMemo(() => {
-    if (order.poNumber) return order.poNumber;
-    return order.id || 'PO-2026-001';
-  }, [order]);
-
-  const defaultPartName = useMemo(() => {
-    if (order.partName) return order.partName;
-    return order.name.replace(/(삼성디스플레이|LG디스플레이|SK온|PNT)/g, '').trim() || productType?.name || 'SLOT DIE';
-  }, [order, productType]);
-
-  const defaultPartType = useMemo(() => {
-    if (order.partType) return order.partType;
-    if (order.name.toLowerCase().includes('upper') || order.name.includes('상판')) return 'UPPER (상판)';
-    if (order.name.toLowerCase().includes('lower') || order.name.includes('하판')) return 'LOWER (하판)';
-    if (order.name.toLowerCase().includes('body') || order.name.includes('몸체')) return 'BODY (몸체)';
-    return 'UPPER (상판)';
+  const defaultPjtName = useMemo(() => {
+    return order.pjtName || order.name || '신규 프로젝트';
   }, [order]);
 
   const defaultSpec = useMemo(() => {
     if (order.spec) return order.spec;
-    const match = order.name.match(/(\d+mm|\d+L|\d+세대)/i);
+    const match = (order.pjtName || order.name).match(/(\d+mm|\d+L|\d+세대)/i);
     return match ? match[0] : '650L';
   }, [order]);
 
   const defaultSerialNo = useMemo(() => {
-    if (order.serialNo) return formatSerialRange(order.serialNo, order.qty || 1);
-    return formatSerialRange(defaultPoNumber || 'NN-NNNNN-2608-01', order.qty || 1);
-  }, [order, defaultPoNumber]);
+    if (order.serialNo) return formatSerialRange(order.serialNo, order.qty || 1, order.pjtNo || order.poNumber);
+    return formatSerialRange(order.pjtNo || defaultOrderId, order.qty || 1, order.pjtNo);
+  }, [order, defaultOrderId]);
 
   const defaultDueDate = useMemo(() => {
     if (order.dueDate) return order.dueDate;
@@ -214,15 +204,14 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
   const defaultSpecialNotes = useMemo(() => {
     if (order.specialNotes) return order.specialNotes;
-    if (order.memo) return `※ ${order.memo}`;
-    return '※ 공정 간 인수인계 철저히 할 것!';
+    if (order.memo) return order.memo;
+    return '공정 간 인수인계 철저히 할 것!';
   }, [order]);
 
   // Form states for traveler metadata
   const [customer, setCustomer] = useState(defaultCustomer);
-  const [poNumber, setPoNumber] = useState(defaultPoNumber);
-  const [partName, setPartName] = useState(defaultPartName);
-  const [partType, setPartType] = useState(defaultPartType);
+  const [orderId, setOrderId] = useState(defaultOrderId);
+  const [pjtName, setPjtName] = useState(defaultPjtName);
   const [spec, setSpec] = useState(defaultSpec);
   const [serialNo, setSerialNo] = useState(defaultSerialNo);
   const [dueDate, setDueDate] = useState(defaultDueDate);
@@ -246,14 +235,16 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   const handleQtyChange = (newQty: number) => {
     const validQty = Math.max(1, newQty);
     setQty(validQty);
-    const base = extractSerialBase(serialNo) || defaultPoNumber || 'NN-NNNNN-2608-01';
-    setSerialNo(formatSerialRange(base, validQty));
+    const pjt = order.pjtNo || order.poNumber || defaultOrderId;
+    const base = extractSerialBase(serialNo, pjt) || pjt || 'NN-NNNNN-2608-01';
+    setSerialNo(formatSerialRange(base, validQty, pjt));
   };
 
   const handleSerialBlur = () => {
     if (serialNo.trim()) {
-      const base = extractSerialBase(serialNo);
-      setSerialNo(formatSerialRange(base || defaultPoNumber || 'NN-NNNNN-2608-01', qty));
+      const pjt = order.pjtNo || order.poNumber || defaultOrderId;
+      const base = extractSerialBase(serialNo, pjt);
+      setSerialNo(formatSerialRange(base || pjt || 'NN-NNNNN-2608-01', qty, pjt));
     }
   };
 
@@ -270,9 +261,8 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   // Sync state when order changes
   useEffect(() => {
     setCustomer(defaultCustomer);
-    setPoNumber(defaultPoNumber);
-    setPartName(defaultPartName);
-    setPartType(defaultPartType);
+    setOrderId(defaultOrderId);
+    setPjtName(defaultPjtName);
     setSpec(defaultSpec);
     setSerialNo(defaultSerialNo);
     setDueDate(defaultDueDate);
@@ -281,7 +271,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     setWriterName(order.writerName || currentUser?.name || '작성자');
     setReviewerName(order.reviewerName || '검토자');
     setApproverName(order.approverName || '승인자');
-  }, [order, defaultCustomer, defaultPoNumber, defaultPartName, defaultPartType, defaultSpec, defaultSerialNo, defaultDueDate, defaultSpecialNotes, currentUser]);
+  }, [order, defaultCustomer, defaultOrderId, defaultPjtName, defaultSpec, defaultSerialNo, defaultDueDate, defaultSpecialNotes, currentUser]);
 
   // Per-Process Auto QR Code generation
   const [qrCodeMap, setQrCodeMap] = useState<Record<string, string>>({});
@@ -415,15 +405,16 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
     if (!onUpdateOrder) return;
     const updated: Order = {
       ...order,
+      id: orderId,
+      name: pjtName,
+      pjtName,
       customer,
-      poNumber,
-      partName,
-      partType,
       spec,
       serialNo,
       dueDate,
       qty,
       specialNotes,
+      memo: specialNotes,
       writerName,
       reviewerName,
       approverName,
@@ -531,7 +522,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-mono">
-                수주: {order.name} | PO: {poNumber} | 총 공정수: {baseProcesses.length}개 ({totalPages}페이지 구성)
+                수주번호: {orderId} | 프로젝트명: {pjtName} | 총 공정수: {baseProcesses.length}개 ({totalPages}페이지 구성)
               </p>
             </div>
           </div>
@@ -866,7 +857,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                   <div className="mb-3">
                     <table className="w-full border-collapse border-2 border-black text-xs">
                       <tbody>
-                        {/* Row 1: 고객사 & PO. (PJT) */}
+                        {/* Row 1: 고객사 & 수주번호 */}
                         <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} w-24 text-xs`}>
                             고 객 사
@@ -885,61 +876,41 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                             )}
                           </td>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} w-24 text-xs`}>
-                            PO. (PJT)
+                            수주번호
                           </td>
                           <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-mono font-black text-sm`}>
                             {isEditing ? (
                               <input
                                 type="text"
-                                value={poNumber}
-                                onChange={(e) => setPoNumber(e.target.value)}
-                                placeholder="예: PNT-BNSH650L-26-02"
+                                value={orderId}
+                                onChange={(e) => setOrderId(e.target.value)}
+                                placeholder="예: ORD-2026-001"
                                 className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-mono font-bold"
                               />
                             ) : (
-                              <span className="tracking-wider">{poNumber}</span>
+                              <span className="tracking-wider">{orderId}</span>
                             )}
                           </td>
                         </tr>
 
-                        {/* Row 2: 품 명 & 품 목 */}
+                        {/* Row 2: 프로젝트명 & 규격 */}
                         <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
-                            품 명
+                            프로젝트명
                           </td>
                           <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-extrabold text-sm`}>
                             {isEditing ? (
                               <input
                                 type="text"
-                                value={partName}
-                                onChange={(e) => setPartName(e.target.value)}
-                                placeholder="예: SLOT DIE"
+                                value={pjtName}
+                                onChange={(e) => setPjtName(e.target.value)}
+                                placeholder="예: PNT Flex Bolt 2P SLOT DIE"
                                 className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-bold"
                               />
                             ) : (
-                              <span>{partName}</span>
+                              <span>{pjtName}</span>
                             )}
                           </td>
-                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
-                            품 목
-                          </td>
-                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-black text-sm`}>
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={partType}
-                                onChange={(e) => setPartType(e.target.value)}
-                                placeholder="예: UPPER (상판)"
-                                className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-black"
-                              />
-                            ) : (
-                              <span className="tracking-wide">{partType}</span>
-                            )}
-                          </td>
-                        </tr>
-
-                        {/* Row 3: 규 격 & 각인번호 */}
-                        <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             규 격
                           </td>
@@ -955,6 +926,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span className="font-bold">{spec}</span>
                             )}
                           </td>
+                        </tr>
+
+                        {/* Row 3: 각인번호 & 납기 */}
+                        <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             각인번호
                           </td>
@@ -969,7 +944,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                   className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-bold font-mono"
                                 />
                                 <div className="text-[9px] text-slate-500 font-sans">
-                                  {formatSerialRange(serialNo || defaultPoNumber, qty)}
+                                  {formatSerialRange(serialNo || orderId, qty)}
                                 </div>
                               </div>
                             ) : (
@@ -977,7 +952,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 <span className="font-bold text-xs tracking-tight">
                                   {selectedPiece === 'ALL'
                                     ? (formatSerialRange(serialNo, qty) || serialNo)
-                                    : getIndividualSerialNo(serialNo || defaultPoNumber, selectedPiece, qty)}
+                                    : getIndividualSerialNo(serialNo || orderId, selectedPiece, qty)}
                                 </span>
                                 {qty > 1 && selectedPiece !== 'ALL' && (
                                   <span className="text-[9.5px] text-blue-700 font-bold font-sans">
@@ -987,10 +962,6 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               </div>
                             )}
                           </td>
-                        </tr>
-
-                        {/* Row 4: 납 기 & 수 량 */}
-                        <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             납 기
                           </td>
@@ -1006,6 +977,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                               <span>{dueDate}</span>
                             )}
                           </td>
+                        </tr>
+
+                        {/* Row 4: 수량 & 상태 */}
+                        <tr>
                           <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
                             수 량
                           </td>
@@ -1019,8 +994,14 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-black"
                               />
                             ) : (
-                              <span className="text-sm font-black">{qty}</span>
+                              <span className="text-sm font-black">{qty} EA</span>
                             )}
+                          </td>
+                          <td className={`border border-black bg-slate-100 font-bold text-center ${tableDensity.metaPadding} text-xs`}>
+                            상 태
+                          </td>
+                          <td className={`border border-black text-center ${tableDensity.metaPadding} px-3 font-bold text-xs text-slate-700`}>
+                            양산 / 발행
                           </td>
                         </tr>
 
@@ -1035,7 +1016,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                 type="text"
                                 value={specialNotes}
                                 onChange={(e) => setSpecialNotes(e.target.value)}
-                                placeholder="※ 공정 간 인수인계 철저히 할 것!"
+                                placeholder="공정 간 인수인계 철저히 할 것!"
                                 className="w-full border border-blue-400 rounded px-2 py-1 text-xs font-bold"
                               />
                             ) : (
@@ -1255,7 +1236,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                 {/* Footer Notice & Page Info for this specific page */}
                 <div className="pt-2 flex justify-between items-center text-[10px] text-slate-600 font-mono border-t border-black">
                   <div>
-                    <span>준성테크(주) 생산관리시스템 (MES/BOP) | 문서양식: JST-FM-PR-01</span>
+                    <span>준성테크(주) 생산관리시스템 (MES) | 문서양식: JST-FM-PR-01</span>
                   </div>
                   <div>
                     <span className="font-bold text-black">

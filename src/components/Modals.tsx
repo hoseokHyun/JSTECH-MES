@@ -1112,7 +1112,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                                   ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold'
                                   : 'bg-slate-50 border-slate-200 text-slate-400'
                               }`}
-                              title="BOP 표준 공정, 설비 및 마스터 데이터 관리"
+                              title="표준 공정 구성, 설비 및 마스터 데이터 관리"
                             >
                               <input
                                 type="checkbox"
@@ -1342,7 +1342,7 @@ export const NewTypeModal: React.FC<NewTypeModalProps> = ({ isOpen, onClose, onS
             <div className="p-1.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
               <Plus className="w-4 h-4" />
             </div>
-            <h3 className="text-sm font-extrabold text-slate-900">신규 제품 타입 생성 (BOP Template)</h3>
+            <h3 className="text-sm font-extrabold text-slate-900">신규 제품 타입 생성 (공정 구성 템플릿)</h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-4 h-4" />
@@ -2001,7 +2001,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               <Pencil className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-extrabold text-slate-900">수주 및 공정 라우팅 수정 (Edit Order & Processes)</h3>
+              <h3 className="text-sm font-extrabold text-slate-900">수주 및 공정 구성 수정 (Edit Order & Processes)</h3>
               <p className="text-[11px] text-slate-500">
                 수주 기본정보, 사내/외주 공정 변경, 지정 설비 및 공정별 담당자(소속팀 연계) 배정
               </p>
@@ -2034,7 +2034,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">
-                적용 BOP (제품 타입 변경)
+                적용 공정 구성 (제품 타입 변경)
               </label>
               <select
                 value={selectedTypeId}
@@ -2194,11 +2194,11 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                   onChange={(e) => setSerialNo(e.target.value)}
                   onBlur={() => {
                     if (serialNo.trim()) {
-                      const base = extractSerialBase(serialNo);
-                      setSerialNo(formatSerialRange(base || poNumber || name, qty));
+                      const base = extractSerialBase(serialNo, poNumber);
+                      setSerialNo(formatSerialRange(base || poNumber || name, qty, poNumber));
                     }
                   }}
-                  placeholder={`예: ${formatSerialRange(poNumber || 'NN-NNNNN-2608-01', qty)}`}
+                  placeholder={`예: ${formatSerialRange(poNumber || 'NN-NNNNN-2608-01', qty, poNumber)}`}
                   className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 bg-white"
                 />
               </div>

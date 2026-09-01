@@ -119,7 +119,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                       </td>
                       <td className="p-3.5 text-slate-600">
                         <span className="font-bold text-slate-800">
-                          {type ? type.name : '커스텀 라우팅'}
+                          {type ? type.name : '커스텀 공정 구성'}
                         </span>
                         <span className="ml-1.5 text-[11px] text-slate-400 font-normal">
                           ({processCount}단계 공정)

@@ -357,7 +357,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
             <thead className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold border-b border-slate-200 dark:border-slate-600">
               <tr>
                 <th className="p-3 min-w-[220px]">수주번호 / 프로젝트명</th>
-                <th className="p-3 min-w-[160px]">제품 타입 (BOP)</th>
+                <th className="p-3 min-w-[160px]">제품 타입 (공정 구성)</th>
                 <th className="p-3 text-center w-16">수량</th>
                 <th className="p-3 text-center min-w-[130px]">착수 일시</th>
                 <th className="p-3 text-center min-w-[130px]">공정 진행률</th>
@@ -528,7 +528,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                                 ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer active:scale-95'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
                             }`}
-                            title="수주 기본정보 및 공정 라우팅 단계 수정"
+                            title="수주 기본정보 및 공정 구성 단계 수정"
                           >
                             <Pencil className="w-3 h-3 text-blue-600" />
                             <span>수정/편집</span>
@@ -607,7 +607,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                 </div>
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">수주 데이터 영구 삭제</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">관련 공정 라우팅 및 생산 현황이 함께 삭제됩니다.</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">관련 공정 구성 및 생산 현황이 함께 삭제됩니다.</p>
                 </div>
               </div>
               <button

@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'routing',
-      label: '공정 라우팅 (BOP)',
+      label: '공정 구성',
       sublabel: '제품 타입 & 표준시간',
       icon: GitMerge,
       badge: '표준 공정',

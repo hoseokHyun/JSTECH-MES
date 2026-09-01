@@ -17,15 +17,19 @@ export interface PauseLog {
   durationMinutes?: number;
 }
 
-export interface AndonIssue {
+export interface IncidentIssueLog {
+  id?: string;
   issueType: string;
   note: string;
   reportedAt: string;
   reportedBy: string;
   isResolved?: boolean;
   resolvedAt?: string;
+  resolvedBy?: string;
   resolvedNote?: string;
 }
+
+export type AndonIssue = IncidentIssueLog;
 
 export interface ProcessStep {
   name: string;
@@ -37,6 +41,9 @@ export interface ProcessStep {
   phaseId?: string;
   id?: string;
   memo?: string;
+  code?: string;
+  description?: string;
+  estimatedHours?: number;
 }
 
 export interface ProductType {
@@ -123,7 +130,7 @@ export interface UserPermissions {
   canEditOrder?: boolean;         // 수주 관리, 스케줄러 편집, 공정 일정 제어
   canExecuteMES?: boolean;        // MES 공정 완료 및 현장 작업 관련 권한
   canManageUsers?: boolean;       // 회원 승인/삭제 권한, 시스템 계정 관리
-  canEditMaster?: boolean;        // BOP 표준 공정, 설비/담당자 마스터 관리
+  canEditMaster?: boolean;        // 표준 공정 구성, 설비/담당자 마스터 관리
   canArchive?: boolean;           // 완료 보관함 이동 및 수주 데이터 관리
   canQualityInspection?: boolean; // 수입/공정/출하검사 및 성적서 발행 (품질팀)
   canShipmentControl?: boolean;   // 출하 승인 및 COA 발행 권한
@@ -184,12 +191,13 @@ export interface ScheduledTaskItem {
   delayReason?: string;
   memo?: string;
   defectQty?: number;
-  // Andon
+  // Andon & Incident Reporting
   andonStatus?: 'NORMAL' | 'ISSUE_HOLD' | 'RESOLVED';
   andonIssueType?: string;
   andonIssueNote?: string;
   andonReportedAt?: string;
   andonReportedBy?: string;
+  andonHistory?: IncidentIssueLog[];
 }
 
 export type CalendarViewMode = 'day' | 'week' | 'month';

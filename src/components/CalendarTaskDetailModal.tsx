@@ -24,7 +24,9 @@ import {
   Save,
   Check,
   Zap,
-  Info
+  Info,
+  Flame,
+  CheckCheck
 } from 'lucide-react';
 
 interface CalendarTaskDetailModalProps {
@@ -835,6 +837,67 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                       {formatDateTime(p.pausedAt)} ~ {p.resumedAt ? formatDateTime(p.resumedAt) : '진행중'} (
                       {p.durationMinutes || '?'}분)
                     </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Incident Issue & Resolution History Section */}
+          {((activeTask.andonHistory && activeTask.andonHistory.length > 0) || activeTask.andonStatus === 'ISSUE_HOLD') && (
+            <div className="border-2 border-red-300 dark:border-red-900/60 rounded-xl p-3 bg-red-50/50 dark:bg-red-950/20 space-y-2">
+              <div className="flex items-center justify-between text-xs font-black text-red-900 dark:text-red-300">
+                <span className="flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-red-600 animate-pulse" />
+                  <span>현장 이상 발생 및 조치 이력 ({activeTask.andonHistory?.length || 1}건)</span>
+                </span>
+                {activeTask.andonStatus === 'ISSUE_HOLD' && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white">
+                    현재 긴급 정지 중
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5 text-xs">
+                {(activeTask.andonHistory && activeTask.andonHistory.length > 0
+                  ? activeTask.andonHistory
+                  : [{
+                      issueType: activeTask.andonIssueType || '현장 이상 발생',
+                      note: activeTask.andonIssueNote || '상세 사유 없음',
+                      reportedAt: activeTask.andonReportedAt || '',
+                      reportedBy: activeTask.andonReportedBy || '작업자',
+                      isResolved: false
+                    }]
+                ).map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/40 space-y-1 text-[11px]"
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-red-700 dark:text-red-400">
+                        🚨 {item.issueType}
+                      </span>
+                      {item.isResolved ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center gap-1">
+                          <CheckCheck className="w-3 h-3" /> 조치 완료
+                        </span>
+                      ) : (
+                        <span className="text-red-600 font-extrabold animate-pulse">조치 대기 중</span>
+                      )}
+                    </div>
+                    <p className="text-slate-800 dark:text-slate-200 font-medium">"{item.note}"</p>
+                    <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700">
+                      <span>신고: {item.reportedBy || '작업자'} ({item.reportedAt ? formatDateTime(item.reportedAt) : '-'})</span>
+                      {item.isResolved && item.resolvedBy && (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                          조치자: {item.resolvedBy}
+                        </span>
+                      )}
+                    </div>
+                    {item.isResolved && item.resolvedNote && (
+                      <p className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 p-1.5 rounded font-medium">
+                        조치내용: {item.resolvedNote}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

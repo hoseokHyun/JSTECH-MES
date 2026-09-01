@@ -251,6 +251,15 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   ) => {
     const existing = processProgressMap[processKey] || {};
     const nowIso = new Date().toISOString();
+    const newIssue = {
+      id: `ISSUE-${Date.now()}`,
+      issueType,
+      note,
+      reportedAt: nowIso,
+      reportedBy: reporterName,
+      isResolved: false,
+    };
+    const updatedHistory = [...(existing.andonHistory || []), newIssue];
     onUpdateProgress(processKey, {
       ...existing,
       andonStatus: 'ISSUE_HOLD',
@@ -258,15 +267,53 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       andonIssueNote: note,
       andonReportedAt: nowIso,
       andonReportedBy: reporterName,
+      andonHistory: updatedHistory,
     });
   };
 
-  const handleResolveAndonIssue = (processKey: string, resolveNote: string) => {
+  const handleResolveAndonIssue = (
+    processKey: string,
+    resolveNote: string,
+    resolverName?: string
+  ) => {
     const existing = processProgressMap[processKey] || {};
+    const nowIso = new Date().toISOString();
+    const effectiveResolver = resolverName || currentUser?.name || '시스템 관리자';
+
+    let foundUnresolved = false;
+    const updatedHistory = (existing.andonHistory || []).map((item: any) => {
+      if (!item.isResolved && !foundUnresolved) {
+        foundUnresolved = true;
+        return {
+          ...item,
+          isResolved: true,
+          resolvedAt: nowIso,
+          resolvedBy: effectiveResolver,
+          resolvedNote: resolveNote,
+        };
+      }
+      return item;
+    });
+
+    if (!foundUnresolved) {
+      updatedHistory.push({
+        id: `ISSUE-${Date.now()}`,
+        issueType: existing.andonIssueType || '현장 이상 발생',
+        note: existing.andonIssueNote || '현장 작업자 보고',
+        reportedAt: existing.andonReportedAt || nowIso,
+        reportedBy: existing.andonReportedBy || '작업자',
+        isResolved: true,
+        resolvedAt: nowIso,
+        resolvedBy: effectiveResolver,
+        resolvedNote: resolveNote,
+      });
+    }
+
     onUpdateProgress(processKey, {
       ...existing,
       andonStatus: 'RESOLVED',
-      andonIssueNote: `${existing.andonIssueNote || ''} [해제 조치: ${resolveNote}]`,
+      andonIssueNote: `${existing.andonIssueNote || ''} [해제 조치 (${effectiveResolver}): ${resolveNote}]`,
+      andonHistory: updatedHistory,
     });
   };
 
@@ -348,7 +395,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5 font-medium">
-              모바일 원터치 [공정 시작/완료], 계획 vs 실적 실시간 타이머, 안돈 긴급 호출
+              모바일 원터치 [공정 시작/완료], 계획 vs 실적 실시간 타이머, 현장 긴급 이상발생 호출
             </p>
           </div>
         </div>
@@ -374,7 +421,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
                 className="px-3 py-2 rounded-xl bg-red-600 text-white flex items-center gap-1.5 shadow-sm animate-pulse cursor-pointer"
               >
                 <Flame className="w-4 h-4" />
-                <span>안돈 {andonCount}건</span>
+                <span>긴급이상 {andonCount}건</span>
               </button>
             )}
             <span className="px-3 py-2 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1.5">
@@ -393,7 +440,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2.5. FLOOR EMERGENCY ANDON ALERT STRIP (IF ACTIVE ISSUES EXIST)           */}
+      {/* 2.5. FLOOR EMERGENCY ALERT STRIP (IF ACTIVE ISSUES EXIST)                 */}
       {/* ========================================================================= */}
       {andonCount > 0 && (
         <div className="bg-rose-50 border-2 border-red-500 rounded-2xl p-4 shadow-md space-y-2.5 animate-pulse-subtle">
@@ -402,7 +449,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               <span className="w-3 h-3 rounded-full bg-red-600 animate-ping" />
               <Flame className="w-5 h-5 text-red-600" />
               <h3 className="text-sm font-black text-red-950">
-                🚨 현장 긴급 이상발생(안돈) 경보 ({andonCount}건 긴급 정지 중)
+                🚨 현장 긴급 이상발생 경보 ({andonCount}건 긴급 정지 중)
               </h3>
             </div>
             <button
@@ -479,7 +526,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
               <option value="IN_PROGRESS">가공 진행 중 (IN_PROGRESS)</option>
               <option value="READY">작업 대기 (READY/PLANNED)</option>
               <option value="COMPLETED">공정 완료 (COMPLETED)</option>
-              <option value="ANDON">🚨 안돈 긴급호출 (ISSUE_HOLD)</option>
+              <option value="ANDON">🚨 긴급 이상발생 (ISSUE_HOLD)</option>
             </select>
 
             <select
@@ -592,6 +639,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
           taskItem={andonTask}
           order={orders[andonTask.orderId]}
           currentUser={currentUser}
+          approvedOperators={approvedOperators}
           onSubmitIssue={handleSubmitAndonIssue}
           onResolveIssue={handleResolveAndonIssue}
         />

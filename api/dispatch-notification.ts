@@ -1,10 +1,14 @@
-import nodemailer from 'nodemailer';
 import {
   sendSmsNotification,
   buildDispatchSmsText,
   normalizePhoneNumber,
   SmsSendResult,
 } from './sms-sender.js';
+import {
+  sendEmailViaSmtp,
+  getSmtpConfig,
+  buildSmtpDiagnosticAdvice,
+} from './smtp-service.js';
 
 export interface DispatchNotificationRequest {
   order: {
@@ -306,75 +310,6 @@ export function buildDispatchEmailHtml(
 }
 
 /**
- * Helper to reliably send email via Naver Works SMTP with automatic dual-port fallback (Port 465 SSL ⟷ Port 587 STARTTLS)
- */
-async function sendEmailViaNaverWorks(
-  host: string,
-  configuredPort: number,
-  user: string,
-  pass: string,
-  mailOptions: nodemailer.SendMailOptions
-): Promise<{ messageId: string; usedPort: number }> {
-  const cleanHost = (host || 'smtp.worksmobile.com').trim().replace(/^["']|["']$/g, '');
-  const cleanUser = (user || '').trim().replace(/^["']|["']$/g, '');
-  const cleanPass = (pass || '').trim().replace(/^["']|["']$/g, '');
-
-  // Try primary port first, then automatically fall back to alternate port if needed
-  const primaryPort = configuredPort || 465;
-  const alternatePort = primaryPort === 465 ? 587 : 465;
-  const portsToTry = [primaryPort, alternatePort];
-
-  let lastError: any = null;
-
-  for (const port of portsToTry) {
-    try {
-      const isSecure = port === 465;
-      const mailer = (nodemailer as any)?.createTransport
-        ? nodemailer
-        : (nodemailer as any)?.default || nodemailer;
-
-      if (typeof mailer?.createTransport !== 'function') {
-        throw new Error('nodemailer.createTransport is not available in current runtime');
-      }
-
-      const transporter = mailer.createTransport({
-        host: cleanHost,
-        port,
-        secure: isSecure, // true for 465 (SSL), false for 587 (STARTTLS)
-        auth: {
-          user: cleanUser,
-          pass: cleanPass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-          minVersion: 'TLSv1.2',
-        },
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 10000,
-      });
-
-      console.log(`[SMTP] Attempting email send via ${cleanHost}:${port} (secure: ${isSecure}) from ${cleanUser} to ${mailOptions.to}...`);
-
-      const sendPromise = transporter.sendMail(mailOptions);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`네이버웍스 SMTP 발송 시간 초과 (${port}번 포트, 8초)`)), 8500)
-      );
-
-      const info: any = await Promise.race([sendPromise, timeoutPromise]);
-      const messageId = info?.messageId || `smtp-${Date.now()}`;
-      console.log(`[SMTP] Email successfully sent to ${mailOptions.to} via port ${port} (MessageId: ${messageId})`);
-      return { messageId, usedPort: port };
-    } catch (err: any) {
-      console.warn(`[SMTP] Attempt on port ${port} failed for ${mailOptions.to}:`, err?.message || err);
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('네이버웍스 SMTP 발송 실패 (465/587 포트 모두 연결 실패)');
-}
-
-/**
  * Core function to send dispatch notifications via Naver Works SMTP & Mobile SMS & generate deep links
  */
 export async function sendDispatchNotification(
@@ -393,7 +328,7 @@ export async function sendDispatchNotification(
 
     const baseUrl = resolveServerBaseUrl(rawBaseUrl);
 
-    // Exact Environment Variable Retrieval
+    // Exact Environment Variable Retrieval for SMS
     const solapiApiKey = (
       process.env.SOLAPI_API_KEY ||
       process.env.COOLSMS_API_KEY ||
@@ -418,15 +353,9 @@ export async function sendDispatchNotification(
     // Check Solapi SMS Configuration
     const isSmsConfigured = Boolean(solapiApiKey && solapiApiSecret && solapiFromNumber);
 
-    // Check SMTP Configuration
-    let smtpHost = (process.env.NAVERWORKS_SMTP_HOST || 'smtp.worksmobile.com').trim().replace(/^["']|["']$/g, '');
-    if (smtpHost === 'smtp.naverworks.com' || smtpHost.includes('naverworks.com')) {
-      smtpHost = 'smtp.worksmobile.com';
-    }
-    const smtpPort = Number(process.env.NAVERWORKS_SMTP_PORT) || 465;
-    const smtpUser = (process.env.NAVERWORKS_SMTP_USER || '').trim().replace(/^["']|["']$/g, '');
-    const smtpPass = (process.env.NAVERWORKS_SMTP_PASS || '').trim().replace(/^["']|["']$/g, '');
-    const isSmtpConfigured = Boolean(smtpUser && smtpPass);
+    // Check Unified SMTP Configuration
+    const smtpConfig = getSmtpConfig();
+    const isSmtpConfigured = smtpConfig.isConfigured;
 
     console.log(`[Dispatch Notification] Starting dispatch for Order ${order?.id || 'N/A'} (${order?.name || 'N/A'})`, {
       recipientsCount: Array.isArray(operatorContacts) ? operatorContacts.length : 0,
@@ -434,7 +363,11 @@ export async function sendDispatchNotification(
       sendSms,
       isSmsConfigured,
       isSmtpConfigured,
-      smtpUser,
+      smtpHost: smtpConfig.host,
+      smtpPort: smtpConfig.port,
+      smtpUser: smtpConfig.user,
+      smtpDetectedEnvKey: smtpConfig.detectedEnvKey,
+      hasPassword: Boolean(smtpConfig.pass),
       solapiFromNumber: solapiFromNumber || '(미설정)',
       resolvedBaseUrl: baseUrl,
     });
@@ -477,18 +410,11 @@ export async function sendDispatchNotification(
             try {
               console.log(`[SMTP] Sending dispatch email to ${op.name} <${op.email}>...`);
               
-              const mailInfo = await sendEmailViaNaverWorks(
-                smtpHost,
-                smtpPort,
-                smtpUser,
-                smtpPass,
-                {
-                  from: `"JS TECH MES 시스템" <${smtpUser}>`,
-                  to: op.email,
-                  subject: `[JS TECH] 📢 수주 확정 및 현장 공정 배포 - ${order?.name || ''} (${op.name} 님)`,
-                  html: emailHtml,
-                }
-              );
+              const mailInfo = await sendEmailViaSmtp({
+                to: op.email,
+                subject: `[JS TECH] 📢 수주 확정 및 현장 공정 배포 - ${order?.name || ''} (${op.name} 님)`,
+                html: emailHtml,
+              });
 
               emailStatus = 'SENT';
               emailMessageId = mailInfo.messageId;
@@ -497,13 +423,7 @@ export async function sendDispatchNotification(
               console.error(`[SMTP] Error sending to ${op.email}:`, sendErr?.message || sendErr);
               emailStatus = 'FAILED';
               const rawErr = sendErr?.message || String(sendErr);
-              if (rawErr.includes('535') || rawErr.includes('Username and Password not accepted')) {
-                emailError = `네이버웍스 SMTP 로그인 실패 (535 인증 오류): 계정(${smtpUser}) 또는 비밀번호가 거부되었습니다. 👉 [해결방법: 1) 네이버웍스 웹메일 환경설정 > POP3/IMAP/SMTP 설정에서 'SMTP 사용함' 체크 2) 2단계 인증 계정인 경우 [보안 설정 > 앱 비밀번호] 생성 등록 3) 도메인(@jstech.kr) 포함 전체 계정 입력]`;
-              } else if (rawErr.includes('timeout') || rawErr.includes('ETIMEDOUT')) {
-                emailError = `네이버웍스 SMTP 연결 시간 초과: ${rawErr} 👉 [해결방법: NAVERWORKS_SMTP_HOST (기본: smtp.worksmobile.com) 및 PORT (465 또는 587) 설정을 확인하세요]`;
-              } else {
-                emailError = `네이버웍스 SMTP 발송 실패: ${rawErr}`;
-              }
+              emailError = rawErr;
             }
           } else {
             emailStatus = op.email && op.email.includes('@') ? 'SIMULATED' : 'SKIPPED';

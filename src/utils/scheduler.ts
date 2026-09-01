@@ -155,6 +155,7 @@ export function calculateSchedule(
             andonIssueNote: pInfo.andonIssueNote,
             andonReportedAt: pInfo.andonReportedAt,
             andonReportedBy: pInfo.andonReportedBy,
+            andonHistory: pInfo.andonHistory || [],
           };
 
           items.push(itemData);
@@ -255,6 +256,7 @@ export function calculateSchedule(
             andonIssueNote: pInfo.andonIssueNote,
             andonReportedAt: pInfo.andonReportedAt,
             andonReportedBy: pInfo.andonReportedBy,
+            andonHistory: pInfo.andonHistory || [],
           };
 
           items.push(itemData);

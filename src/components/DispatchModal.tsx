@@ -3,8 +3,10 @@ import { Order, ProcessStep, User } from '../types';
 import {
   validateOrderForDispatch,
   executeOrderDispatch,
+  retryOperatorNotification,
   ValidationResult,
   DispatchExecutionResult,
+  OperatorDispatchDetail,
 } from '../utils/dispatchHelper';
 import { resolvePublicAppUrl, buildFloorMesDeepLink } from '../utils/urlResolver';
 import {
@@ -28,6 +30,7 @@ import {
   Edit3,
   MessageSquare,
   ShieldCheck,
+  RotateCw,
 } from 'lucide-react';
 
 interface DispatchModalProps {
@@ -51,6 +54,8 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
 }) => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [dispatchResult, setDispatchResult] = useState<DispatchExecutionResult | null>(null);
+  const [operatorDetailsList, setOperatorDetailsList] = useState<OperatorDispatchDetail[]>([]);
+  const [retryingChannel, setRetryingChannel] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedSmsKey, setCopiedSmsKey] = useState<string | null>(null);
 
@@ -74,6 +79,8 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setDispatchResult(null);
+      setOperatorDetailsList([]);
+      setRetryingChannel(null);
       setCopiedKey(null);
       setCopiedSmsKey(null);
       setCustomBaseUrl('');
@@ -146,6 +153,7 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
         overrideContacts: contactOverrides,
       });
       setDispatchResult(result);
+      setOperatorDetailsList(result.operatorDetails || []);
       if (onDispatchSuccess) {
         onDispatchSuccess(result);
       }
@@ -153,6 +161,32 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
       alert(`배포 실행 중 오류가 발생했습니다: ${err?.message || '알 수 없는 오류'}`);
     } finally {
       setIsExecuting(false);
+    }
+  };
+
+  const handleRetrySingle = async (operator: OperatorDispatchDetail, channel: 'EMAIL' | 'SMS' | 'ALL') => {
+    const key = `${operator.name}-${channel}`;
+    try {
+      setRetryingChannel(key);
+      const res = await retryOperatorNotification(order, operator, channel, effectiveBaseUrl);
+      
+      // Update local state for this operator
+      setOperatorDetailsList((prev) =>
+        prev.map((op) => {
+          if (op.name !== operator.name) return op;
+          return {
+            ...op,
+            emailStatus: res.emailStatus !== undefined ? res.emailStatus : op.emailStatus,
+            error: res.emailError !== undefined ? res.emailError : (channel === 'EMAIL' || channel === 'ALL' ? undefined : op.error),
+            smsStatus: res.smsStatus !== undefined ? res.smsStatus : op.smsStatus,
+            smsError: res.smsError !== undefined ? res.smsError : (channel === 'SMS' || channel === 'ALL' ? undefined : op.smsError),
+          };
+        })
+      );
+    } catch (err: any) {
+      alert(`재시도 중 오류: ${err?.message || err}`);
+    } finally {
+      setRetryingChannel(null);
     }
   };
 
@@ -374,7 +408,7 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
 
                 {operatorPreview.length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
-                    공정에 지정된 작업자가 없습니다. 공정 라우팅에서 담당자를 지정해주세요.
+                    공정에 지정된 작업자가 없습니다. 공정 구성에서 담당자를 지정해주세요.
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -487,14 +521,40 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                     수주 확정 및 현장 공정 배포 완료 (DISPATCHED)
                   </h3>
                   <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    {dispatchResult.message}
+                    {dispatchResult.dispatchedProcessesCount}개 단위 공정이 현장 배포되었습니다.
                   </p>
                 </div>
               </div>
 
-              {/* Server Config & Simulation Notice */}
+              {/* Data Safety Notice */}
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                <div className="text-[11px]">
+                  <strong>데이터 보존 보장:</strong> 수주 확정 및 공정/설비 배정 데이터는 정상적으로 데이터베이스에 저장되었습니다. 메일 또는 문자 발송 실패로 인해 수주 데이터가 롤백되지 않습니다.
+                </div>
+              </div>
+
+              {/* Server Config Diagnostics */}
               {dispatchResult.apiResponse && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div
+                    className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                      dispatchResult.apiResponse.smtpConfigured
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
+                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                    }`}
+                  >
+                    <Mail className="w-4 h-4 shrink-0 text-blue-600" />
+                    <div>
+                      <div className="font-bold">
+                        네이버웍스 SMTP: {dispatchResult.apiResponse.smtpConfigured ? '연동 모드' : '시뮬레이션 모드'}
+                      </div>
+                      <div className="text-[10px] opacity-80 font-mono">
+                        {dispatchResult.apiResponse.smtpUser || 'noworries004@jstech.kr'} (smtp.worksmobile.com:465)
+                      </div>
+                    </div>
+                  </div>
+
                   <div
                     className={`p-2.5 rounded-xl border flex items-center gap-2 ${
                       dispatchResult.apiResponse.smsConfigured
@@ -502,48 +562,24 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                         : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
                     }`}
                   >
-                    <Smartphone className="w-4 h-4 shrink-0" />
+                    <Smartphone className="w-4 h-4 shrink-0 text-emerald-600" />
                     <div>
                       <div className="font-bold">
-                        솔라피(Solapi) 문자 발송:{' '}
-                        {dispatchResult.apiResponse.smsConfigured ? '실제 연동 완료' : '시뮬레이션 모드'}
+                        솔라피 문자(SMS): {dispatchResult.apiResponse.smsConfigured ? '연동 모드' : '시뮬레이션 모드'}
                       </div>
-                      {!dispatchResult.apiResponse.smsConfigured && (
-                        <div className="text-[10px] opacity-80">
-                          ※ 환경변수(SOLAPI_API_KEY, SOLAPI_API_SECRET, SOLAPI_FROM_NUMBER) 설정 필요
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                      dispatchResult.apiResponse.smtpConfigured
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
-                    }`}
-                  >
-                    <Mail className="w-4 h-4 shrink-0" />
-                    <div>
-                      <div className="font-bold">
-                        네이버웍스 메일:{' '}
-                        {dispatchResult.apiResponse.smtpConfigured ? 'SMTP 연동 완료' : '시뮬레이션 모드'}
+                      <div className="text-[10px] opacity-80 font-mono">
+                        발신번호: {dispatchResult.apiResponse.solapiFromNumber || '(미설정)'}
                       </div>
-                      {!dispatchResult.apiResponse.smtpConfigured && (
-                        <div className="text-[10px] opacity-80">
-                          ※ 환경변수(NAVERWORKS_SMTP_PASS) 설정 필요
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Applied Base URL Banner */}
-              <div className="px-3.5 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-between text-xs text-blue-900 dark:text-blue-200">
+              <div className="px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
                 <span className="flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-blue-600" />
-                  <span>적용된 프로덕션 딥링크 도메인:</span>
+                  <span>적용된 프로덕션 딥링크:</span>
                 </span>
                 <strong className="font-mono text-[11px] text-blue-700 dark:text-blue-300">
                   {dispatchResult.resolvedBaseUrl}
@@ -552,81 +588,167 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
 
               {/* Deep Link & Recipient List with SMS/Email Statuses */}
               <div className="space-y-2">
-                <div className="text-xs font-black text-slate-700 dark:text-slate-300">
-                  📲 담당자별 발송 현황 및 생성된 세션 유지 딥링크
+                <div className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span>📲 담당자별 발송 현황 및 독립 재시도</span>
+                  <span className="text-[10px] text-slate-400">메일/문자 실패 시 개별 재시도 가능</span>
                 </div>
-                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                  {dispatchResult.operatorDetails.map((op, idx) => (
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {operatorDetailsList.map((op, idx) => (
                     <div
                       key={idx}
-                      className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs"
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3 text-xs"
                     >
+                      {/* Operator Title & Badge */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-black text-slate-900 dark:text-white text-sm">
                             {op.name}
                           </span>
-                          <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
+                            {op.processCount}개 공정 ({op.processes.join(', ')})
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Decoupled Channel Statuses: 1. Email Channel Card */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-[11px] text-slate-800 dark:text-slate-200">
+                            <Mail className="w-3.5 h-3.5 text-blue-500" />
+                            <span>이메일 (네이버웍스 SMTP):</span>
                             {op.emailStatus === 'SENT' && (
                               <span className="text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.2 rounded border border-blue-300 dark:border-blue-700">
-                                메일발송됨
+                                ✓ 발송 완료
                               </span>
                             )}
                             {op.emailStatus === 'FAILED' && (
                               <span className="text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 px-1.5 py-0.2 rounded border border-rose-300 dark:border-rose-700">
-                                메일실패
+                                ✕ 발송 실패
                               </span>
                             )}
+                            {op.emailStatus === 'SIMULATED' && (
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-1.5 py-0.2 rounded">
+                                시뮬레이션
+                              </span>
+                            )}
+                            {op.emailStatus === 'SKIPPED' && (
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">
+                                제외됨
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Email Retry Button */}
+                          {op.emailStatus === 'FAILED' && (
+                            <button
+                              type="button"
+                              disabled={retryingChannel === `${op.name}-EMAIL`}
+                              onClick={() => handleRetrySingle(op, 'EMAIL')}
+                              className="px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md hover:bg-blue-100 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <RotateCw className={`w-3 h-3 ${retryingChannel === `${op.name}-EMAIL` ? 'animate-spin' : ''}`} />
+                              <span>메일만 재시도</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="text-[10px] text-slate-500">
+                          수신 이메일: {op.email || '(이메일 미등록)'}
+                        </div>
+
+                        {/* Email Specific Failure Message */}
+                        {op.error && (
+                          <div className="text-[10px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg border border-rose-200 dark:border-rose-800 space-y-1">
+                            <div className="font-bold">⚠️ 네이버웍스 SMTP 발송 실패 상세:</div>
+                            <div className="whitespace-pre-wrap">{op.error}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Decoupled Channel Statuses: 2. SMS Channel Card */}
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-[11px] text-slate-800 dark:text-slate-200">
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>문자 (솔라피 Solapi):</span>
                             {op.smsStatus === 'SENT' && (
                               <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-700">
-                                SMS발송됨
+                                ✓ 발송 완료
                               </span>
                             )}
                             {op.smsStatus === 'FAILED' && (
                               <span className="text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 px-1.5 py-0.2 rounded border border-rose-300 dark:border-rose-700">
-                                SMS실패
-                              </span>
-                            )}
-                            {op.emailStatus === 'SIMULATED' && (
-                              <span className="text-[10px] font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded">
-                                메일(시뮬)
+                                ✕ 발송 실패
                               </span>
                             )}
                             {op.smsStatus === 'SIMULATED' && (
-                              <span className="text-[10px] font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded">
-                                SMS(시뮬)
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-1.5 py-0.2 rounded">
+                                시뮬레이션
+                              </span>
+                            )}
+                            {op.smsStatus === 'SKIPPED' && (
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded">
+                                제외됨
                               </span>
                             )}
                           </div>
-                        </div>
-                        <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
-                          {op.processCount}개 공정 ({op.processes.join(', ')})
-                        </span>
-                      </div>
 
-                      {/* Contact Info */}
-                      <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-3">
-                        <span className="flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-blue-500" />
-                          {op.email || '(이메일 미등록)'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Smartphone className="w-3 h-3 text-emerald-500" />
-                          {op.phoneNumber || '(휴대폰 미등록)'}
-                        </span>
-                      </div>
+                          {/* SMS Retry Button */}
+                          {op.smsStatus === 'FAILED' && (
+                            <button
+                              type="button"
+                              disabled={retryingChannel === `${op.name}-SMS`}
+                              onClick={() => handleRetrySingle(op, 'SMS')}
+                              className="px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-md hover:bg-emerald-100 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <RotateCw className={`w-3 h-3 ${retryingChannel === `${op.name}-SMS` ? 'animate-spin' : ''}`} />
+                              <span>문자만 재시도</span>
+                            </button>
+                          )}
+                        </div>
 
-                      {/* Failure Error Messages if Any */}
-                      {op.error && (
-                        <div className="text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-xl border border-rose-200 dark:border-rose-800">
-                          <strong>⚠️ 메일 발송 실패 상세:</strong> {op.error}
+                        <div className="text-[10px] text-slate-500">
+                          수신 번호: {op.phoneNumber || '(휴대폰 번호 미등록)'}
                         </div>
-                      )}
-                      {op.smsError && (
-                        <div className="text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-xl border border-rose-200 dark:border-rose-800">
-                          <strong>⚠️ 문자 발송 실패 상세:</strong> {op.smsError}
-                        </div>
-                      )}
+
+                        {/* SMS Specific Failure Message */}
+                        {op.smsError && (
+                          <div className="text-[10px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg border border-rose-200 dark:border-rose-800">
+                            <strong>⚠️ 솔라피 문자 발송 상세:</strong> {op.smsError}
+                          </div>
+                        )}
+
+                        {/* Quick Manual SMS/App fallback if SMS text available */}
+                        {op.smsText && (
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                            <span className="text-[10px] text-slate-400">
+                              수동 전송:
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleCopySms(op.name, op.smsText!)}
+                                className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
+                              >
+                                {copiedSmsKey === op.name ? (
+                                  <span className="text-emerald-600">✓ 전문 복사됨</span>
+                                ) : (
+                                  <span>📋 문자전문 복사</span>
+                                )}
+                              </button>
+                              {op.phoneNumber && (
+                                <a
+                                  href={`sms:${op.phoneNumber.replace(/[^0-9]/g, '')}?body=${encodeURIComponent(op.smsText)}`}
+                                  className="text-[10px] font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                                >
+                                  <Smartphone className="w-3 h-3" />
+                                  <span>문자앱 열기</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Deep Link URL Bar */}
                       {op.deepLink && (
@@ -663,37 +785,6 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                             <ExternalLink className="w-3.5 h-3.5" />
                             <span>열기</span>
                           </a>
-                        </div>
-                      )}
-
-                      {/* SMS Text Quick Copy / Send Option */}
-                      {op.smsText && (
-                        <div className="flex items-center justify-between gap-2 pt-1">
-                          <span className="text-[10px] text-slate-400">
-                            모바일 문자/카카오톡으로 공유할 메시지:
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleCopySms(op.name, op.smsText!)}
-                              className="text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
-                            >
-                              {copiedSmsKey === op.name ? (
-                                <span className="text-emerald-600">✓ 문자전문 복사됨</span>
-                              ) : (
-                                <span>📋 문자전문 복사</span>
-                              )}
-                            </button>
-                            {op.phoneNumber && (
-                              <a
-                                href={`sms:${op.phoneNumber.replace(/[^0-9]/g, '')}?body=${encodeURIComponent(op.smsText)}`}
-                                className="text-[10px] font-bold text-emerald-600 hover:underline flex items-center gap-1"
-                              >
-                                <Smartphone className="w-3 h-3" />
-                                <span>문자앱 열기</span>
-                              </a>
-                            )}
-                          </div>
                         </div>
                       )}
                     </div>

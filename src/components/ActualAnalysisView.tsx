@@ -235,7 +235,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
               생산 실적 및 계획대비 분석 (Plan vs. Actual Analysis)
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              표준 BOP 계획 시간 대비 실제 현장 소요시간, 일시정지 이력, 지연 원인을 정밀 추적합니다.
+              표준 공정 계획 시간 대비 실제 현장 소요시간, 일시정지 이력, 지연 원인을 정밀 추적합니다.
             </p>
           </div>
         </div>
