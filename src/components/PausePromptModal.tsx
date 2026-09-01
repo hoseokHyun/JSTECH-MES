@@ -82,13 +82,22 @@ export const PausePromptModal: React.FC<PausePromptModalProps> = ({
   const [customReasonText, setCustomReasonText] = useState<string>('');
   const [operatorName, setOperatorName] = useState<string>('');
 
+  const openedSessionRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (taskItem) {
+    if (!isOpen || !taskItem) {
+      openedSessionRef.current = null;
+      return;
+    }
+
+    const sessionKey = taskItem.processKey;
+    if (openedSessionRef.current !== sessionKey) {
+      openedSessionRef.current = sessionKey;
       setOperatorName(currentUser?.name || taskItem.worker || '현장 작업자');
       setSelectedReason(PAUSE_REASON_PRESETS[0].label);
       setCustomReasonText('');
     }
-  }, [taskItem, currentUser, isOpen]);
+  }, [isOpen, taskItem?.processKey, currentUser?.name]);
 
   if (!isOpen || !taskItem) return null;
 

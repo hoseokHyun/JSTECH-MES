@@ -107,16 +107,26 @@ export const AndonReportModal: React.FC<AndonReportModalProps> = ({
   const [resolverName, setResolverName] = useState<string>('');
   const [resolveNote, setResolveNote] = useState<string>('');
 
+  const openedSessionRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (taskItem) {
+    if (!isOpen || !taskItem) {
+      openedSessionRef.current = null;
+      return;
+    }
+
+    // Only initialize form values and tab on initial modal open or when target task changes
+    const sessionKey = `${taskItem.processKey}_${taskItem.andonStatus || 'NORMAL'}`;
+    if (openedSessionRef.current !== sessionKey) {
+      openedSessionRef.current = sessionKey;
       setReporterName(currentUser?.name || taskItem.worker || '현장 작업자');
       setResolverName(currentUser?.name || '시스템 관리자');
       setResolveNote('');
       setIssueNote('');
       setSelectedIssueType(ANDON_ISSUE_PRESETS[0].label);
-      setActiveTab('ACTION');
+      setActiveTab(taskItem.andonStatus === 'ISSUE_HOLD' ? 'ACTION' : 'ACTION');
     }
-  }, [taskItem, currentUser, isOpen]);
+  }, [isOpen, taskItem?.processKey, taskItem?.andonStatus, currentUser?.name]);
 
   if (!isOpen || !taskItem) return null;
 

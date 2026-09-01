@@ -190,51 +190,54 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
         }`}
       >
         {/* Banner Top Row: Step Badge + Category Badge + Realtime Status */}
-        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-black bg-white/20 text-white px-2 py-0.5 rounded-md whitespace-nowrap">
+        <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* 1. STEP BADGE: High-contrast solid dark badge */}
+            <span className="text-[11px] sm:text-xs font-black bg-slate-900 text-white border border-slate-600 px-2.5 py-0.5 rounded-lg shadow-xs tracking-wider whitespace-nowrap">
               STEP {String(effectiveStepIndex).padStart(2, '0')}
             </span>
+
+            {/* 2. CATEGORY BADGE: Distinct vibrant tag with high contrast white text */}
             <span
-              className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
+              className={`text-[11px] sm:text-xs font-black px-2.5 py-0.5 rounded-lg border shadow-xs whitespace-nowrap ${
                 task.category === '가공'
-                  ? 'bg-blue-500/30 text-blue-200 border-blue-400/40'
+                  ? 'bg-blue-600 text-white border-blue-400'
                   : task.category === '연마'
-                  ? 'bg-purple-500/30 text-purple-200 border-purple-400/40'
+                  ? 'bg-purple-600 text-white border-purple-400'
                   : task.category === '품질'
-                  ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
-                  : 'bg-amber-500/30 text-amber-200 border-amber-400/40'
+                  ? 'bg-emerald-600 text-white border-emerald-400'
+                  : 'bg-amber-500 text-slate-950 border-amber-300'
               }`}
             >
               {task.category}
             </span>
           </div>
 
-          {/* Status Badge */}
+          {/* 3. STATUS BADGE: High-contrast state indicator with clear icon and text */}
           <div>
             {isAndonHold ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-red-500 text-white px-3 py-1 rounded-full animate-pulse shadow-md whitespace-nowrap">
-                <Flame className="w-3.5 h-3.5" />
-                <span>이상 발생 (정지)</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-red-600 text-white border border-red-300 px-3 py-1 rounded-full animate-pulse shadow-md whitespace-nowrap">
+                <Flame className="w-3.5 h-3.5 fill-white text-white" />
+                <span>이상 발생 (긴급 정지)</span>
               </span>
             ) : isPaused ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-amber-500 text-slate-950 px-3 py-1 rounded-full shadow-md whitespace-nowrap">
-                <Pause className="w-3.5 h-3.5 fill-slate-950" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-amber-400 text-slate-950 border border-amber-200 px-3 py-1 rounded-full shadow-md whitespace-nowrap">
+                <Pause className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
                 <span>일시정지 ({pauseReason || '작업 대기'})</span>
               </span>
             ) : isCompleted ? (
-              <span className="inline-flex items-center gap-1 text-xs font-black bg-emerald-500/90 text-white px-3 py-1 rounded-full whitespace-nowrap">
+              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-emerald-600 text-white border border-emerald-300 px-3 py-1 rounded-full shadow-md whitespace-nowrap">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>공정 완료</span>
               </span>
             ) : isInProgress ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-blue-500 text-white px-3 py-1 rounded-full shadow-md animate-pulse whitespace-nowrap">
+              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-blue-600 text-white border border-blue-300 px-3 py-1 rounded-full shadow-md animate-pulse whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                 <span>가공 진행 중</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-bold bg-white/20 text-amber-200 border border-amber-300/40 px-3 py-1 rounded-full whitespace-nowrap">
-                <Clock className="w-3.5 h-3.5" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-black bg-slate-800 text-slate-100 border border-slate-600 px-3 py-1 rounded-full shadow-sm whitespace-nowrap">
+                <Clock className="w-3.5 h-3.5 text-slate-300" />
                 <span>작업 대기</span>
               </span>
             )}
@@ -298,51 +301,59 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
           )}
         </div>
 
-        {/* 4-Item Grid: 설비 / 담당자 / 계획시간 / 소요시간 (PC: 4열, 모바일: 2x2 균형 그리드) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200">
+        {/* 4-Item Grid: 설비 / 담당자 / 계획시간 / 소요시간 (안정적인 2x2 균형 그리드로 가로폭 확보 & 텍스트 잘림 방지) */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-2.5 bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200">
           {/* 1. 배정 설비 */}
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 h-[68px] sm:h-[72px]">
-            <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 min-h-[66px] sm:min-h-[70px]">
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
               <Cpu className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span className="truncate break-keep">배정 설비</span>
+              <span className="break-keep">배정 설비</span>
             </div>
-            <div className="flex items-baseline min-w-0 overflow-hidden">
-              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm truncate whitespace-nowrap" title={task.machine || '설비 미배정'}>
+            <div className="flex items-baseline min-w-0 pt-1">
+              <span
+                className="font-mono font-black text-slate-900 text-xs sm:text-sm break-keep leading-tight select-text cursor-default"
+                title={task.machine || '설비 미배정'}
+              >
                 {task.machine || '설비 미배정'}
               </span>
             </div>
           </div>
 
           {/* 2. 담당 작업자 */}
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 h-[68px] sm:h-[72px]">
-            <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 min-h-[66px] sm:min-h-[70px]">
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
               <UserIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span className="truncate break-keep">담당 작업자</span>
+              <span className="break-keep">담당 작업자</span>
             </div>
-            <div className="flex items-baseline min-w-0 overflow-hidden">
-              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm truncate whitespace-nowrap" title={task.worker || '작업자 미지정'}>
+            <div className="flex items-baseline min-w-0 pt-1">
+              <span
+                className="font-mono font-black text-slate-900 text-xs sm:text-sm break-keep leading-tight select-text cursor-default"
+                title={task.worker || '작업자 미지정'}
+              >
                 {task.worker || '작업자 미지정'}
               </span>
             </div>
           </div>
 
           {/* 3. 계획시간 */}
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 h-[68px] sm:h-[72px]">
-            <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between min-w-0 min-h-[66px] sm:min-h-[70px]">
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 font-bold whitespace-nowrap min-w-0 h-4">
               <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="truncate break-keep">계획시간</span>
+              <span className="break-keep">계획시간</span>
             </div>
-            <div className="flex items-baseline gap-1 whitespace-nowrap min-w-0 overflow-hidden">
-              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm whitespace-nowrap">
+            <div className="flex items-baseline gap-1.5 flex-wrap pt-1">
+              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">
                 {plannedMinutes}
               </span>
-              <span className="text-[11px] font-bold text-slate-500 shrink-0 whitespace-nowrap">분 ({(plannedMinutes / 60).toFixed(1)}h)</span>
+              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap break-keep">
+                분 ({(plannedMinutes / 60).toFixed(1)}h)
+              </span>
             </div>
           </div>
 
           {/* 4. 소요시간 (일시정지 제외 순수 실 소요시간 표시) */}
           <div
-            className={`p-2.5 rounded-xl border flex flex-col justify-between min-w-0 h-[68px] sm:h-[72px] ${
+            className={`p-2.5 rounded-xl border flex flex-col justify-between min-w-0 min-h-[66px] sm:min-h-[70px] ${
               isPaused
                 ? 'bg-amber-50/90 border-amber-300'
                 : isInProgress
@@ -354,8 +365,8 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
                 : 'bg-white border-slate-200'
             }`}
           >
-            <div className="flex items-center justify-between text-[11px] font-bold min-w-0 h-4">
-              <div className="flex items-center gap-1 text-slate-700 whitespace-nowrap min-w-0 truncate">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold min-w-0 h-4">
+              <div className="flex items-center gap-1.5 text-slate-700 whitespace-nowrap min-w-0">
                 <Timer
                   className={`w-3.5 h-3.5 shrink-0 ${
                     isPaused
@@ -367,7 +378,7 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
                       : 'text-slate-400'
                   }`}
                 />
-                <span className="truncate break-keep">소요시간</span>
+                <span className="break-keep">소요시간</span>
               </div>
               {isCompleted && (
                 <span
@@ -379,40 +390,42 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
                 </span>
               )}
               {isPaused && (
-                <span className="text-[10px] font-black px-1.5 py-0.2 rounded whitespace-nowrap shrink-0 bg-amber-200/80 text-amber-900">
+                <span className="text-[10px] font-black px-1.5 py-0.2 rounded whitespace-nowrap shrink-0 bg-amber-200/90 text-amber-950">
                   정지중
                 </span>
               )}
             </div>
 
-            {isPaused ? (
-              <div className="flex items-baseline justify-between gap-1 whitespace-nowrap overflow-hidden">
-                <span className="font-mono font-black text-amber-900 text-xs sm:text-sm whitespace-nowrap">
-                  {actualMinutes}분 (대기)
-                </span>
-                <span className="text-[10px] font-bold text-amber-700 shrink-0">
-                  순수 {actualMinutes}분
-                </span>
-              </div>
-            ) : isInProgress ? (
-              <div className="flex items-baseline justify-between gap-1 whitespace-nowrap overflow-hidden">
-                <span className="font-mono font-black text-blue-700 text-xs sm:text-sm whitespace-nowrap">
-                  {actualMinutes}분 {String(elapsedSeconds).padStart(2, '0')}초
-                </span>
-                <span className="text-[10px] font-extrabold text-blue-600 bg-blue-100 px-1 py-0.2 rounded shrink-0">
-                  {variancePercent}%
-                </span>
-              </div>
-            ) : isCompleted ? (
-              <div className="flex items-baseline gap-1 whitespace-nowrap">
-                <span className={`font-mono font-black text-xs sm:text-sm ${isOvertime ? 'text-rose-700' : 'text-emerald-700'}`}>
-                  {actualMinutes}
-                </span>
-                <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">분 소요 완료</span>
-              </div>
-            ) : (
-              <span className="font-bold text-slate-400 text-xs sm:text-sm whitespace-nowrap">대기 중 (0분)</span>
-            )}
+            <div className="pt-1">
+              {isPaused ? (
+                <div className="flex items-baseline justify-between gap-1 flex-wrap">
+                  <span className="font-mono font-black text-amber-950 text-xs sm:text-sm whitespace-nowrap">
+                    {actualMinutes}분
+                  </span>
+                  <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                    순수 {actualMinutes}분
+                  </span>
+                </div>
+              ) : isInProgress ? (
+                <div className="flex items-baseline justify-between gap-1 flex-wrap">
+                  <span className="font-mono font-black text-blue-700 text-xs sm:text-sm whitespace-nowrap">
+                    {actualMinutes}분 {String(elapsedSeconds).padStart(2, '0')}초
+                  </span>
+                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                    {variancePercent}%
+                  </span>
+                </div>
+              ) : isCompleted ? (
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className={`font-mono font-black text-xs sm:text-sm ${isOvertime ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    {actualMinutes}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">분 소요 완료</span>
+                </div>
+              ) : (
+                <span className="font-bold text-slate-400 text-xs sm:text-sm whitespace-nowrap">대기 중 (0분)</span>
+              )}
+            </div>
           </div>
         </div>
 
