@@ -63,9 +63,9 @@ interface OrderFormHeaderProps {
   onSmartAutoAllocate?: () => void;
   onOpenAiBatchModal?: () => void;
   onSubmit: (e: React.FormEvent) => void;
-  productTypes: Record<string, ProductType>;
-  typeId: string;
-  setTypeId: (val: string) => void;
+  productTypes?: Record<string, ProductType>;
+  typeId?: string;
+  setTypeId?: (val: string) => void;
   getCurrentDateTimeString: () => string;
   onValidate: () => void;
   onSaveDraft: () => void;
@@ -120,8 +120,6 @@ export const OrderFormHeader: React.FC<OrderFormHeaderProps> = ({
   setFilterOnlyConflicts,
   isOrderIdDuplicate = false,
 }) => {
-  const [isProcessTypeDropdownOpen, setIsProcessTypeDropdownOpen] = useState(false);
-
   const handleNotesChange = (val: string) => {
     setMemo(val);
     setSpecialNotes(val);
@@ -159,64 +157,6 @@ export const OrderFormHeader: React.FC<OrderFormHeaderProps> = ({
             <Copy className="w-3.5 h-3.5 text-amber-600" />
             <span>이전 수주 복사</span>
           </button>
-
-          {/* 표준 공정 마스터 드롭다운 */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsProcessTypeDropdownOpen(!isProcessTypeDropdownOpen)}
-              className="px-2.5 py-1.5 text-xs font-black rounded-lg transition flex items-center gap-1.5 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-300 shadow-2xs cursor-pointer active:scale-95"
-              title="표준 공정 템플릿 선택 및 적용"
-            >
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="truncate max-w-[130px]">
-                {typeId === 'TYPE_CUSTOM' ? '✨ 커스텀 직접설계' : (productTypes[typeId]?.name?.replace(/\s*\(\d+단계\)/g, '') || '표준 공정')}
-              </span>
-              <ChevronDown className="w-3 h-3 text-indigo-400" />
-            </button>
-
-            {isProcessTypeDropdownOpen && (
-              <div className="absolute left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase border-b border-slate-100">
-                  표준 공정 마스터 템플릿
-                </div>
-                <div className="max-h-56 overflow-y-auto py-1">
-                  {Object.values(productTypes)
-                    .filter((t) => t.id !== 'TYPE_CUSTOM')
-                    .map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          setTypeId(t.id);
-                          setIsProcessTypeDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs font-bold transition flex items-center justify-between hover:bg-indigo-50 ${
-                          typeId === t.id ? 'text-indigo-900 bg-indigo-50/70 font-black' : 'text-slate-700'
-                        }`}
-                      >
-                        <span className="truncate">{t.name}</span>
-                        {typeId === t.id && <Check className="w-3.5 h-3.5 text-indigo-600" />}
-                      </button>
-                    ))}
-                  <div className="border-t border-slate-100 my-1" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTypeId('TYPE_CUSTOM');
-                      setIsProcessTypeDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 text-xs font-bold transition flex items-center justify-between hover:bg-blue-50 ${
-                      typeId === 'TYPE_CUSTOM' ? 'text-blue-900 bg-blue-50 font-black' : 'text-blue-700'
-                    }`}
-                  >
-                    <span>✨ 커스텀 직접 설계</span>
-                    {typeId === 'TYPE_CUSTOM' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* 임시저장 */}
           <button

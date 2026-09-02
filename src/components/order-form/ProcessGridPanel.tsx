@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   X,
@@ -30,7 +30,7 @@ import {
   ShieldCheck,
   Wand2
 } from 'lucide-react';
-import { ProcessStep, ProcessCategory } from '../../types';
+import { ProcessStep, ProcessCategory, ProductType } from '../../types';
 import { StepAssignment, ResourceBusyInfo, PhaseDefinition, PhaseGroup } from './orderFormTypes';
 import { SearchableSelect, SelectOption } from '../SearchableSelect';
 
@@ -93,6 +93,9 @@ interface ProcessGridPanelProps {
   conflictStepsCount?: number;
   assignedMachineRate?: number;
   assignedWorkerRate?: number;
+  productTypes?: Record<string, ProductType>;
+  typeId?: string;
+  setTypeId?: (val: string) => void;
 }
 
 export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
@@ -154,12 +157,35 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
   conflictStepsCount,
   assignedMachineRate = 0,
   assignedWorkerRate = 0,
+  productTypes,
+  typeId,
+  setTypeId,
 }) => {
   // Tabs: 'TABLE' | 'BATCH'
   const [activeTab, setActiveTab] = useState<'TABLE' | 'BATCH'>('TABLE');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [pageSize, setPageSize] = useState<number>(0); // Default to show all in high-density view, or toggleable
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [isProcessTypeDropdownOpen, setIsProcessTypeDropdownOpen] = useState(false);
+  const processTypeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        processTypeDropdownRef.current &&
+        !processTypeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsProcessTypeDropdownOpen(false);
+      }
+    };
+    if (isProcessTypeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProcessTypeDropdownOpen]);
 
   // Grouped Steps by Phase with Filtering
   const groupedAndFilteredPhases = useMemo(() => {
@@ -433,6 +459,69 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                 <span>AI 공정 일괄 배정</span>
               </button>
+            )}
+
+            {/* 표준 공정 설정 드롭다운 */}
+            {productTypes && typeId && setTypeId && (
+              <div className="relative" ref={processTypeDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsProcessTypeDropdownOpen(!isProcessTypeDropdownOpen)}
+                  className="px-2.5 py-1 text-xs font-black rounded-lg transition flex items-center gap-1.5 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-300 shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="표준 공정 템플릿 선택 및 적용"
+                >
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="truncate max-w-[130px]">
+                    {typeId === 'TYPE_CUSTOM'
+                      ? '✨ 커스텀 직접설계'
+                      : (productTypes[typeId]?.name?.replace(/\s*\(\d+단계\)/g, '') || '표준 공정 설정')}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-indigo-400" />
+                </button>
+
+                {isProcessTypeDropdownOpen && (
+                  <div className="absolute left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95">
+                    <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase border-b border-slate-100 flex items-center justify-between">
+                      <span>표준 공정 마스터 템플릿</span>
+                      <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-extrabold">설정 변경</span>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto py-1">
+                      {Object.values(productTypes)
+                        .filter((t) => t.id !== 'TYPE_CUSTOM')
+                        .map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              setTypeId(t.id);
+                              setIsProcessTypeDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs font-bold transition flex items-center justify-between hover:bg-indigo-50 cursor-pointer ${
+                              typeId === t.id ? 'text-indigo-900 bg-indigo-50/70 font-black' : 'text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate">{t.name}</span>
+                            {typeId === t.id && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                          </button>
+                        ))}
+                      <div className="border-t border-slate-100 my-1" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTypeId('TYPE_CUSTOM');
+                          setIsProcessTypeDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs font-bold transition flex items-center justify-between hover:bg-blue-50 cursor-pointer ${
+                          typeId === 'TYPE_CUSTOM' ? 'text-blue-900 bg-blue-50 font-black' : 'text-blue-700'
+                        }`}
+                      >
+                        <span>✨ 커스텀 직접 설계</span>
+                        {typeId === 'TYPE_CUSTOM' && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* 공정설계 요약: 전체 · 배정 완료 · 미지정 */}

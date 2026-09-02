@@ -1475,6 +1475,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         {/* CENTER-LEFT: Process Grid & Compact Phase Grouping & Batch Actions (8 cols) */}
         <div className="lg:col-span-8 h-full">
           <ProcessGridPanel
+            productTypes={productTypes}
+            typeId={typeId}
+            setTypeId={setTypeId}
             currentProcesses={currentProcesses}
             stepAssignments={stepAssignments}
             selectedStepIndices={selectedStepIndices}
@@ -1554,6 +1557,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             busyMachinesMap={busyMachinesMap}
             busyWorkersMap={busyWorkersMap}
             orderContext={orderContext}
+            orders={orders}
+            processProgressMap={processProgressMap}
+            usersList={usersList}
             onApplyRecommendedPair={handleApplyRecommendedPair}
             onClose={() => setActiveStepIndex(null)}
             onNavigateStep={(direction) => {
@@ -1934,6 +1940,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           orderContext={orderContext}
           busyMachinesMap={busyMachinesMap}
           busyWorkersMap={busyWorkersMap}
+          orders={orders}
+          processProgressMap={processProgressMap}
+          usersList={usersList}
           onApplyBatchRecommendations={handleApplyBatchRecommendations}
         />
       )}

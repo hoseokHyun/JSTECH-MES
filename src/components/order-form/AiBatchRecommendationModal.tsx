@@ -15,9 +15,12 @@ import {
   CheckSquare,
   Square,
   Sliders,
-  ChevronDown
+  ChevronDown,
+  BarChart3,
+  Award,
+  AlertCircle
 } from 'lucide-react';
-import { ProcessStep, ProcessCategory } from '../../types';
+import { ProcessStep, ProcessCategory, Order, ProcessProgressMap, User } from '../../types';
 import { StepAssignment, ResourceBusyInfo, PhaseDefinition } from './orderFormTypes';
 import {
   getProcessPairRecommendations,
@@ -49,6 +52,9 @@ interface AiBatchRecommendationModalProps {
   availableMachines: string[];
   availableOperators: string[];
   orderContext: RecommendationContext;
+  orders?: Record<string, Order>;
+  processProgressMap?: ProcessProgressMap;
+  usersList?: User[];
   onApplyBatchRecommendations: (appliedUpdates: Record<number, StepAssignment>) => void;
 }
 
@@ -73,6 +79,9 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
   availableMachines,
   availableOperators,
   orderContext,
+  orders,
+  processProgressMap,
+  usersList,
   onApplyBatchRecommendations,
 }) => {
   // Scope filter state
@@ -155,7 +164,10 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
           busyMachinesMap,
           busyWorkersMap,
           availableMachines,
-          availableOperators
+          availableOperators,
+          orders,
+          processProgressMap,
+          usersList
         );
 
         const chosenRank = selectedRankMap[originalIndex] || 1;
@@ -200,88 +212,87 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
     selectedRankMap,
     protectExisting,
     minConfidenceScore,
+    orders,
+    processProgressMap,
+    usersList,
   ]);
 
-  // Sync included steps when previewItems change
+  // Auto-initialize included items when preview items change
   React.useEffect(() => {
-    if (isOpen) {
-      const initialIncluded = new Set<number>();
-      previewItems.forEach((item) => {
-        if (!item.isBelowScore) {
-          initialIncluded.add(item.originalIndex);
-        }
-      });
-      setIncludedStepIndices(initialIncluded);
-    }
-  }, [isOpen, scopeFilter, protectExisting, minConfidenceScore, previewItems.length]);
+    const defaultIncluded = new Set<number>();
+    previewItems.forEach((item) => {
+      // Include by default if it meets minConfidenceScore and will change at least one value
+      if (!item.isBelowScore && (item.willChangeMachine || item.willChangeWorker)) {
+        defaultIncluded.add(item.originalIndex);
+      } else if (!protectExisting) {
+        defaultIncluded.add(item.originalIndex);
+      }
+    });
+    setIncludedStepIndices(defaultIncluded);
+  }, [scopeFilter, protectExisting, minConfidenceScore, selectedPhaseFilter]);
 
   if (!isOpen) return null;
 
-  // Summary statistics
-  const totalTargetCount = previewItems.length;
-  const highConfidenceCount = previewItems.filter((p) => p.chosenRec.score >= 90).length;
-  const mediumConfidenceCount = previewItems.filter((p) => p.chosenRec.score >= 80 && p.chosenRec.score < 90).length;
-  const lowConfidenceCount = previewItems.filter((p) => p.chosenRec.score < 80).length;
-
-  const appliedItems = previewItems.filter((p) => includedStepIndices.has(p.originalIndex));
-  const willChangeWorkerCount = appliedItems.filter((p) => p.willChangeWorker).length;
-  const willChangeMachineCount = appliedItems.filter((p) => p.willChangeMachine).length;
-  const unchangedCount = appliedItems.filter((p) => !p.willChangeWorker && !p.willChangeMachine).length;
-
-  const handleToggleInclude = (originalIndex: number) => {
+  const handleToggleInclude = (idx: number) => {
     setIncludedStepIndices((prev) => {
       const next = new Set(prev);
-      if (next.has(originalIndex)) {
-        next.delete(originalIndex);
+      if (next.has(idx)) {
+        next.delete(idx);
       } else {
-        next.add(originalIndex);
+        next.add(idx);
       }
       return next;
     });
   };
 
-  const handleSelectAllIncluded = () => {
-    const all = new Set<number>();
-    previewItems.forEach((p) => all.add(p.originalIndex));
+  const handleSelectAll = () => {
+    const all = new Set(previewItems.map((p) => p.originalIndex));
     setIncludedStepIndices(all);
   };
 
-  const handleDeselectAllIncluded = () => {
+  const handleDeselectAll = () => {
     setIncludedStepIndices(new Set());
   };
 
+  // Compile final updates and invoke parent
   const handleConfirmBatchApply = () => {
-    const finalUpdates: Record<number, StepAssignment> = {};
+    const appliedUpdates: Record<number, StepAssignment> = {};
 
-    appliedItems.forEach((item) => {
-      finalUpdates[item.originalIndex] = {
-        machine: item.willApplyMachine,
-        worker: item.willApplyWorker,
-      };
+    previewItems.forEach((item) => {
+      if (includedStepIndices.has(item.originalIndex)) {
+        appliedUpdates[item.originalIndex] = {
+          machine: item.willApplyMachine,
+          worker: item.willApplyWorker,
+        };
+      }
     });
 
-    onApplyBatchRecommendations(finalUpdates);
+    onApplyBatchRecommendations(appliedUpdates);
     onClose();
   };
 
+  const appliedItems = previewItems.filter((p) => includedStepIndices.has(p.originalIndex));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* 1. Modal Header */}
-        <div className="p-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between border-b border-indigo-950">
+        <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-500/20 border border-indigo-400/30 rounded-xl text-indigo-300">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+            <div className="p-2 bg-blue-500/20 rounded-xl border border-blue-400/30 text-blue-300">
+              <Sparkles className="w-5 h-5 text-amber-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black tracking-tight">AI 공정 배정 추천 일괄 적용</h2>
-                <span className="text-[11px] font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full">
-                  의사결정 학습 모델
+                <h3 className="font-black text-base tracking-tight text-white">
+                  AI 공정 배정 일괄 추천 (담당자 + 설비)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200">
+                  실제 MES 생산 실적 기반
                 </span>
               </div>
-              <p className="text-xs text-slate-300">
-                과거 유사 수주 의사결정 및 설비 실시간 상태를 종합 분석하여 최적의 [담당자 + 설비] 조합을 일괄 추천합니다.
+              <p className="text-xs text-slate-300 font-medium mt-0.5">
+                과거 동일·유사 공정 수행 실적, 품질(불량/이상조치), 설비 가동 상태를 분석하여 전 공정에 최적 배정을 일괄 적용합니다.
               </p>
             </div>
           </div>
@@ -289,205 +300,155 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* 2. Control Toolbar: Scope Filters, Protection Toggle, Confidence Slider */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            {/* Target Scope Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-              <span className="text-slate-500 dark:text-slate-400 text-[11px] mr-1 flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5" /> 적용 대상:
+        {/* 2. Controls & Scope Filters Bar */}
+        <div className="p-3.5 bg-slate-50 border-b border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
+          {/* Scope selection (7 cols) */}
+          <div className="md:col-span-7 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="font-extrabold text-slate-700 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
+                추천 적용 대상 범위 (Scope)
+              </label>
+              <span className="text-[11px] font-bold text-slate-500">
+                대상: <strong>{previewItems.length}</strong>개 공정
               </span>
+            </div>
 
+            <div className="flex flex-wrap gap-1">
               {selectedStepIndices.size > 0 && (
                 <button
                   type="button"
                   onClick={() => setScopeFilter('SELECTED')}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-bold border transition cursor-pointer ${
                     scopeFilter === 'SELECTED'
-                      ? 'bg-blue-600 text-white shadow-2xs font-black'
-                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  선택된 공정 ({selectedStepIndices.size}건)
+                  선택 공정 ({selectedStepIndices.size}개)
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={() => setScopeFilter('UNASSIGNED_ANY')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg font-bold border transition cursor-pointer ${
                   scopeFilter === 'UNASSIGNED_ANY'
-                    ? 'bg-blue-600 text-white shadow-2xs font-black'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                미배정 공정만 (추천)
+                미배정 공정 전체
               </button>
 
               <button
                 type="button"
                 onClick={() => setScopeFilter('ALL')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg font-bold border transition cursor-pointer ${
                   scopeFilter === 'ALL'
-                    ? 'bg-blue-600 text-white shadow-2xs font-black'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                전체 공정 ({currentProcesses.length}건)
+                전체 공정 ({currentProcesses.length}개)
               </button>
 
               <button
                 type="button"
-                onClick={() => setScopeFilter('CURRENT_PHASE')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                  scopeFilter === 'CURRENT_PHASE'
-                    ? 'bg-blue-600 text-white shadow-2xs font-black'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                onClick={() => setScopeFilter('CONFLICT_ONLY')}
+                className={`px-2.5 py-1 rounded-lg font-bold border transition cursor-pointer ${
+                  scopeFilter === 'CONFLICT_ONLY'
+                    ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                Phase별 공정
+                충돌 공정만
               </button>
-
-              {scopeFilter === 'CURRENT_PHASE' && (
-                <select
-                  value={selectedPhaseFilter}
-                  onChange={(e) => setSelectedPhaseFilter(e.target.value)}
-                  className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200"
-                >
-                  {phases.map((p, idx) => (
-                    <option key={p.id} value={p.id}>
-                      Phase {idx + 1}: {p.name}
-                    </option>
-                  ))}
-                </select>
-              )}
             </div>
+          </div>
 
-            {/* Quick Protection Setting */}
-            <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200 cursor-pointer bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+          {/* Protection & Score Rules (5 cols) */}
+          <div className="md:col-span-5 bg-white p-2.5 rounded-xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-extrabold text-slate-700 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                보호 및 적합도 설정
+              </label>
+              <label className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={protectExisting}
                   onChange={(e) => setProtectExisting(e.target.checked)}
                   className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
                 />
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>기존 배정값 보호 (미지정 항목만 채움)</span>
+                <span>기존 수동 배정 보호</span>
               </label>
             </div>
-          </div>
 
-          {/* Confidence Filter Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-600 dark:text-slate-400">추천 적합도 필터:</span>
-              <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setMinConfidenceScore(90)}
-                  className={`px-2 py-0.5 rounded transition ${
-                    minConfidenceScore === 90
-                      ? 'bg-emerald-600 text-white font-black'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  90% 이상 (안전 추천)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMinConfidenceScore(80)}
-                  className={`px-2 py-0.5 rounded transition ${
-                    minConfidenceScore === 80
-                      ? 'bg-blue-600 text-white font-black'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  80% 이상 (권장)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMinConfidenceScore(0)}
-                  className={`px-2 py-0.5 rounded transition ${
-                    minConfidenceScore === 0
-                      ? 'bg-slate-700 text-white font-black'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  전체 적용 (제한 없음)
-                </button>
+            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+              <span>최소 권장 적합도:</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="range"
+                  min="60"
+                  max="95"
+                  step="5"
+                  value={minConfidenceScore}
+                  onChange={(e) => setMinConfidenceScore(parseInt(e.target.value, 10))}
+                  className="w-20 accent-blue-600 cursor-pointer"
+                />
+                <span className="font-mono font-black text-blue-700 w-9 text-right">
+                  {minConfidenceScore}%
+                </span>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Quick check/uncheck all in preview */}
-            <div className="flex items-center gap-2 text-[11px] font-bold">
+        {/* 3. Batch Action Table Toolbar */}
+        <div className="px-4 py-2 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 font-bold text-slate-700">
               <button
                 type="button"
-                onClick={handleSelectAllIncluded}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 cursor-pointer"
+                onClick={handleSelectAll}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
               >
-                미리보기 전체 선택 ({previewItems.length})
+                전체 선택
               </button>
               <span className="text-slate-300">|</span>
               <button
                 type="button"
-                onClick={handleDeselectAllIncluded}
-                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 cursor-pointer"
+                onClick={handleDeselectAll}
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
               >
                 선택 해제
               </button>
             </div>
+
+            <span className="text-[11px] text-slate-500">
+              적용 예정: <strong className="text-blue-700">{appliedItems.length}</strong> / {previewItems.length}건
+            </span>
+          </div>
+
+          <div className="text-[11px] text-slate-500 hidden sm:block">
+            ※ 1순위 추천이 기본 설정되며, 필요 시 개별 공정에서 순위를 변경할 수 있습니다.
           </div>
         </div>
 
-        {/* 3. Summary Statistics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-xs">
-          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">대상 공정</span>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-lg font-black text-slate-900 dark:text-white">{totalTargetCount}</span>
-              <span className="text-xs text-slate-500">건</span>
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
-            <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">고적합도 (90%↑)</span>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{highConfidenceCount}</span>
-              <span className="text-xs text-emerald-600">건 적용 가능</span>
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
-            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">적용 예정 변경</span>
-            <div className="flex items-center gap-2 mt-0.5 text-xs font-bold text-blue-900 dark:text-blue-300">
-              <span>담당자: {willChangeWorkerCount}건</span>
-              <span>•</span>
-              <span>설비: {willChangeMachineCount}건</span>
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800">
-            <span className="text-[11px] font-bold text-indigo-800 dark:text-indigo-300 block">최종 일괄 적용</span>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-lg font-black text-indigo-700 dark:text-indigo-400">{appliedItems.length}</span>
-              <span className="text-xs text-indigo-600">건 배정 예정</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Interactive Step-by-Step Recommendation Preview Table */}
-        <div className="flex-1 overflow-y-auto p-3 bg-slate-50/50 dark:bg-slate-900/50">
+        {/* 4. Recommendation Comparison List */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {previewItems.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-xs">
-              <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              선택한 조건에 부합하는 대상 공정이 없습니다.
+            <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+              <Sparkles className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="font-bold text-sm text-slate-700">현재 조건에 해당하는 공정이 없습니다.</p>
+              <p className="text-xs text-slate-400 mt-1">상단의 적용 범위(Scope) 필터를 변경해보세요.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -498,26 +459,26 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                 return (
                   <div
                     key={item.originalIndex}
-                    className={`p-2.5 rounded-xl border transition ${
+                    className={`p-3 rounded-xl border transition ${
                       isChecked
-                        ? 'bg-white dark:bg-slate-800 border-indigo-200 dark:border-indigo-800 shadow-2xs'
-                        : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-60'
+                        ? 'bg-white border-indigo-200 shadow-2xs'
+                        : 'bg-slate-100/70 border-slate-200 opacity-60'
                     }`}
                   >
                     <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2.5">
                       {/* Checkbox & OP Code & Process Name */}
-                      <div className="flex items-center gap-2 min-w-0 lg:w-[280px]">
+                      <div className="flex items-center gap-2 min-w-0 lg:w-[260px]">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => handleToggleInclude(item.originalIndex)}
                           className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                         />
-                        <span className="font-mono font-black text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 shrink-0">
+                        <span className="font-mono font-black text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
                           {item.proc.code || `OP${String(item.originalIndex + 1).padStart(3, '0')}`}
                         </span>
                         <div className="min-w-0">
-                          <h4 className="font-black text-xs text-slate-900 dark:text-white truncate">
+                          <h4 className="font-black text-xs text-slate-900 truncate">
                             {item.proc.name}
                           </h4>
                           <span className="text-[10px] font-bold text-slate-500">
@@ -529,9 +490,9 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                       {/* Current Status vs AI Recommendation Comparison */}
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs w-full">
                         {/* Current Value */}
-                        <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                           <span className="text-[10px] font-bold text-slate-400 block mb-0.5">현재 배정 상태</span>
-                          <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 truncate">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-700 truncate">
                             <span>{item.currentWorker || '(담당자 미지정)'}</span>
                             <span className="text-slate-300">•</span>
                             <span>{item.currentMachine || '(설비 미지정)'}</span>
@@ -539,19 +500,19 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                         </div>
 
                         {/* AI Recommended Pair */}
-                        <div className="p-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800">
+                        <div className="p-2 rounded-lg bg-indigo-50/80 border border-indigo-200">
                           <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-xs font-black text-indigo-700 dark:text-indigo-300 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                            <span className="text-xs font-black text-indigo-900 flex items-center gap-1 shrink-0 whitespace-nowrap">
                               <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                               AI 추천 (Rank {item.chosenRank})
                             </span>
                             <span
                               className={`inline-flex items-center justify-center text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 leading-none shadow-2xs ${
                                 rec.score >= 90
-                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-900/60 dark:text-emerald-200 dark:border-emerald-700'
+                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                                   : rec.score >= 80
-                                  ? 'bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-900/60 dark:text-blue-200 dark:border-blue-700'
-                                  : 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-900/60 dark:text-amber-200 dark:border-amber-700'
+                                  ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
                               }`}
                             >
                               적합도 {rec.score}%
@@ -559,7 +520,7 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                           </div>
 
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 font-black text-xs text-indigo-950 dark:text-indigo-200 truncate">
+                            <div className="flex items-center gap-1.5 font-black text-xs text-indigo-950 truncate">
                               <span>{rec.worker}</span>
                               <span className="text-indigo-300 font-normal">•</span>
                               <span>{rec.machine}</span>
@@ -575,7 +536,7 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                                     [item.originalIndex]: parseInt(e.target.value, 10),
                                   }))
                                 }
-                                className="text-[11px] font-bold bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 text-indigo-900 dark:text-indigo-300 cursor-pointer shrink-0"
+                                className="text-[11px] font-bold bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-indigo-900 cursor-pointer shrink-0"
                               >
                                 {item.recommendations.map((r) => (
                                   <option key={r.rank} value={r.rank}>
@@ -588,14 +549,15 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
                         </div>
                       </div>
 
-                      {/* Primary Evidence Pill */}
-                      <div className="lg:w-[220px] shrink-0 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/80 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <span className="font-bold text-slate-700 dark:text-slate-300 block truncate">
-                          💡 {rec.primaryReason}
-                        </span>
-                        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-emerald-600 font-bold">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>설비 {rec.machineStatus} • 담당자 {rec.workerStatus}</span>
+                      {/* Primary Evidence Pill with Metrics */}
+                      <div className="lg:w-[240px] shrink-0 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-1">
+                        <div className="font-bold text-slate-800 truncate text-[10px]">
+                          • 실적: 수행 {rec.metrics.similarProcessCount}회 | 완료율 {rec.metrics.completionRate}%
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>불량률: <strong className={rec.metrics.defectRate > 0 ? 'text-rose-600' : 'text-emerald-600'}>{rec.metrics.defectRate}%</strong></span>
+                          <span>이상조치: <strong className="text-slate-800">{rec.metrics.issueCount}회</strong></span>
+                          <span className="text-emerald-700 font-bold">{rec.machineStatus}</span>
                         </div>
                       </div>
                     </div>
@@ -607,8 +569,8 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
         </div>
 
         {/* 5. Modal Footer Action */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-600 dark:text-slate-400 font-bold flex items-center gap-1.5">
+        <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-slate-600 font-bold flex items-center gap-1.5">
             <Info className="w-4 h-4 text-blue-600" />
             <span>
               일괄 적용 후에도 공정 목록 및 상세 카드에서 언제든지 개별 수정할 수 있습니다.
@@ -619,7 +581,7 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+              className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition cursor-pointer"
             >
               취소
             </button>

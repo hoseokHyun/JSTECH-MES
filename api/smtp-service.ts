@@ -86,29 +86,32 @@ export function getSmtpConfig(): SmtpConfig {
     'noworries004@jstech.kr'
   );
 
-  let pass = '';
-  let detectedEnvKey = 'NONE';
+  // SMTP Password MUST NEVER be hardcoded in source code or committed to GitHub.
+  // It is securely loaded at runtime from environment variables (e.g. Vercel Environment Variables).
+  let pass = cleanEnvString(process.env.NAVERWORKS_SMTP_PASS);
+  let detectedEnvKey = pass ? 'NAVERWORKS_SMTP_PASS' : 'NONE';
 
-  const passKeys = [
-    'NAVERWORKS_SMTP_PASS',
-    'NAVERWORKS_SMTP_PASSWORD',
-    'SMTP_PASSWORD',
-    'SMTP_PASS',
-    'MAIL_PASSWORD',
-    'MAIL_PASS',
-    'NAVER_SMTP_PASSWORD',
-    'NAVER_SMTP_PASS',
-    'NAVER_PASSWORD',
-    'NAVERWORKS_PASS',
-  ];
+  if (!pass) {
+    const fallbackKeys = [
+      'NAVERWORKS_SMTP_PASSWORD',
+      'SMTP_PASSWORD',
+      'SMTP_PASS',
+      'MAIL_PASSWORD',
+      'MAIL_PASS',
+      'NAVER_SMTP_PASSWORD',
+      'NAVER_SMTP_PASS',
+      'NAVER_PASSWORD',
+      'NAVERWORKS_PASS',
+    ];
 
-  for (const key of passKeys) {
-    if (process.env[key]) {
-      const candidate = cleanEnvString(process.env[key]);
-      if (candidate) {
-        pass = candidate;
-        detectedEnvKey = key;
-        break;
+    for (const key of fallbackKeys) {
+      if (process.env[key]) {
+        const candidate = cleanEnvString(process.env[key]);
+        if (candidate) {
+          pass = candidate;
+          detectedEnvKey = key;
+          break;
+        }
       }
     }
   }

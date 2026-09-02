@@ -145,11 +145,10 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   processProgressMap = {},
   onUpdateOrder,
 }) => {
-  if (!isOpen || !order) return null;
-
   // 1. Derive processes from order or productType template
-  const productType = productTypes[order.typeId];
+  const productType = order ? productTypes[order.typeId] : undefined;
   const baseProcesses: ProcessStep[] = useMemo(() => {
+    if (!order) return [];
     if (order.customProcesses && order.customProcesses.length > 0) {
       return order.customProcesses;
     }
@@ -161,10 +160,11 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
 
   // 2. Derive smart default metadata
   const defaultOrderId = useMemo(() => {
-    return order.id || 'ORD-2026-001';
+    return order?.id || 'ORD-2026-001';
   }, [order]);
 
   const defaultCustomer = useMemo(() => {
+    if (!order) return '고객사 지정';
     if (order.customer) return order.customer;
     if (order.name.includes('삼성')) return '삼성디스플레이';
     if (order.name.includes('LG')) return 'LG디스플레이';
@@ -174,21 +174,24 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   }, [order]);
 
   const defaultPjtName = useMemo(() => {
-    return order.pjtName || order.name || '신규 프로젝트';
+    return order?.pjtName || order?.name || '신규 프로젝트';
   }, [order]);
 
   const defaultSpec = useMemo(() => {
+    if (!order) return '650L';
     if (order.spec) return order.spec;
     const match = (order.pjtName || order.name).match(/(\d+mm|\d+L|\d+세대)/i);
     return match ? match[0] : '650L';
   }, [order]);
 
   const defaultSerialNo = useMemo(() => {
+    if (!order) return 'NN-NNNNN-2608-01';
     if (order.serialNo) return formatSerialRange(order.serialNo, order.qty || 1, order.pjtNo || order.poNumber);
     return formatSerialRange(order.pjtNo || defaultOrderId, order.qty || 1, order.pjtNo);
   }, [order, defaultOrderId]);
 
   const defaultDueDate = useMemo(() => {
+    if (!order) return '2026-06-30';
     if (order.dueDate) return order.dueDate;
     if (order.startDate) {
       try {
@@ -203,6 +206,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   }, [order]);
 
   const defaultSpecialNotes = useMemo(() => {
+    if (!order) return '공정 간 인수인계 철저히 할 것!';
     if (order.specialNotes) return order.specialNotes;
     if (order.memo) return order.memo;
     return '공정 간 인수인계 철저히 할 것!';
@@ -215,12 +219,12 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
   const [spec, setSpec] = useState(defaultSpec);
   const [serialNo, setSerialNo] = useState(defaultSerialNo);
   const [dueDate, setDueDate] = useState(defaultDueDate);
-  const [qty, setQty] = useState(order.qty || 1);
+  const [qty, setQty] = useState(order?.qty || 1);
   const [specialNotes, setSpecialNotes] = useState(defaultSpecialNotes);
 
-  const [writerName, setWriterName] = useState(order.writerName || currentUser?.name || '작성자');
-  const [reviewerName, setReviewerName] = useState(order.reviewerName || '검토자');
-  const [approverName, setApproverName] = useState(order.approverName || '승인자');
+  const [writerName, setWriterName] = useState(order?.writerName || currentUser?.name || '작성자');
+  const [reviewerName, setReviewerName] = useState(order?.reviewerName || '검토자');
+  const [approverName, setApproverName] = useState(order?.approverName || '승인자');
 
   // Preview & print settings
   const [isEditing, setIsEditing] = useState(false);
@@ -494,6 +498,8 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
       }
     }
   }, [totalPages, selectedPageView]);
+
+  if (!isOpen || !order) return null;
 
   return createPortal(
     <div
