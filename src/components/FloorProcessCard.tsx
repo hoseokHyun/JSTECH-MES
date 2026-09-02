@@ -274,7 +274,7 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
               <span className="text-slate-400">•</span>
               <span className="text-slate-200 break-all whitespace-nowrap">
                 각인번호: <strong className="text-amber-200 font-mono font-black tracking-wide">
-                  {getIndividualSerialNo(order?.serialNo || order?.pjtNo || '', task.productNo || 1, effectiveQty)}
+                  {getIndividualSerialNo(order?.serialNo || order?.pjtNo || '', task.productNo || 1, effectiveQty, order?.pjtNo || order?.poNumber)}
                 </strong>
               </span>
             </>

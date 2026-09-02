@@ -628,7 +628,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  전체 로트 ({formatSerialRange(serialNo, qty)})
+                  전체 로트 ({formatSerialRange(serialNo, qty, order.pjtNo || order.poNumber)})
                 </button>
                 {Array.from({ length: qty }, (_, i) => i + 1).map((pieceNum) => (
                   <button
@@ -641,7 +641,7 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                         : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    #{pieceNum} ({getIndividualSerialNo(serialNo, pieceNum, qty).split('-').slice(-1)[0]})
+                    #{pieceNum} ({getIndividualSerialNo(serialNo, pieceNum, qty, order.pjtNo || order.poNumber).split('-').slice(-1)[0]})
                   </button>
                 ))}
               </div>
@@ -944,15 +944,15 @@ export const ProcessTravelerModal: React.FC<ProcessTravelerModalProps> = ({
                                   className="w-full text-center border border-blue-400 rounded px-1 py-0.5 text-xs font-bold font-mono"
                                 />
                                 <div className="text-[9px] text-slate-500 font-sans">
-                                  {formatSerialRange(serialNo || orderId, qty)}
+                                  {formatSerialRange(serialNo || orderId, qty, order.pjtNo || order.poNumber)}
                                 </div>
                               </div>
                             ) : (
                               <div className="flex flex-col items-center justify-center">
                                 <span className="font-bold text-xs tracking-tight">
                                   {selectedPiece === 'ALL'
-                                    ? (formatSerialRange(serialNo, qty) || serialNo)
-                                    : getIndividualSerialNo(serialNo || orderId, selectedPiece, qty)}
+                                    ? (formatSerialRange(serialNo, qty, order.pjtNo || order.poNumber) || serialNo)
+                                    : getIndividualSerialNo(serialNo || orderId, selectedPiece, qty, order.pjtNo || order.poNumber)}
                                 </span>
                                 {qty > 1 && selectedPiece !== 'ALL' && (
                                   <span className="text-[9.5px] text-blue-700 font-bold font-sans">

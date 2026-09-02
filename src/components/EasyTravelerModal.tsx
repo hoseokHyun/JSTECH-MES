@@ -235,7 +235,7 @@ export const EasyTravelerModal: React.FC<EasyTravelerModalProps> = ({
                 <div className="flex items-center gap-1.5 col-span-2 bg-amber-50 p-1.5 rounded border border-amber-300">
                   <span className="text-amber-900 font-black shrink-0">각인번호:</span>
                   <span className="font-black text-amber-950 font-mono text-xs">
-                    {getIndividualSerialNo(effectiveOrder.serialNo || effectiveOrder.poNumber || effectiveOrder.pjtNo || '', taskItem?.productNo || 1, effectiveOrder.qty)}
+                    {getIndividualSerialNo(effectiveOrder.serialNo || effectiveOrder.poNumber || effectiveOrder.pjtNo || '', taskItem?.productNo || 1, effectiveOrder.qty, effectiveOrder.pjtNo || effectiveOrder.poNumber)}
                   </span>
                   {effectiveOrder.qty > 1 && (
                     <span className="text-[10px] font-black text-amber-800 ml-auto bg-amber-100 px-1.5 py-0.2 rounded">

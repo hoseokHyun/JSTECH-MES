@@ -371,12 +371,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     // 프로젝트번호 입력/변경 시, 각인번호 Prefix로 [프로젝트번호 전체]를 온전히 적용하여 순번 연동
     // 사용자가 직접 임의로 수정한 경우가 아니거나, 이전 프로젝트번호를 기반으로 생성된 각인번호인 경우 자동 연동
     if (!isSerialCustomized || !serialNo.trim()) {
-      setSerialNo(newPjtNo.trim() ? formatSerialRange(newPjtNo.trim(), qty) : '');
+      setSerialNo(newPjtNo.trim() ? formatSerialRange(newPjtNo.trim(), qty, newPjtNo.trim()) : '');
     } else {
       // 이전에 다른 프로젝트번호로 자동 생성된 패턴이었는지 확인하여 갱신
-      const prevBase = extractSerialBase(serialNo);
+      const prevBase = extractSerialBase(serialNo, pjtNo);
       if (prevBase === pjtNo.trim()) {
-        setSerialNo(newPjtNo.trim() ? formatSerialRange(newPjtNo.trim(), qty) : '');
+        setSerialNo(newPjtNo.trim() ? formatSerialRange(newPjtNo.trim(), qty, newPjtNo.trim()) : '');
       }
     }
   };
@@ -396,10 +396,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     const safeQty = Math.max(1, newQty);
     setQty(safeQty);
     // 프로젝트번호 전체를 기본 Prefix로 사용하고, 사용자가 직접 수정한 경우 해당 Prefix를 보존
-    const base = isSerialCustomized && serialNo.trim()
-      ? (extractSerialBase(serialNo, pjtNo) || pjtNo.trim() || 'NN-NNNN-2608-01')
-      : (pjtNo.trim() || extractSerialBase(serialNo) || 'NN-NNNN-2608-01');
-    setSerialNo(formatSerialRange(base, safeQty));
+    const pjt = pjtNo.trim();
+    if (!isSerialCustomized || !serialNo.trim()) {
+      setSerialNo(pjt ? formatSerialRange(pjt, safeQty, pjt) : '');
+    } else {
+      const base = extractSerialBase(serialNo, pjt) || pjt || 'NN-NNNN-2608-01';
+      setSerialNo(formatSerialRange(base, safeQty, pjt));
+    }
   };
 
   // Real-time busy resources mapping (machines and operators currently active)
@@ -1243,7 +1246,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       partName: partName.trim() || finalPjtName,
       partType: partType.trim() || 'UPPER (상판)',
       spec: spec.trim() || '650L',
-      serialNo: serialNo.trim() || formatSerialRange(finalPjtNo, qty),
+      serialNo: serialNo.trim() || formatSerialRange(finalPjtNo, qty, finalPjtNo),
       dueDate: dueDate.trim() || getDefaultDueDateString(),
       specialNotes: (specialNotes || memo || '공정 간 인수인계 철저히 할 것!').trim(),
     };
@@ -1376,7 +1379,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       partName: partName.trim() || finalPjtName,
       partType: partType.trim() || 'UPPER (상판)',
       spec: spec.trim() || '650L',
-      serialNo: serialNo.trim() || formatSerialRange(pjtNo || 'NN-NNNN-2608-01', qty),
+      serialNo: serialNo.trim() || formatSerialRange(pjtNo || 'NN-NNNN-2608-01', qty, pjtNo || 'NN-NNNN-2608-01'),
       dueDate: dueDate.trim() || getDefaultDueDateString(),
       specialNotes: notes,
     };
