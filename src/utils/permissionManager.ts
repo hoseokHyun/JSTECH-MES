@@ -530,8 +530,22 @@ export function computeEffectivePermissions(user: User | null | undefined): Effe
   let effectiveMenus: MenuId[] = [...preset.defaultMenus];
 
   // If user has customized allowedMenus, apply it
-  if (user.permissions?.allowedMenus && Array.isArray(user.permissions.allowedMenus)) {
-    effectiveMenus = [...user.permissions.allowedMenus as MenuId[]];
+  if (user.permissions?.allowedMenus && Array.isArray(user.permissions.allowedMenus) && user.permissions.allowedMenus.length > 0) {
+    const rawAllowed = [...user.permissions.allowedMenus as MenuId[]];
+    // Check if the user's stored allowedMenus is completely disjoint from this department's default menus
+    // (e.g. user was switched to '영업팀' but Firestore still held old '가공팀' allowedMenus)
+    const hasAnyDeptDefault = preset.defaultMenus.some((m) => rawAllowed.includes(m));
+    if (!hasAnyDeptDefault) {
+      const sanitizedExtras = rawAllowed.filter((m) => {
+        if (m === 'execution' && deptKey !== '가공팀' && deptKey !== '연마팀' && !user.permissions?.canExecuteMES) {
+          return false;
+        }
+        return true;
+      });
+      effectiveMenus = Array.from(new Set([...preset.defaultMenus, ...sanitizedExtras]));
+    } else {
+      effectiveMenus = rawAllowed;
+    }
   }
 
   // Backward compatibility: If user has legacy permission flags true, ensure relevant menus are exposed
@@ -657,4 +671,72 @@ export function canEditMenu(user: User | null | undefined, menuId: string): bool
   const effective = computeEffectivePermissions(user);
   if (!effective.allowedMenus.includes(menuId as MenuId)) return false;
   return Boolean(effective.canEditMenu[menuId]);
+}
+
+/**
+ * 부서 변경 시 새 부서의 기본 권한/메뉴 세트로 재계산하면서,
+ * 기존에 관리자가 해당 사용자에게 개별적으로 추가 부여했던 세부 기능 권한을 보존하는 핵심 함수
+ *
+ * [정책 및 판단 근거]
+ * 1. 메뉴 (allowedMenus):
+ *    - 새 부서의 기본 메뉴(newPreset.defaultMenus)는 반드시 기본 활성화 (영업팀의 경우 대시보드, 캘린더, 타임라인)
+ *    - 이전 부서의 고유 기본 메뉴(예: 가공팀의 execution)는 새 부서의 기본 메뉴에 포함되지 않으면 기본 정리
+ *    - 단, 이전 부서 기본 메뉴 세트 외에 관리자가 해당 사용자에게 특별히 추가해 주었던 '수동 추가 메뉴(custom additions)'는 유지하여 합집합(Union)
+ * 2. 기능 플래그 (canEditOrder, canArchive 등):
+ *    - 새 부서의 기본 권한 세트(newPreset.permissions)를 기본 적용
+ *    - 단, 관리자가 이전에 수동으로 활성화(true)해 주었던 개별 권한(이전 부서 프리셋에서는 false였는데 user에서 true였던 플래그)은 임의 삭제하지 않고 유지
+ * 3. 메뉴별 편집 권한 (menuEdits):
+ *    - 새 부서의 기본 편집 권한(newPreset.defaultEdits)을 베이스로 하고, 기존의 커스텀 편집 설정을 안전하게 병합
+ */
+export function recalculatePermissionsOnDepartmentChange(
+  oldUser: User,
+  newDept: UserDepartment
+): UserPermissions {
+  const oldDept = (oldUser.department as UserDepartment) || '가공팀';
+  const oldPreset = DEPARTMENT_PRESETS[oldDept] || DEPARTMENT_PRESETS['가공팀'];
+  const newPreset = DEPARTMENT_PRESETS[newDept] || DEPARTMENT_PRESETS['가공팀'];
+
+  // 1. Calculate custom menu additions beyond old department's preset
+  const oldAllowed = (oldUser.permissions?.allowedMenus && oldUser.permissions.allowedMenus.length > 0
+    ? oldUser.permissions.allowedMenus
+    : oldPreset.defaultMenus) as MenuId[];
+
+  const customMenuAdditions = oldAllowed.filter(
+    (m) => !oldPreset.defaultMenus.includes(m as MenuId)
+  );
+
+  const newAllowedMenus = Array.from(
+    new Set([...newPreset.defaultMenus, ...customMenuAdditions])
+  ).filter((m) => ALL_MENU_IDS.includes(m as MenuId)) as string[];
+
+  // 2. Preserve any explicitly granted custom flags that were enabled beyond old preset
+  const customGrantedFlags: Partial<UserPermissions> = {};
+  const flagKeys: (keyof UserPermissions)[] = [
+    'canEditOrder',
+    'canExecuteMES',
+    'canManageUsers',
+    'canEditMaster',
+    'canArchive',
+    'canQualityInspection',
+    'canShipmentControl',
+  ];
+
+  flagKeys.forEach((k) => {
+    const userVal = oldUser.permissions?.[k];
+    const oldPresetVal = oldPreset.permissions[k];
+    if (userVal === true && !oldPresetVal) {
+      (customGrantedFlags as any)[k] = true;
+    }
+  });
+
+  // 3. Assemble merged permissions
+  return {
+    ...newPreset.permissions,
+    ...customGrantedFlags,
+    allowedMenus: newAllowedMenus,
+    menuEdits: {
+      ...newPreset.defaultEdits,
+      ...(oldUser.permissions?.menuEdits || {}),
+    },
+  };
 }

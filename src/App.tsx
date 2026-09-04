@@ -37,6 +37,7 @@ import {
   AuthSession,
   getStoredAuthSession,
   createAuthSession,
+  updateStoredAuthSessionUser,
   clearAllAuthSessions,
   updateSessionActivity,
   extendSession,
@@ -240,14 +241,16 @@ export default function App() {
         return;
       }
 
-      // Check if role or permissions changed dynamically by admin
-      if (
-        dbUser.role !== currentUser.role ||
-        JSON.stringify(dbUser.permissions) !== JSON.stringify(currentUser.permissions)
-      ) {
+      // Check if role, department, or permissions changed dynamically by admin
+      const roleChanged = dbUser.role !== currentUser.role;
+      const deptChanged = (dbUser.department || '') !== (currentUser.department || '');
+      const permsChanged = JSON.stringify(dbUser.permissions) !== JSON.stringify(currentUser.permissions);
+
+      if (roleChanged || deptChanged || permsChanged) {
         const updatedUser: User = {
           ...currentUser,
           role: dbUser.role,
+          department: dbUser.department,
           permissions: dbUser.permissions,
         };
         const updatedSession: AuthSession = {
@@ -255,6 +258,7 @@ export default function App() {
           user: updatedUser,
         };
         setAuthSession(updatedSession);
+        updateStoredAuthSessionUser(updatedUser);
       }
     }
   }, [usersList, authSession, currentUser]);
@@ -1246,18 +1250,26 @@ export default function App() {
   }
 
   // Field Operator Isolated View / QR Deep-Link Standalone Mode
-  const isFieldOperator =
+  // Only users whose ONLY permitted menu is 'execution' (Floor MES) and belong to field shop floor teams,
+  // or explicit kiosk/standalone URL parameters should enter StandaloneFloorMESLayout.
+  // Office, sales, admin, and managerial roles must always enter the full application portal.
+  const isPureFieldOperator =
     currentUser.role !== 'ADMIN' &&
     currentUser.department !== '시스템 관리자' &&
     currentUser.department !== '생산 관리' &&
-    currentUser.permissions?.canEditOrder !== true;
+    currentUser.department !== '생산관리' &&
+    currentUser.department !== '영업팀' &&
+    currentUser.department !== '임원진' &&
+    effectivePerms.allowedMenus.length === 1 &&
+    effectivePerms.allowedMenus.includes('execution');
 
   const isAdminOrManager =
     currentUser.role === 'ADMIN' ||
     currentUser.department === '시스템 관리자' ||
-    currentUser.department === '생산 관리';
+    currentUser.department === '생산 관리' ||
+    currentUser.department === '생산관리';
 
-  if (isFieldOperator || isFloorStandaloneMode) {
+  if (isPureFieldOperator || isFloorStandaloneMode) {
     return (
       <StandaloneFloorMESLayout
         scheduledTasks={scheduledTasks}

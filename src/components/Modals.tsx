@@ -63,6 +63,7 @@ import {
   DEPARTMENT_OPTIONS,
   DEPARTMENT_PRESETS,
   computeEffectivePermissions,
+  recalculatePermissionsOnDepartmentChange,
   EffectivePermissions,
 } from '../utils/permissionManager';
 
@@ -685,24 +686,25 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     const preset = DEPARTMENT_PRESETS[newDept];
     if (!preset) return;
 
+    // Recalculate permissions based on new department while preserving custom additions
+    const recalculatedPerms = recalculatePermissionsOnDepartmentChange(user, newDept);
+
     // Automatically approve user when department is assigned by admin
     updateLocalUser(targetId, {
       department: newDept,
       role: preset.role,
-      permissions: preset.permissions,
+      permissions: recalculatedPerms,
       isApproved: true,
       status: 'approved',
     });
 
-    if (user.uid) {
-      await updateUserPermissionsInFirestore(
-        user.uid,
-        preset.permissions,
-        preset.role,
-        newDept,
-        true // Force isApproved: true
-      );
-    }
+    await updateUserPermissionsInFirestore(
+      targetId,
+      recalculatedPerms,
+      preset.role,
+      newDept,
+      true // Force isApproved: true
+    );
   };
 
   const handleApplyPreset = async (user: User, deptPreset: UserDepartment) => {
@@ -755,6 +757,8 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     if (!targetId) return;
     const currentPerms = getUserPermissions(user);
     const allowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...ALL_MENU_IDS];
+    const edits = { ...(currentPerms.menuEdits || {}) };
+
     let nextAllowed: string[];
     if (allowed.includes(menuId)) {
       if (allowed.length <= 1) {
@@ -762,17 +766,18 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
         return;
       }
       nextAllowed = allowed.filter((m) => m !== menuId);
+      // When menu is hidden, also turn off its edit permission
+      edits[menuId] = false;
     } else {
       nextAllowed = [...allowed, menuId];
     }
     const updatedPerms: UserPermissions = {
       ...currentPerms,
       allowedMenus: nextAllowed,
+      menuEdits: edits,
     };
     updateLocalUser(targetId, { permissions: updatedPerms });
-    if (user.uid) {
-      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
-    }
+    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department);
   };
 
   const handleToggleMenuEdit = async (user: User, menuId: MenuId) => {
@@ -786,7 +791,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     const nextVal = !isCurrentlyEditable;
     edits[menuId] = nextVal;
 
-    // If making it editable, ensure menu is also exposed
+    // If making it editable, automatically ensure menu is also exposed in sidebar
     let nextAllowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...effective.allowedMenus];
     if (nextVal && !nextAllowed.includes(menuId)) {
       nextAllowed.push(menuId);
@@ -798,9 +803,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
       menuEdits: edits,
     };
     updateLocalUser(targetId, { permissions: updatedPerms });
-    if (user.uid) {
-      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
-    }
+    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department);
   };
 
   const handleBatchMenuAction = async (user: User, action: 'ALL_EXPOSE' | 'ALL_EDIT' | 'RESET_DEPT') => {
@@ -998,13 +1001,13 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
           <table className="w-full text-left text-xs min-w-[950px]">
             <thead className="bg-slate-100/90 text-slate-700 font-black sticky top-0 border-b border-slate-200 z-10">
               <tr>
-                <th className="p-3 w-44">성명 / 이메일</th>
-                <th className="p-3 w-36 text-center">직책 (부서/역할)</th>
-                <th className="p-3 text-center min-w-[420px]">
+                <th className="p-3 w-48 min-w-[190px]">성명 / 이메일</th>
+                <th className="p-3 w-40 min-w-[150px] text-center">직책 (부서/역할)</th>
+                <th className="p-3 text-center min-w-[480px]">
                   <span>세부 기능 권한 & 원클릭 프리셋</span>
                 </th>
-                <th className="p-3 w-28 text-center">승인 상태</th>
-                <th className="p-3 w-32 text-center">관리 액션</th>
+                <th className="p-3 w-28 min-w-[100px] text-center">승인 상태</th>
+                <th className="p-3 w-32 min-w-[110px] text-center">관리 액션</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700 bg-white">
@@ -1028,12 +1031,12 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                   return (
                     <tr
                       key={u.uid || u.email}
-                      className={`hover:bg-slate-50 transition ${
+                      className={`hover:bg-slate-50 transition align-top ${
                         !u.isApproved ? 'bg-amber-50/40' : ''
                       }`}
                     >
                       {/* Name & Email */}
-                      <td className="p-3">
+                      <td className="p-3 align-top">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-extrabold text-slate-900 text-sm">{displayName}</span>
                           {isCurrent ? (
@@ -1114,7 +1117,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                       </td>
 
                       {/* Department / Role Dropdown Selection */}
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center align-top">
                         <select
                           value={currentDept}
                           onChange={(e) => handleDepartmentChange(u, e.target.value as UserDepartment)}
@@ -1143,7 +1146,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                       </td>
 
                       {/* Granular Permissions Checkboxes & Presets */}
-                      <td className="p-3">
+                      <td className="p-3 align-top">
                         <div className="space-y-2">
                           {/* 7 Checkboxes Grid */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
@@ -1377,40 +1380,41 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                                           </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          {/* 노출(조회) 체크박스 */}
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          {/* 노출(조회) 체크박스: 노출 ☑ */}
                                           <label
-                                            className="flex items-center gap-1 cursor-pointer select-none"
+                                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold cursor-pointer select-none transition ${
+                                              isExposed
+                                                ? 'bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-200'
+                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                            }`}
                                             title="메뉴 사이드바 노출 및 조회 허용"
                                           >
+                                            <span>노출</span>
                                             <input
                                               type="checkbox"
                                               checked={isExposed}
                                               onChange={() => handleToggleMenuExposure(u, menuDef.id)}
                                               className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                             />
-                                            <span className={`text-[10px] font-bold ${isExposed ? 'text-blue-700' : 'text-slate-400'}`}>
-                                              노출
-                                            </span>
                                           </label>
 
-                                          {/* 편집(쓰기) 체크박스 */}
+                                          {/* 편집(쓰기) 체크박스: 편집 ☑ */}
                                           <label
-                                            className={`flex items-center gap-1 select-none ${
-                                              isExposed ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+                                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold cursor-pointer select-none transition ${
+                                              isExposed && isEditable
+                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200'
+                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
                                             }`}
-                                            title={isExposed ? "메뉴 내 데이터 등록/수정/삭제/실행 허용" : "메뉴 노출을 먼저 체크해야 편집 권한을 부여할 수 있습니다"}
+                                            title="메뉴 내 데이터 등록/수정/삭제/실행 허용"
                                           >
+                                            <span>편집</span>
                                             <input
                                               type="checkbox"
-                                              disabled={!isExposed}
                                               checked={isExposed && isEditable}
                                               onChange={() => handleToggleMenuEdit(u, menuDef.id)}
                                               className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
                                             />
-                                            <span className={`text-[10px] font-bold ${isExposed && isEditable ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                              편집
-                                            </span>
                                           </label>
                                         </div>
                                       </div>
@@ -1424,7 +1428,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                       </td>
 
                       {/* Approval Status */}
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center align-top">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
                             u.isApproved
@@ -1447,7 +1451,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center align-top">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleToggleApproval(u)}

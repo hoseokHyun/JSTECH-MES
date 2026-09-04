@@ -1,4 +1,5 @@
-import { User, UserPermissions } from '../types';
+import { User, UserPermissions, UserDepartment } from '../types';
+import { DEPARTMENT_PRESETS } from './permissionManager';
 
 export interface AuthSession {
   sessionId: string;
@@ -33,26 +34,35 @@ export const INACTIVITY_WARNING_COUNTDOWN_SECONDS = 60;            // 60 Seconds
 
 /**
  * Remove sensitive credentials (passwords, temporary tokens) from User object
+ * and ensure canonical department and permissions are preserved
  */
 export function sanitizeUser(user: User): User {
   if (!user) return user;
+  const dept = (user.department as UserDepartment) || '가공팀';
+  const preset = DEPARTMENT_PRESETS[dept] || DEPARTMENT_PRESETS['가공팀'];
+
   const safe: User = {
     uid: user.uid || '',
     email: user.email || '',
     name: user.name || '사용자',
-    role: user.role || 'USER',
+    role: user.role || preset.role || 'USER',
+    department: user.department || dept,
+    position: user.position || '',
+    phoneNumber: user.phoneNumber || user.phone_number || '',
+    phone_number: user.phoneNumber || user.phone_number || '',
     isApproved: user.isApproved ?? true,
+    status: user.status || (user.isApproved ? 'approved' : 'pending'),
     isOnline: user.isOnline ?? true,
     createdAt: user.createdAt,
     loginAt: user.loginAt || new Date().toISOString(),
     logoutAt: user.logoutAt,
     permissions: user.permissions || {
-      canEditOrder: user.role === 'ADMIN',
-      canExecuteMES: true,
+      ...preset.permissions,
+      canEditOrder: user.role === 'ADMIN' ? true : (preset.permissions.canEditOrder || false),
       canManageUsers: user.role === 'ADMIN',
-      canEditMaster: user.role === 'ADMIN',
-      canArchive: user.role === 'ADMIN',
-    }
+      canEditMaster: user.role === 'ADMIN' ? true : (preset.permissions.canEditMaster || false),
+      canArchive: user.role === 'ADMIN' ? true : (preset.permissions.canArchive || false),
+    },
   };
   // Ensure password is never included in the sanitized user object
   delete (safe as any).password;
@@ -227,6 +237,29 @@ export function updateSessionActivity(): void {
     }
   } catch (e) {
     console.warn('Failed to update session activity timestamp:', e);
+  }
+}
+
+/**
+ * Update the stored user inside active session (when admin modifies department or permissions)
+ */
+export function updateStoredAuthSessionUser(updatedUser: User): void {
+  try {
+    const safe = sanitizeUser(updatedUser);
+    const rawTransient = sessionStorage.getItem(STORAGE_KEY_SESSION_TRANSIENT);
+    if (rawTransient) {
+      const session = JSON.parse(rawTransient) as AuthSession;
+      session.user = safe;
+      sessionStorage.setItem(STORAGE_KEY_SESSION_TRANSIENT, JSON.stringify(session));
+    }
+    const rawPersistent = localStorage.getItem(STORAGE_KEY_SESSION_PERSISTENT);
+    if (rawPersistent) {
+      const session = JSON.parse(rawPersistent) as AuthSession;
+      session.user = safe;
+      localStorage.setItem(STORAGE_KEY_SESSION_PERSISTENT, JSON.stringify(session));
+    }
+  } catch (e) {
+    console.warn('Failed to update stored session user:', e);
   }
 }
 
