@@ -6,6 +6,7 @@ import {
   ProcessStep,
   User,
   ProcessProgressMap,
+  ProcessProgressItem,
   ScheduledTaskItem,
   FilterOptions,
   ProcessCategory
@@ -69,6 +70,12 @@ import {
   NewTypeModal,
   CopyTypeModal
 } from './components/Modals';
+import { ShieldAlert } from 'lucide-react';
+import {
+  MenuId,
+  MENU_LABELS,
+  computeEffectivePermissions,
+} from './utils/permissionManager';
 
 const STORAGE_KEY_ORDERS = 'junsung_mes_orders_v2';
 const STORAGE_KEY_TYPES = 'junsung_mes_types_v2';
@@ -149,6 +156,27 @@ export default function App() {
     return getStoredAuthSession();
   });
   const currentUser: User | null = authSession ? authSession.user : null;
+
+  // RBAC: Granular Effective Permissions Calculation
+  const effectivePerms = useMemo(() => computeEffectivePermissions(currentUser), [currentUser]);
+
+  // Route Guarding: Ensure user cannot remain on an unauthorized menu
+  useEffect(() => {
+    if (activeTab && !effectivePerms.allowedMenus.includes(activeTab as MenuId)) {
+      const fallbackTab = effectivePerms.primaryMenu || effectivePerms.allowedMenus[0] || 'dashboard';
+      console.warn(`[RBAC Guard] Menu '${activeTab}' is not permitted for current user. Redirecting to '${fallbackTab}'.`);
+      setActiveTab(fallbackTab);
+    }
+  }, [currentUser, activeTab, effectivePerms]);
+
+  // Safe navigation handler checking menu permissions before switching tabs
+  const handleSelectTab = (tab: string) => {
+    if (!effectivePerms.allowedMenus.includes(tab as MenuId)) {
+      alert(`[접근 제한] '${MENU_LABELS[tab] || tab}' 메뉴에 대한 접근 권한이 없습니다.\n관리자에게 권한을 요청하세요.`);
+      return;
+    }
+    setActiveTab(tab);
+  };
 
   // Inactivity Warning & Auto-Logout State
   const [isWarningOpen, setIsWarningOpen] = useState<boolean>(false);
@@ -335,8 +363,12 @@ export default function App() {
   const [pendingCopyOrder, setPendingCopyOrder] = useState<Order | null>(null);
 
   const handleCopyOrderToNew = (order: Order) => {
+    if (!effectivePerms.allowedMenus.includes('order-form')) {
+      alert('[접근 제한] 신규 수주 등록 메뉴에 대한 접근 권한이 없습니다.');
+      return;
+    }
     setPendingCopyOrder(order);
-    setActiveTab('order-form');
+    handleSelectTab('order-form');
   };
 
   // 4. Filters State
@@ -614,20 +646,61 @@ export default function App() {
       const target = prev[orderId];
       if (!target) return prev;
 
+      // 1. Calculate actual progress before archiving
+      const type = productTypes[target.typeId];
+      const baseProcesses = (target.customProcesses && target.customProcesses.length > 0)
+        ? target.customProcesses
+        : (type ? type.processes : []);
+      const qty = Math.max(1, parseInt(String(target.qty)) || 1);
+      const totalUnits = baseProcesses.length * qty;
+
+      let completedUnits = 0;
+      const orderProcessSnapshot: Record<string, ProcessProgressItem> = {};
+
+      // Snapshot all current processProgressMap items for this order
+      Object.entries(processProgressMap).forEach(([k, v]) => {
+        if (k.startsWith(`${target.id}_`) || k.startsWith(`${target.id}-`) || k.includes(`-${target.id}-`)) {
+          orderProcessSnapshot[k] = { ...v };
+        }
+      });
+
+      for (let q = 1; q <= qty; q++) {
+        baseProcesses.forEach((_, pIdx) => {
+          const key = `${target.id}_Q${q}_P${pIdx}`;
+          const currentItem = processProgressMap[key];
+          if (currentItem) {
+            orderProcessSnapshot[key] = { ...currentItem };
+            if (currentItem.isCompleted || currentItem.completed) {
+              completedUnits++;
+            }
+          }
+        });
+      }
+
+      const calculatedPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
+      const wasActuallyCompleted =
+        (calculatedPct === 100 && target.status === 'COMPLETED') ||
+        (totalUnits > 0 && completedUnits === totalUnits);
+
       const archivedOrder: Order = {
         ...target,
-        status: 'COMPLETED',
+        status: 'COMPLETED', // In Archive Vault, always displayed as completed
         archived: true,
         completedAt: target.completedAt || nowStr,
+        // Snapshot pre-archive state
+        previousOrderStatus: target.status || 'PENDING',
+        previousProgress: calculatedPct,
+        preArchiveCompletedAt: target.completedAt || null,
+        wasActuallyCompleted: wasActuallyCompleted,
+        preArchiveProcessMap: orderProcessSnapshot,
       };
+
       saveOrderToFirestore(archivedOrder);
       return {
         ...prev,
         [orderId]: archivedOrder,
       };
     });
-
-    handleCompleteAllOrderProcesses(orderId, true, undefined, undefined, true);
   };
 
   const handleRestoreOrder = (orderId: string) => {
@@ -635,10 +708,43 @@ export default function App() {
       const target = prev[orderId];
       if (!target) return prev;
 
+      const wasCompleted =
+        target.wasActuallyCompleted === true ||
+        (target.previousProgress === 100 && target.previousOrderStatus === 'COMPLETED');
+
+      let restoredStatus: OrderStatus;
+      if (wasCompleted) {
+        restoredStatus = 'COMPLETED';
+      } else if (target.previousOrderStatus && target.previousOrderStatus !== 'COMPLETED') {
+        restoredStatus = target.previousOrderStatus;
+      } else {
+        restoredStatus = 'IN_PROGRESS';
+      }
+
       const restoredOrder: Order = {
         ...target,
         archived: false,
+        status: restoredStatus,
+        completedAt: wasCompleted ? (target.completedAt || target.preArchiveCompletedAt || null) : null,
       };
+
+      // If it was force-archived and had a snapshot of processProgressMap, restore exact process progress
+      if (!wasCompleted && target.preArchiveProcessMap && Object.keys(target.preArchiveProcessMap).length > 0) {
+        setProcessProgressMap((prevProg) => {
+          const nextProg = { ...prevProg };
+          Object.entries(target.preArchiveProcessMap!).forEach(([pKey, pVal]) => {
+            nextProg[pKey] = { ...pVal };
+            saveProcessProgressToFirestore(pKey, pVal);
+          });
+          try {
+            localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(nextProg));
+          } catch (e) {
+            console.error('Failed to save restored progress map', e);
+          }
+          return nextProg;
+        });
+      }
+
       saveOrderToFirestore(restoredOrder);
       return {
         ...prev,
@@ -1063,6 +1169,35 @@ export default function App() {
     setAuthSession(session);
     setSessionNotice(null);
     setIsWarningOpen(false);
+
+    // 로그인 완료 후 기본 진입 화면: "생산 종합 대시보드" ('dashboard')
+    // 단, 사용자가 직접 특정 URL 또는 파라미터(/floor, ?tab=..., ?orderId=...)로 접근한 경우 기존 목적지로 정상 이동
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      if (
+        path === '/floor' ||
+        path.startsWith('/floor/') ||
+        path.startsWith('/floor-mes') ||
+        path.includes('/floor') ||
+        search.includes('orderId=') ||
+        search.includes('tab=execution')
+      ) {
+        setActiveTab('execution');
+      } else if (search.includes('tab=')) {
+        const urlParams = new URLSearchParams(search);
+        const t = urlParams.get('tab');
+        if (t) {
+          setActiveTab(t);
+        } else {
+          setActiveTab('dashboard');
+        }
+      } else {
+        setActiveTab('dashboard');
+      }
+    } else {
+      setActiveTab('dashboard');
+    }
   };
 
   // Logout Handler with complete session purge and state clear
@@ -1143,7 +1278,7 @@ export default function App() {
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleSelectTab}
         inProgressCount={(Object.values(orders) as Order[]).filter((o) => !o.archived && o.status !== 'COMPLETED').length}
         completedCount={(Object.values(orders) as Order[]).filter((o) => !o.archived && o.status === 'COMPLETED').length}
         archivedCount={(Object.values(orders) as Order[]).filter((o) => o.archived).length}
@@ -1154,7 +1289,7 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Top Header */}
         <Header
           currentUser={currentUser}
@@ -1167,179 +1302,211 @@ export default function App() {
         />
 
         {/* Content View Area */}
-        <div className={`flex-1 flex flex-col min-h-0 ${activeTab === 'calendar' || activeTab === 'timeline' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 space-y-4'}`}>
+        <div className={`flex-1 flex flex-col min-w-0 min-h-0 w-full ${activeTab === 'calendar' || activeTab === 'timeline' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 space-y-4'}`}>
           <ErrorBoundary
             fallbackTitle="선택하신 화면을 불러오는 중 오류가 발생했습니다."
-            onReset={() => setActiveTab('dashboard')}
+            onReset={() => setActiveTab(effectivePerms.primaryMenu || 'dashboard')}
           >
-            {/* TAB: GOOGLE CALENDAR-STYLE PRODUCTION CALENDAR (PRIMARY / DEFAULT) */}
-            {activeTab === 'calendar' && (
-              <ProductionCalendarView
-                scheduledTasks={scheduledTasks}
-                orders={orders}
-                processProgressMap={processProgressMap}
-                onUpdateProgress={handleUpdateProgress}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-                onNavigateToOrderForm={() => setActiveTab('order-form')}
-              />
-            )}
+            {/* RBAC Route Guard Screen */}
+            {!effectivePerms.allowedMenus.includes(activeTab as MenuId) ? (
+              <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center my-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-lg mx-auto">
+                <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 mb-4 shadow-2xs">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  메뉴 접근 권한 제한
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                  현재 계정(<strong className="text-slate-700 dark:text-slate-200">{currentUser?.name || '사용자'}</strong> / {currentUser?.department || '현장담당자'})에게는 <strong className="text-blue-600 dark:text-blue-400">[{MENU_LABELS[activeTab] || activeTab}]</strong> 메뉴에 대한 접근 권한이 부여되지 않았습니다.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(effectivePerms.primaryMenu || 'dashboard')}
+                    className="px-4 py-2.5 bg-[#0066FF] hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>기본 허용 메뉴로 이동 ({MENU_LABELS[effectivePerms.primaryMenu] || '대시보드'})</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* TAB: GOOGLE CALENDAR-STYLE PRODUCTION CALENDAR (PRIMARY / DEFAULT) */}
+                {activeTab === 'calendar' && (
+                  <ProductionCalendarView
+                    scheduledTasks={scheduledTasks}
+                    orders={orders}
+                    processProgressMap={processProgressMap}
+                    onUpdateProgress={handleUpdateProgress}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                    onNavigateToOrderForm={() => handleSelectTab('order-form')}
+                  />
+                )}
 
-            {/* TAB: PLAN VS ACTUAL VARIANCE ANALYSIS */}
-            {activeTab === 'actual-analysis' && (
-              <ActualAnalysisView
-                scheduledTasks={scheduledTasks}
-                orders={orders}
-                processProgressMap={processProgressMap}
-                onUpdateProgress={handleUpdateProgress}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-              />
-            )}
+                {/* TAB: PLAN VS ACTUAL VARIANCE ANALYSIS */}
+                {activeTab === 'actual-analysis' && (
+                  <ActualAnalysisView
+                    scheduledTasks={scheduledTasks}
+                    orders={orders}
+                    processProgressMap={processProgressMap}
+                    onUpdateProgress={handleUpdateProgress}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                  />
+                )}
 
-            {/* TAB: EXECUTIVE DASHBOARD */}
-            {activeTab === 'dashboard' && (
-              <ExecutiveSummary
-                orders={orders}
-                productTypes={productTypes}
-                processProgressMap={processProgressMap}
-                scheduledTasks={scheduledTasks}
-                filterOptions={filterOptions}
-                setFilterOptions={setFilterOptions}
-                onSelectTask={(key) => setSelectedTaskKey(key)}
-                onUpdateOrder={handleUpdateOrder}
-                onArchiveOrder={handleArchiveOrder}
-                onDeleteOrder={handleDeleteOrder}
-                onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
-                onCompleteAllProcesses={handleCompleteAllOrderProcesses}
-                onNavigateToOrderForm={() => setActiveTab('order-form')}
-                onNavigateToOrderMaster={() => setActiveTab('order-master')}
-                onNavigateToEquipment={() => setActiveTab('equipment')}
-                onNavigateToCalendar={() => setActiveTab('calendar')}
-                onUpdateProgress={handleUpdateProgress}
-                approvedOperators={approvedOperators}
-                currentUser={currentUser}
-              />
-            )}
+                {/* TAB: EXECUTIVE DASHBOARD */}
+                {activeTab === 'dashboard' && (
+                  <ExecutiveSummary
+                    orders={orders}
+                    productTypes={productTypes}
+                    processProgressMap={processProgressMap}
+                    scheduledTasks={scheduledTasks}
+                    filterOptions={filterOptions}
+                    setFilterOptions={setFilterOptions}
+                    onSelectTask={(key) => setSelectedTaskKey(key)}
+                    onUpdateOrder={handleUpdateOrder}
+                    onArchiveOrder={handleArchiveOrder}
+                    onDeleteOrder={handleDeleteOrder}
+                    onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
+                    onCompleteAllProcesses={handleCompleteAllOrderProcesses}
+                    onNavigateToOrderForm={() => handleSelectTab('order-form')}
+                    onNavigateToOrderMaster={() => handleSelectTab('order-master')}
+                    onNavigateToTimeline={() => handleSelectTab('timeline')}
+                    onNavigateToExecution={() => handleSelectTab('execution')}
+                    onNavigateToArchive={() => handleSelectTab('archive')}
+                    onNavigateToEquipment={() => handleSelectTab('equipment')}
+                    onNavigateToCalendar={() => handleSelectTab('calendar')}
+                    onUpdateProgress={handleUpdateProgress}
+                    approvedOperators={approvedOperators}
+                    currentUser={currentUser}
+                  />
+                )}
 
-            {/* TAB: NEW ORDER CREATION */}
-            {activeTab === 'order-form' && (
-              <OrderForm
-                productTypes={productTypes}
-                orders={orders}
-                currentUser={currentUser}
-                scheduledTasks={scheduledTasks}
-                processProgressMap={processProgressMap}
-                onCreateOrder={handleCreateOrder}
-                onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
-                onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
-                onOrderCreatedSuccess={() => setActiveTab('order-master')}
-                pendingCopyOrder={pendingCopyOrder}
-                onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
-                approvedOperators={approvedOperators}
-                usersList={usersList}
-              />
-            )}
+                {/* TAB: NEW ORDER CREATION */}
+                {activeTab === 'order-form' && (
+                  <OrderForm
+                    productTypes={productTypes}
+                    orders={orders}
+                    currentUser={currentUser}
+                    scheduledTasks={scheduledTasks}
+                    processProgressMap={processProgressMap}
+                    onCreateOrder={handleCreateOrder}
+                    onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
+                    onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
+                    onOrderCreatedSuccess={() => handleSelectTab('order-master')}
+                    pendingCopyOrder={pendingCopyOrder}
+                    onClearPendingCopyOrder={() => setPendingCopyOrder(null)}
+                    approvedOperators={approvedOperators}
+                    usersList={usersList}
+                  />
+                )}
 
-            {/* TAB: ORDER MASTER TABLE & ROUTING SPEC EDITOR */}
-            {activeTab === 'order-master' && (
-              <OrderMasterManagementView
-                orders={orders}
-                productTypes={productTypes}
-                processProgressMap={processProgressMap}
-                scheduledTasks={scheduledTasks}
-                onUpdateOrder={handleUpdateOrder}
-                onDeleteOrder={handleDeleteOrder}
-                onArchiveOrder={handleArchiveOrder}
-                onRestoreOrder={handleRestoreOrder}
-                onCompleteAllProcesses={handleCompleteAllOrderProcesses}
-                onNavigateToOrderForm={() => setActiveTab('order-form')}
-                onCopyOrderToNew={handleCopyOrderToNew}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-                usersList={usersList}
-              />
-            )}
+                {/* TAB: ORDER MASTER TABLE & ROUTING SPEC EDITOR */}
+                {activeTab === 'order-master' && (
+                  <OrderMasterManagementView
+                    orders={orders}
+                    productTypes={productTypes}
+                    processProgressMap={processProgressMap}
+                    scheduledTasks={scheduledTasks}
+                    onUpdateOrder={handleUpdateOrder}
+                    onDeleteOrder={handleDeleteOrder}
+                    onArchiveOrder={handleArchiveOrder}
+                    onRestoreOrder={handleRestoreOrder}
+                    onCompleteAllProcesses={handleCompleteAllOrderProcesses}
+                    onNavigateToOrderForm={() => handleSelectTab('order-form')}
+                    onCopyOrderToNew={handleCopyOrderToNew}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                    usersList={usersList}
+                  />
+                )}
 
-            {/* TAB: GANTT CHART TIMELINE */}
-            {activeTab === 'timeline' && (
-              <GanttChart
-                items={scheduledTasks}
-                scheduledTasks={scheduledTasks}
-                filteredTasks={filteredScheduledTasks}
-                orders={orders}
-                minStart={minStart}
-                maxEnd={maxEnd}
-                filterOptions={filterOptions}
-                setFilterOptions={setFilterOptions}
-                onSelectItem={(item) => setSelectedTaskKey(item.processKey)}
-                onSelectTask={(key) => setSelectedTaskKey(key)}
-                selectedItemKey={selectedTaskKey}
-                onUpdateProgress={handleUpdateProgress}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-              />
-            )}
+                {/* TAB: GANTT CHART TIMELINE */}
+                {activeTab === 'timeline' && (
+                  <GanttChart
+                    items={scheduledTasks}
+                    scheduledTasks={scheduledTasks}
+                    filteredTasks={filteredScheduledTasks}
+                    orders={orders}
+                    minStart={minStart}
+                    maxEnd={maxEnd}
+                    filterOptions={filterOptions}
+                    setFilterOptions={setFilterOptions}
+                    onSelectItem={(item) => setSelectedTaskKey(item.processKey)}
+                    onSelectTask={(key) => setSelectedTaskKey(key)}
+                    selectedItemKey={selectedTaskKey}
+                    onUpdateProgress={handleUpdateProgress}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                  />
+                )}
 
-            {/* TAB: FLOOR MES TERMINAL */}
-            {activeTab === 'execution' && (
-              <FloorExecutionView
-                items={scheduledTasks}
-                scheduledTasks={scheduledTasks}
-                orders={orders}
-                productTypes={productTypes}
-                processProgressMap={processProgressMap}
-                onUpdateProgress={handleUpdateProgress}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-              />
-            )}
+                {/* TAB: FLOOR MES TERMINAL */}
+                {activeTab === 'execution' && (
+                  <FloorExecutionView
+                    items={scheduledTasks}
+                    scheduledTasks={scheduledTasks}
+                    orders={orders}
+                    productTypes={productTypes}
+                    processProgressMap={processProgressMap}
+                    onUpdateProgress={handleUpdateProgress}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                  />
+                )}
 
-            {/* TAB: PRODUCT ROUTING MASTER */}
-            {activeTab === 'routing' && (
-              <ProductRoutingView
-                productTypes={productTypes}
-                orders={orders}
-                currentUser={currentUser}
-                onSaveNewProductType={handleSaveNewProductType}
-                onUpdateProductType={handleUpdateProductType}
-                onDeleteProductType={handleDeleteProductType}
-                onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
-                onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
-              />
-            )}
+                {/* TAB: PRODUCT ROUTING MASTER */}
+                {activeTab === 'routing' && (
+                  <ProductRoutingView
+                    productTypes={productTypes}
+                    orders={orders}
+                    currentUser={currentUser}
+                    onSaveNewProductType={handleSaveNewProductType}
+                    onUpdateProductType={handleUpdateProductType}
+                    onDeleteProductType={handleDeleteProductType}
+                    onOpenNewTypeModal={() => setIsNewTypeModalOpen(true)}
+                    onOpenCopyTypeModal={() => setIsCopyTypeModalOpen(true)}
+                  />
+                )}
 
-            {/* TAB: EQUIPMENT & PERSONNEL OEE MONITOR */}
-            {activeTab === 'equipment' && (
-              <EquipmentView
-                items={scheduledTasks}
-                scheduledTasks={scheduledTasks}
-                orders={orders}
-                approvedOperators={approvedOperators}
-                currentUser={currentUser}
-                usersList={usersList}
-              />
-            )}
+                {/* TAB: EQUIPMENT & PERSONNEL OEE MONITOR */}
+                {activeTab === 'equipment' && (
+                  <EquipmentView
+                    items={scheduledTasks}
+                    scheduledTasks={scheduledTasks}
+                    orders={orders}
+                    approvedOperators={approvedOperators}
+                    currentUser={currentUser}
+                    usersList={usersList}
+                  />
+                )}
 
-            {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
-            {activeTab === 'quality' && (
-              <QualityInspectionView
-                orders={orders}
-                scheduledTasks={scheduledTasks}
-                currentUser={currentUser}
-                approvedOperators={approvedOperators}
-                usersList={usersList}
-              />
-            )}
+                {/* TAB: QUALITY INSPECTION & CMM DASHBOARD */}
+                {activeTab === 'quality' && (
+                  <QualityInspectionView
+                    orders={orders}
+                    scheduledTasks={scheduledTasks}
+                    currentUser={currentUser}
+                    approvedOperators={approvedOperators}
+                    usersList={usersList}
+                  />
+                )}
 
-            {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
-            {activeTab === 'archive' && (
-              <ArchiveView
-                orders={orders}
-                productTypes={productTypes}
-                onRestoreOrder={handleRestoreOrder}
-                onCopyOrderToNew={handleCopyOrderToNew}
-              />
+                {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
+                {activeTab === 'archive' && (
+                  <ArchiveView
+                    orders={orders}
+                    productTypes={productTypes}
+                    scheduledTasks={scheduledTasks}
+                    processProgressMap={processProgressMap}
+                    onRestoreOrder={handleRestoreOrder}
+                    onCopyOrderToNew={handleCopyOrderToNew}
+                    onNavigateToOrderMaster={() => handleSelectTab('order-master')}
+                  />
+                )}
+              </>
             )}
           </ErrorBoundary>
         </div>

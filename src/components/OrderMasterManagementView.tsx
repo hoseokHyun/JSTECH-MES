@@ -29,6 +29,7 @@ import {
   Send,
   X
 } from 'lucide-react';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 
 interface OrderMasterManagementViewProps {
   orders?: Record<string, Order>;
@@ -79,15 +80,9 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
 }) => {
   const completeAllFn = onCompleteAllOrderProcesses || onCompleteAllProcesses;
   const navigateToOrderFn = onNavigateToNewOrder || onNavigateToOrderForm;
-  const canEditOrder =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canEditOrder === true;
-
-  const canArchive =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canArchive === true;
+  const effectivePerms = useMemo(() => computeEffectivePermissions(currentUser), [currentUser]);
+  const canEditOrder = effectivePerms.canEditOrder && (effectivePerms.canEditMenu['order-master'] ?? true);
+  const canArchive = effectivePerms.canArchive && (effectivePerms.canEditMenu['order-master'] ?? true);
 
   const [orderTableSearch, setOrderTableSearch] = useState('');
   const [orderTableFilter, setOrderTableFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'>('ALL');
@@ -167,9 +162,9 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-y-auto p-4 sm:p-6 space-y-5">
+    <div className="space-y-4 w-full min-w-0">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-wrap items-center justify-between gap-4 min-w-0">
         <div className="flex items-center gap-3.5">
           <div className="p-3 rounded-2xl bg-indigo-600 text-white shadow-sm shrink-0">
             <FileText className="w-6 h-6" />
@@ -352,8 +347,8 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
         </div>
 
         {/* Master Table */}
-        <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 shadow-2xs">
-          <table className="w-full text-left text-xs min-w-[1080px]">
+        <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 shadow-2xs">
+          <table className="w-full text-left text-xs min-w-[1100px]">
             <thead className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold border-b border-slate-200 dark:border-slate-600">
               <tr>
                 <th className="p-3 min-w-[220px]">수주번호 / 프로젝트명</th>

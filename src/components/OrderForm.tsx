@@ -15,6 +15,7 @@ import {
 } from '../data/defaultData';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { buildOperatorSelectOptions, extractValidApprovedOperators } from '../utils/operatorHelper';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 import {
   ShoppingCart,
   Plus,
@@ -101,7 +102,7 @@ interface OrderFormProps {
 const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
   {
     id: 'phase_1',
-    name: 'Phase 1: 소재 준비 및 1차 황삭/밀링 가공',
+    name: '소재 준비 및 1차 황삭/밀링 가공',
     titleSuffix: '소재 준비 및 1차 황삭',
     defaultDesc: '소재 입고 검사, 소재 가공, 황삭 및 1차 밀링 가공 구간',
     icon: '📦',
@@ -109,7 +110,7 @@ const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
   },
   {
     id: 'phase_2',
-    name: 'Phase 2: 열처리, 1차 연마 및 평면도 가공',
+    name: '열처리, 1차 연마 및 평면도 가공',
     titleSuffix: '열처리 및 1차 연마',
     defaultDesc: '열처리(서브제로), 평면 연마, 기준면 형성 및 중간 CMM 검사 구간',
     icon: '⚙️',
@@ -117,7 +118,7 @@ const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
   },
   {
     id: 'phase_3',
-    name: 'Phase 3: 초정밀 립(LIP) 가공 및 유로/홈 정밀 가공',
+    name: '초정밀 립(LIP) 가공 및 유로/홈 정밀 가공',
     titleSuffix: '초정밀 립/유로 정밀가공',
     defaultDesc: '슬롯다이 립(LIP) 정밀연마, 매니폴드 유로 가공 및 고정밀 방전 가공 구간',
     icon: '✨',
@@ -125,7 +126,7 @@ const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
   },
   {
     id: 'phase_4',
-    name: 'Phase 4: 최종 CMM 검사, 세척, 조립 및 출하 포장',
+    name: '최종 CMM 검사, 세척, 조립 및 출하 포장',
     titleSuffix: '최종검사 및 조립/출하',
     defaultDesc: '초정밀 3차원 측정(CMM), 클린룸 세척, 최종 조립 및 방청 포장 구간',
     icon: '📐',
@@ -135,7 +136,7 @@ const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
 
 const CUSTOM_INITIAL_PHASE: PhaseDefinition = {
   id: 'phase_custom_1',
-  name: 'Phase 1: 사용자 정의 기본 공정 구간',
+  name: '사용자 정의 기본 공정 구간',
   titleSuffix: '사용자 정의 공정',
   defaultDesc: '자유롭게 세부 공정을 추가하고 설비와 담당자를 지정할 수 있습니다.',
   icon: '🛠️',
@@ -162,11 +163,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   onOrderCreatedSuccess,
 }) => {
   // Permission checks
+  const effectivePerms = useMemo(() => computeEffectivePermissions(currentUser), [currentUser]);
   const canEditOrder = useMemo(() => {
-    if (!currentUser) return true;
-    const role = currentUser.role || 'WORKER';
-    return ['ADMIN', 'MANAGER', 'SALES'].includes(role.toUpperCase());
-  }, [currentUser]);
+    return effectivePerms.canEditOrder && (effectivePerms.canEditMenu['order-form'] ?? true);
+  }, [effectivePerms]);
 
   // Current DateTime Helper
   const getCurrentDateTimeString = () => {
@@ -300,6 +300,15 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     if (!steps || steps.length === 0) return [];
     const total = steps.length;
     const pCount = Math.max(1, phaseList.length);
+
+    // If there is only 1 phase, all steps must belong to this single phase without arbitrary splitting
+    if (pCount === 1) {
+      const singlePhaseId = phaseList[0].id;
+      return steps.map((step) => ({
+        ...step,
+        phaseId: singlePhaseId,
+      }));
+    }
 
     return steps.map((step, idx) => {
       if (step.phaseId && phaseList.some((p) => p.id === step.phaseId)) {
@@ -1144,14 +1153,83 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         ? productTypes[sourceOrder.typeId].processes.map((p) => ({ ...p }))
         : [];
 
-    const steps = ensureStepsWithPhases(rawProcesses);
+    // 1. Resolve Target Phases accurately preserving the source order's exact phase architecture
+    let targetPhases: PhaseDefinition[] = [];
+
+    if (sourceOrder.customPhases && sourceOrder.customPhases.length > 0) {
+      // Direct preservation if source order has customPhases
+      targetPhases = sourceOrder.customPhases.map((p) => ({ ...p }));
+    } else {
+      // For existing / legacy / archived orders without customPhases explicitly saved:
+      const usedPhaseIds = Array.from(
+        new Set(rawProcesses.map((p) => p.phaseId).filter(Boolean) as string[])
+      );
+
+      // If source was created with TYPE_CUSTOM or only 1 phase was used (or no phase was assigned)
+      if (sourceOrder.typeId === 'TYPE_CUSTOM' || usedPhaseIds.length <= 1) {
+        if (usedPhaseIds.length === 1) {
+          const usedId = usedPhaseIds[0];
+          const matchedDef =
+            INITIAL_PHASE_DEFS.find((p) => p.id === usedId) ||
+            (usedId === CUSTOM_INITIAL_PHASE.id ? CUSTOM_INITIAL_PHASE : null);
+
+          if (matchedDef) {
+            targetPhases = [{ ...matchedDef }];
+          } else {
+            targetPhases = [
+              {
+                id: usedId,
+                name: '사용자 정의 기본 공정 구간',
+                titleSuffix: '사용자 정의 공정',
+                defaultDesc: '공정 및 설비/담당자가 지정된 공정 구간입니다.',
+                icon: '🛠️',
+                badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+              },
+            ];
+          }
+        } else {
+          // Default single phase for custom projects created with 1 phase
+          targetPhases = [{ ...CUSTOM_INITIAL_PHASE }];
+        }
+      } else {
+        // Multiple phases were used by processes
+        const matchedDefs: PhaseDefinition[] = [];
+        usedPhaseIds.forEach((uId, uIdx) => {
+          const found = INITIAL_PHASE_DEFS.find((p) => p.id === uId);
+          if (found) {
+            matchedDefs.push({ ...found });
+          } else {
+            matchedDefs.push({
+              id: uId,
+              name: `사용자 정의 공정 구간 ${uIdx + 1}`,
+              titleSuffix: `구간 ${uIdx + 1}`,
+              defaultDesc: '공정 구간',
+              icon: '⚙️',
+              badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
+            });
+          }
+        });
+        targetPhases = matchedDefs.length > 0 ? matchedDefs : INITIAL_PHASE_DEFS;
+      }
+    }
+
+    // Set phases and open expansion states to display all copied phases
+    setPhases(targetPhases);
+    const expMap: Record<string, boolean> = {};
+    targetPhases.forEach((p) => {
+      expMap[p.id] = true;
+    });
+    setExpandedPhases(expMap);
+
+    // Map steps strictly using targetPhases (ensuring 1-phase orders remain 1-phase with all steps intact)
+    const steps = ensureStepsWithPhases(rawProcesses, targetPhases);
     setCurrentProcesses(steps);
     setIsCustomMode(true);
 
     const newAssignments: Record<number, StepAssignment> = {};
     steps.forEach((proc, idx) => {
       newAssignments[idx] = {
-        machine: proc.assignedMachine || MCT_MACHINES[0],
+        machine: proc.assignedMachine || '',
         worker: proc.worker || proc.assignedWorker || '',
       };
     });
@@ -1184,7 +1262,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!canEditOrder) {
-      alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+      alert('⚠️ 신규 수주 등록/편집 권한이 없습니다.\n관리자에게 권한을 요청하세요.');
       return;
     }
 
@@ -1241,6 +1319,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       mctMachine: stepAssignments[0]?.machine || MCT_MACHINES[0],
       memo: (memo || specialNotes || '공정 간 인수인계 철저히 할 것!').trim(),
       customProcesses: finalProcesses,
+      customPhases: phases, // 작성한 Phase 구조 보존
       customer: customer.trim() || '고객사 지정',
       poNumber: poNumber.trim() || finalPjtNo,
       partName: partName.trim() || finalPjtName,

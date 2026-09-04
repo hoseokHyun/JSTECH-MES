@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ProductType, ProcessCategory, ProcessStep, User, Order } from '../types';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 import {
   GitMerge,
   Plus,
@@ -60,6 +61,9 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
   };
 
   // Feedback & Alert states
+  const effectivePerms = useMemo(() => computeEffectivePermissions(currentUser), [currentUser]);
+  const canEditRouting = effectivePerms.canEditMaster && (effectivePerms.canEditMenu['routing'] ?? true);
+
   const [permissionAlertMessage, setPermissionAlertMessage] = useState<string | null>(null);
   const [successToastMessage, setSuccessToastMessage] = useState<string>('');
 
@@ -117,12 +121,21 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
   /* ==================================================================== */
   /* Process Step Modifications                                           */
   /* ==================================================================== */
+  const checkRoutingPermission = (): boolean => {
+    if (!canEditRouting) {
+      alert('⚠️ 라우팅 마스터 편집 권한이 없습니다.\n관리자에게 권한을 요청하세요.');
+      return false;
+    }
+    if (currentType?.isReference && currentUser?.role !== 'ADMIN') {
+      alert('⚠️ 표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
+      return false;
+    }
+    return true;
+  };
+
   const handleProcessDurationChange = (index: number, newHours: number) => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const updatedProcesses = [...currentType.processes];
     updatedProcesses[index] = {
@@ -138,10 +151,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleProcessNameChange = (index: number, newName: string) => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const updatedProcesses = [...currentType.processes];
     updatedProcesses[index] = {
@@ -157,10 +167,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleProcessCategoryChange = (index: number, newCategory: ProcessCategory) => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const updatedProcesses = [...currentType.processes];
     updatedProcesses[index] = {
@@ -176,10 +183,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleMoveStep = (index: number, direction: 'UP' | 'DOWN') => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const targetIndex = direction === 'UP' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= currentType.processes.length) return;
@@ -196,10 +200,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleAddStep = () => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const updatedProcesses: ProcessStep[] = [
       ...currentType.processes,
@@ -218,10 +219,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleDuplicateStep = (index: number) => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     const source = currentType.processes[index];
     const copyStep: ProcessStep = {
@@ -240,10 +238,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
   const handleRequestRemoveStep = (index: number) => {
     if (!currentType) return;
-    if (currentType.isReference && currentUser?.role !== 'ADMIN') {
-      alert('표준 레퍼런스 공정은 관리자(ADMIN) 권한이 있어야 수정할 수 있습니다.');
-      return;
-    }
+    if (!checkRoutingPermission()) return;
 
     if (currentType.processes.length <= 1) {
       alert('마스터에는 최소 1개 이상의 공정이 등록되어 있어야 합니다.');

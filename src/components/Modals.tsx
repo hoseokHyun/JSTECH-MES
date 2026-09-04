@@ -39,7 +39,11 @@ import {
   Phone,
   Smartphone,
   Search,
-  Cpu
+  Cpu,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -51,6 +55,16 @@ import {
   updateUserPhoneNumber,
   deleteUserFromFirestore
 } from '../lib/firebase';
+import {
+  MenuId,
+  MENU_DEFINITIONS,
+  MENU_LABELS,
+  ALL_MENU_IDS,
+  DEPARTMENT_OPTIONS,
+  DEPARTMENT_PRESETS,
+  computeEffectivePermissions,
+  EffectivePermissions,
+} from '../utils/permissionManager';
 
 /* ==================================================================== */
 /* 1. Archive Vault Modal                                                */
@@ -72,9 +86,51 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
   onRestoreOrder,
   onCopyOrderToNew,
 }) => {
+  const [selectedYear, setSelectedYear] = useState<number | 'ALL'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
+
   if (!isOpen) return null;
 
-  const archivedList: Order[] = (Object.values(orders) as Order[]).filter((o) => o.archived);
+  const allOrdersList: Order[] = Object.values(orders || {}) as Order[];
+
+  const getYear = (o: Order) => {
+    if (o.completedAt) {
+      const m = o.completedAt.match(/\b(20\d{2})\b/);
+      if (m) return parseInt(m[1], 10);
+    }
+    if (o.dueDate) {
+      const m = o.dueDate.match(/\b(20\d{2})\b/);
+      if (m) return parseInt(m[1], 10);
+    }
+    return 2026;
+  };
+
+  const years = Array.from(
+    new Set([2026, 2025, ...allOrdersList.map(getYear)])
+  ).sort((a, b) => b - a);
+
+  const archivedList: Order[] = allOrdersList
+    .filter((o) => Boolean(o.archived))
+    .filter((o) => {
+      if (selectedYear === 'ALL') return true;
+      return getYear(o) === selectedYear;
+    })
+    .filter((o) => {
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      const type = productTypes[o.typeId];
+      return (
+        o.name.toLowerCase().includes(term) ||
+        (o.customer && o.customer.toLowerCase().includes(term)) ||
+        (type && type.name.toLowerCase().includes(term))
+      );
+    });
+
+  const totalCompletedInYear = allOrdersList.filter(
+    (o) =>
+      (o.status === 'COMPLETED' || o.archived) &&
+      (selectedYear === 'ALL' || getYear(o) === selectedYear)
+  ).length;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -86,20 +142,61 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
               <Archive className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-extrabold text-slate-900">
-                완료 수주 보관함 (Archive Vault)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  완료 수주 보관함 (Archive Vault)
+                </h3>
+                <span className="text-[11px] font-black bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md border border-amber-300">
+                  {selectedYear === 'ALL' ? '전체' : `${selectedYear}년`} {archivedList.length}건
+                </span>
+              </div>
               <p className="text-[11px] text-slate-500">
-                공정 완료 후 대시보드에서 보관함으로 이동된 수주 데이터 이력 관리
+                공정 완료 후 대시보드에서 보관함으로 이동된 수주 데이터 및 연도별 실적 관리
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 transition"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* Toolbar (Year Pills & Search) */}
+        <div className="p-3 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl">
+            <button
+              onClick={() => setSelectedYear('ALL')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                selectedYear === 'ALL' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              전체
+            </button>
+            {years.map((yr) => (
+              <button
+                key={yr}
+                onClick={() => setSelectedYear(yr)}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                  selectedYear === yr ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                {yr}년
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-56">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="수주명 / 고객사 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
         </div>
 
         {/* Content */}
@@ -109,6 +206,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
               <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
                   <th className="p-3">수주번호 / 프로젝트명</th>
+                  <th className="p-3">고객사</th>
                   <th className="p-3">제품 타입</th>
                   <th className="p-3 text-center">수량</th>
                   <th className="p-3 text-center">완료일시</th>
@@ -118,7 +216,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {archivedList.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400 font-semibold">
+                    <td colSpan={6} className="p-8 text-center text-slate-400 font-semibold">
                       보관된 수주 데이터가 없습니다.
                     </td>
                   </tr>
@@ -128,6 +226,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
                     return (
                       <tr key={ord.id} className="hover:bg-slate-50">
                         <td className="p-3 font-bold text-slate-900">{ord.name}</td>
+                        <td className="p-3 text-slate-700 font-medium">{ord.customer || '-'}</td>
                         <td className="p-3 text-slate-600 font-medium">
                           {type ? type.name : '-'}
                         </td>
@@ -135,7 +234,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
                           {ord.qty}개
                         </td>
                         <td className="p-3 text-center text-slate-500 font-mono">
-                          {ord.completedAt || '-'}
+                          {ord.completedAt || ord.dueDate || '-'}
                         </td>
                         <td className="p-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
@@ -452,97 +551,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
 /* ==================================================================== */
 /* 2-B. Admin User Approval & Permissions Management Modal              */
 /* ==================================================================== */
-const DEPARTMENT_OPTIONS: UserDepartment[] = ['가공팀', '연마팀', '품질팀', '생산 관리', '시스템 관리자'];
-
-const DEPARTMENT_PRESETS: Record<UserDepartment, {
-  role: 'USER' | 'ADMIN';
-  permissions: UserPermissions;
-  label: string;
-  badgeClass: string;
-  desc: string;
-  icon: string;
-}> = {
-  '가공팀': {
-    role: 'USER',
-    label: '가공팀',
-    badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
-    desc: 'MCT/가공 MES 공정완료 및 현장작업',
-    icon: '⚙️',
-    permissions: {
-      canEditOrder: false,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: false,
-      canArchive: false,
-      canQualityInspection: false,
-      canShipmentControl: false,
-    }
-  },
-  '연마팀': {
-    role: 'USER',
-    label: '연마팀',
-    badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
-    desc: '평면/성형 연마 MES 공정완료 및 현장작업',
-    icon: '✨',
-    permissions: {
-      canEditOrder: false,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: false,
-      canArchive: false,
-      canQualityInspection: false,
-      canShipmentControl: false,
-    }
-  },
-  '품질팀': {
-    role: 'USER',
-    label: '품질팀',
-    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-    desc: '수입/공정/출하검사 및 성적서 발행',
-    icon: '🔬',
-    permissions: {
-      canEditOrder: false,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: false,
-      canArchive: false,
-      canQualityInspection: true,
-      canShipmentControl: true,
-    }
-  },
-  '생산 관리': {
-    role: 'USER',
-    label: '생산 관리',
-    badgeClass: 'bg-purple-100 text-purple-900 border-purple-300',
-    desc: '수주 등록, 생산 스케줄링, 공정 배포 총괄 (현장 담당자 풀 제외)',
-    icon: '📊',
-    permissions: {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: true,
-      canArchive: true,
-      canQualityInspection: true,
-      canShipmentControl: true,
-    }
-  },
-  '시스템 관리자': {
-    role: 'ADMIN',
-    label: '시스템 관리자',
-    badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
-    desc: '최고 관리자 - 마스터 총괄, 회원 승인/삭제, 7종 전 기능 권한',
-    icon: '👑',
-    permissions: {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: true,
-      canEditMaster: true,
-      canArchive: true,
-      canQualityInspection: true,
-      canShipmentControl: true,
-    }
-  }
-};
 
 interface UserApprovalModalProps {
   isOpen: boolean;
@@ -560,6 +568,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [editingPhoneUid, setEditingPhoneUid] = useState<string | null>(null);
   const [tempPhone, setTempPhone] = useState<string>('');
+  const [expandedUserMenusUid, setExpandedUserMenusUid] = useState<string | null>(null);
 
   // Format phone helper
   const formatPhone = (val: string) => {
@@ -606,14 +615,20 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
 
   const getUserPermissions = (u: User): UserPermissions => {
     const isAdmin = u.role === 'ADMIN' || u.department === '시스템 관리자';
+    const dept = (u.department as UserDepartment) || '가공팀';
+    const preset = DEPARTMENT_PRESETS[dept] || DEPARTMENT_PRESETS['가공팀'];
+    const effective = computeEffectivePermissions(u);
+
     return {
-      canEditOrder: u.permissions?.canEditOrder ?? isAdmin,
-      canExecuteMES: u.permissions?.canExecuteMES ?? true,
-      canManageUsers: u.permissions?.canManageUsers ?? isAdmin,
-      canEditMaster: u.permissions?.canEditMaster ?? isAdmin,
-      canArchive: u.permissions?.canArchive ?? isAdmin,
-      canQualityInspection: u.permissions?.canQualityInspection ?? (isAdmin || u.department === '품질팀' || u.department === '생산 관리'),
-      canShipmentControl: u.permissions?.canShipmentControl ?? (isAdmin || u.department === '품질팀' || u.department === '생산 관리'),
+      canEditOrder: u.permissions?.canEditOrder ?? (isAdmin ? true : (preset.permissions.canEditOrder || false)),
+      canExecuteMES: u.permissions?.canExecuteMES ?? (isAdmin ? true : (preset.permissions.canExecuteMES !== false)),
+      canManageUsers: u.permissions?.canManageUsers ?? (isAdmin ? true : (preset.permissions.canManageUsers || false)),
+      canEditMaster: u.permissions?.canEditMaster ?? (isAdmin ? true : (preset.permissions.canEditMaster || false)),
+      canArchive: u.permissions?.canArchive ?? (isAdmin ? true : (preset.permissions.canArchive || false)),
+      canQualityInspection: u.permissions?.canQualityInspection ?? (isAdmin ? true : (preset.permissions.canQualityInspection || false)),
+      canShipmentControl: u.permissions?.canShipmentControl ?? (isAdmin ? true : (preset.permissions.canShipmentControl || false)),
+      allowedMenus: u.permissions?.allowedMenus ? [...u.permissions.allowedMenus] : [...effective.allowedMenus],
+      menuEdits: u.permissions?.menuEdits ? { ...u.permissions.menuEdits } : { ...effective.canEditMenu },
     };
   };
 
@@ -732,6 +747,102 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
         user.role,
         user.department
       );
+    }
+  };
+
+  const handleToggleMenuExposure = async (user: User, menuId: MenuId) => {
+    const targetId = user.uid || user.email;
+    if (!targetId) return;
+    const currentPerms = getUserPermissions(user);
+    const allowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...ALL_MENU_IDS];
+    let nextAllowed: string[];
+    if (allowed.includes(menuId)) {
+      if (allowed.length <= 1) {
+        alert('최소 1개 이상의 메뉴는 노출되어야 합니다.');
+        return;
+      }
+      nextAllowed = allowed.filter((m) => m !== menuId);
+    } else {
+      nextAllowed = [...allowed, menuId];
+    }
+    const updatedPerms: UserPermissions = {
+      ...currentPerms,
+      allowedMenus: nextAllowed,
+    };
+    updateLocalUser(targetId, { permissions: updatedPerms });
+    if (user.uid) {
+      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
+    }
+  };
+
+  const handleToggleMenuEdit = async (user: User, menuId: MenuId) => {
+    const targetId = user.uid || user.email;
+    if (!targetId) return;
+    const currentPerms = getUserPermissions(user);
+    const edits = { ...(currentPerms.menuEdits || {}) };
+
+    const effective = computeEffectivePermissions(user);
+    const isCurrentlyEditable = effective.canEditMenu[menuId] ?? false;
+    const nextVal = !isCurrentlyEditable;
+    edits[menuId] = nextVal;
+
+    // If making it editable, ensure menu is also exposed
+    let nextAllowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...effective.allowedMenus];
+    if (nextVal && !nextAllowed.includes(menuId)) {
+      nextAllowed.push(menuId);
+    }
+
+    const updatedPerms: UserPermissions = {
+      ...currentPerms,
+      allowedMenus: nextAllowed,
+      menuEdits: edits,
+    };
+    updateLocalUser(targetId, { permissions: updatedPerms });
+    if (user.uid) {
+      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
+    }
+  };
+
+  const handleBatchMenuAction = async (user: User, action: 'ALL_EXPOSE' | 'ALL_EDIT' | 'RESET_DEPT') => {
+    const targetId = user.uid || user.email;
+    if (!targetId) return;
+    const currentPerms = getUserPermissions(user);
+    const deptPreset = DEPARTMENT_PRESETS[user.department || '가공팀'] || DEPARTMENT_PRESETS['가공팀'];
+
+    let updatedPerms: UserPermissions;
+    if (action === 'ALL_EXPOSE') {
+      updatedPerms = {
+        ...currentPerms,
+        allowedMenus: [...ALL_MENU_IDS],
+      };
+    } else if (action === 'ALL_EDIT') {
+      const allEdits: Record<string, boolean> = {};
+      ALL_MENU_IDS.forEach((m) => {
+        allEdits[m] = true;
+      });
+      updatedPerms = {
+        ...currentPerms,
+        allowedMenus: [...ALL_MENU_IDS],
+        menuEdits: allEdits,
+        canEditOrder: true,
+        canExecuteMES: true,
+        canEditMaster: true,
+        canArchive: true,
+        canQualityInspection: true,
+        canShipmentControl: true,
+      };
+    } else {
+      // RESET_DEPT
+      updatedPerms = {
+        ...deptPreset.permissions,
+        allowedMenus: [...deptPreset.defaultMenus],
+        menuEdits: { ...deptPreset.defaultEdits },
+      };
+    }
+
+    updateLocalUser(targetId, { permissions: updatedPerms });
+    if (user.uid) {
+      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
     }
   };
 
@@ -906,6 +1017,9 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
               ) : (
                 filteredUsers.map((u) => {
                   const perms = getUserPermissions(u);
+                  const effective = computeEffectivePermissions(u);
+                  const targetUid = u.uid || u.email || '';
+                  const isExpanded = expandedUserMenusUid === targetUid;
                   const isSuperAdmin = u.email === 'noworriesmate01@gmail.com' || u.department === '시스템 관리자' || u.name === '시스템 관리자';
                   const isCurrent = currentUser?.email && u.email && currentUser.email === u.email;
                   const currentDept = (u.department as UserDepartment) || (isSuperAdmin ? '시스템 관리자' : '가공팀');
@@ -1183,6 +1297,128 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                                 </button>
                               );
                             })}
+                          </div>
+
+                          {/* Granular Menu Exposure & Edit UI (11 Menus) */}
+                          <div className="pt-2 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedUserMenusUid(isExpanded ? null : targetUid)}
+                              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-blue-50/80 hover:bg-blue-100/90 border border-blue-200 text-blue-900 text-[11px] font-bold transition cursor-pointer"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <Sliders className="w-3.5 h-3.5 text-blue-600" />
+                                <span>메뉴별 세부 권한 (노출 & 편집)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-black">
+                                <span className="bg-blue-200/80 text-blue-900 px-1.5 py-0.5 rounded-full">
+                                  {effective.allowedMenus.length}/11 메뉴 노출
+                                </span>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-700" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-700" />}
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                                {/* Batch Actions Bar */}
+                                <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] pb-1 border-b border-slate-200">
+                                  <span className="font-black text-slate-700 flex items-center gap-1">
+                                    <span>⚙️</span> 11개 메뉴별 개별 권한 지정:
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBatchMenuAction(u, 'ALL_EXPOSE')}
+                                      className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold transition cursor-pointer shadow-2xs"
+                                    >
+                                      전체 노출
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBatchMenuAction(u, 'ALL_EDIT')}
+                                      className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold transition cursor-pointer shadow-2xs"
+                                    >
+                                      전체 편집 허용
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBatchMenuAction(u, 'RESET_DEPT')}
+                                      className="px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer shadow-2xs"
+                                    >
+                                      부서 기본값 복원
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* 11 Menus Matrix */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                                  {MENU_DEFINITIONS.map((menuDef) => {
+                                    const isExposed = effective.allowedMenus.includes(menuDef.id);
+                                    const isEditable = effective.canEditMenu[menuDef.id] ?? false;
+
+                                    return (
+                                      <div
+                                        key={menuDef.id}
+                                        className={`p-1.5 rounded-lg border text-[11px] flex items-center justify-between gap-2 transition ${
+                                          isExposed
+                                            ? 'bg-white border-slate-200 shadow-2xs'
+                                            : 'bg-slate-100/70 border-slate-200/60 opacity-60'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <span className="text-xs shrink-0">{menuDef.icon}</span>
+                                          <div className="truncate">
+                                            <span className="font-bold text-slate-800 truncate block">
+                                              {menuDef.label}
+                                            </span>
+                                            <span className="text-[9px] text-slate-500 truncate block">
+                                              {menuDef.category}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          {/* 노출(조회) 체크박스 */}
+                                          <label
+                                            className="flex items-center gap-1 cursor-pointer select-none"
+                                            title="메뉴 사이드바 노출 및 조회 허용"
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isExposed}
+                                              onChange={() => handleToggleMenuExposure(u, menuDef.id)}
+                                              className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                            />
+                                            <span className={`text-[10px] font-bold ${isExposed ? 'text-blue-700' : 'text-slate-400'}`}>
+                                              노출
+                                            </span>
+                                          </label>
+
+                                          {/* 편집(쓰기) 체크박스 */}
+                                          <label
+                                            className={`flex items-center gap-1 select-none ${
+                                              isExposed ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+                                            }`}
+                                            title={isExposed ? "메뉴 내 데이터 등록/수정/삭제/실행 허용" : "메뉴 노출을 먼저 체크해야 편집 권한을 부여할 수 있습니다"}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              disabled={!isExposed}
+                                              checked={isExposed && isEditable}
+                                              onChange={() => handleToggleMenuEdit(u, menuDef.id)}
+                                              className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                                            />
+                                            <span className={`text-[10px] font-bold ${isExposed && isEditable ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                              편집
+                                            </span>
+                                          </label>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>

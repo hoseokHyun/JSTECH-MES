@@ -815,7 +815,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
 
       {/* 4. MAIN PROCESS GRID TABLE WITH COLLAPSIBLE PHASE SECTION HEADERS */}
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[880px] text-left border-collapse text-xs">
           <thead className="bg-slate-100 text-slate-600 font-extrabold sticky top-0 z-10 border-b border-slate-200 select-none">
             <tr>
               <th className="py-2 px-2.5 w-8 text-center whitespace-nowrap">
@@ -840,7 +840,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
               <th className="py-2 px-2 w-10 text-center whitespace-nowrap">No</th>
               <th className="py-2 px-2.5 min-w-[76px] whitespace-nowrap">공정번호</th>
               <th className="py-2 px-3 min-w-[150px] whitespace-nowrap">공정명</th>
-              <th className="py-2 px-2.5 w-16 text-center whitespace-nowrap">유형</th>
+              <th className="py-2 px-2.5 w-16 min-w-[64px] text-center whitespace-nowrap">유형</th>
               <th className="py-2 px-3 min-w-[150px] whitespace-nowrap">설비 지정</th>
               <th className="py-2 px-3 min-w-[140px] whitespace-nowrap">담당자 지정</th>
               <th className="py-2 px-2 min-w-[68px] text-center whitespace-nowrap">상태</th>
@@ -860,6 +860,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
               groupedAndFilteredPhases.map((group) => {
                 const isPhaseExpanded = expandedPhases[group.id] !== false; // default to true
                 const matchingInGroup = group.matchingSteps;
+                const cleanedPhaseTitle = (group.title || '').replace(/^Phase\s*\d+\s*:\s*/i, '');
 
                 return (
                   <React.Fragment key={group.id}>
@@ -883,7 +884,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                             </button>
                             <span className="text-base">{group.icon || '⚙️'}</span>
                             <span className="font-black text-xs text-slate-900">
-                              Phase {group.phaseNumber}: {group.title}
+                              Phase {group.phaseNumber}: {cleanedPhaseTitle || group.title}
                             </span>
                             <span className="text-[11px] font-bold text-slate-500">
                               ({matchingInGroup.length}개 공정, {group.totalHours.toFixed(1)}h)
@@ -945,7 +946,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                           >
                             {/* Checkbox */}
                             <td
-                              className="py-2 px-2.5 text-center"
+                              className="py-2 px-2.5 text-center whitespace-nowrap w-8"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onToggleSelectStep(originalIndex);
@@ -961,7 +962,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                             </td>
 
                             {/* No */}
-                            <td className="py-2 px-2 text-center font-mono text-[11px] text-slate-500 font-bold">
+                            <td className="py-2 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap w-10">
                               {String(originalIndex + 1).padStart(2, '0')}
                             </td>
 
@@ -971,21 +972,21 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                             </td>
 
                             {/* 공정명 */}
-                            <td className="py-2 px-3">
+                            <td className="py-2 px-3 min-w-[150px]">
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <span className="font-extrabold text-slate-900 truncate">{proc.name}</span>
                                 {proc.category === '외주' && (
-                                  <span className="text-[9px] font-black text-amber-800 bg-amber-100 px-1 rounded">
+                                  <span className="text-[9px] font-black text-amber-800 bg-amber-100 px-1 rounded whitespace-nowrap shrink-0">
                                     외주
                                   </span>
                                 )}
                               </div>
                             </td>
 
-                            {/* 유형 */}
-                            <td className="py-2 px-2.5 text-center">
+                            {/* 유형 (Badge: 줄바꿈 없이 1행으로 고정) */}
+                            <td className="py-2 px-2.5 text-center whitespace-nowrap w-16 min-w-[64px]">
                               <span
-                                className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                                className={`inline-flex items-center justify-center whitespace-nowrap leading-none min-w-[36px] text-[10px] font-black px-2 py-0.5 rounded border shrink-0 select-none ${
                                   proc.category === '가공'
                                     ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                                     : proc.category === '연마'
@@ -1002,7 +1003,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                             </td>
 
                             {/* 설비 지정 */}
-                            <td className="py-1 px-3" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-1 px-3 min-w-[150px] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               <div className="w-full text-slate-900">
                                 <SearchableSelect
                                   options={equipmentOptions}
@@ -1015,7 +1016,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
                             </td>
 
                             {/* 담당자 지정 */}
-                            <td className="py-1 px-3" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-1 px-3 min-w-[140px] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               <div className="w-full text-slate-900">
                                 <SearchableSelect
                                   options={operatorOptions}

@@ -62,6 +62,15 @@ export interface ProductType {
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
 export type ProductionStrategy = 'SERIAL' | 'CONTINUOUS';
 
+export interface PhaseDefinition {
+  id: string;
+  name: string;
+  titleSuffix: string;
+  defaultDesc: string;
+  icon: string;
+  badgeColor: string;
+}
+
 export interface Order {
   id: string;
   name: string;
@@ -78,6 +87,7 @@ export interface Order {
   mctMachine?: string;
   memo?: string;
   customProcesses?: ProcessStep[];
+  customPhases?: PhaseDefinition[]; // 수주 프로젝트의 고유 Phase 정의 목록 (1개 또는 다중 페이즈 구조 보존)
   // Process Traveler (공정 이동표) Metadata
   customer?: string;       // 고객사 (예: PNT, 삼성디스플레이)
   poNumber?: string;       // PO. (PJT) (예: PNT-BNSH650L-26-02)
@@ -94,6 +104,12 @@ export interface Order {
   writerName?: string;     // 작성자
   reviewerName?: string;   // 검토자
   approverName?: string;   // 승인자
+  // Pre-Archive Snapshot (강제 보관 전 실제 진행 상태 보존)
+  previousOrderStatus?: OrderStatus;
+  previousProgress?: number;
+  preArchiveCompletedAt?: string | null;
+  wasActuallyCompleted?: boolean;
+  preArchiveProcessMap?: Record<string, ProcessProgressItem>;
 }
 
 export interface ProcessProgressItem {
@@ -130,7 +146,15 @@ export interface FilterOptions {
   selectedWorker: string;
 }
 
-export type UserDepartment = '가공팀' | '연마팀' | '품질팀' | '생산 관리' | '시스템 관리자';
+export type UserDepartment =
+  | '가공팀'
+  | '연마팀'
+  | '품질팀'
+  | '생산관리'
+  | '생산 관리'
+  | '시스템 관리자'
+  | '영업팀'
+  | '임원진';
 
 export interface UserPermissions {
   canEditOrder?: boolean;         // 수주 관리, 스케줄러 편집, 공정 일정 제어
@@ -140,6 +164,8 @@ export interface UserPermissions {
   canArchive?: boolean;           // 완료 보관함 이동 및 수주 데이터 관리
   canQualityInspection?: boolean; // 수입/공정/출하검사 및 성적서 발행 (품질팀)
   canShipmentControl?: boolean;   // 출하 승인 및 COA 발행 권한
+  allowedMenus?: string[];        // 접근 허용(노출)된 메뉴 ID 목록
+  menuEdits?: Record<string, boolean>; // 메뉴별 개별 편집(쓰기) 권한 오버라이드
 }
 
 export interface User {

@@ -48,6 +48,7 @@ import { EditOrderModal } from './Modals';
 import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
 import { AndonReportModal } from './AndonReportModal';
 import { IncidentIssueLog } from '../types';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 
 interface ExecutiveSummaryProps {
   orders: Record<string, Order>;
@@ -61,6 +62,9 @@ interface ExecutiveSummaryProps {
   onOpenArchiveModal?: () => void;
   onNavigateToOrderForm?: () => void;
   onNavigateToOrderMaster?: () => void;
+  onNavigateToTimeline?: () => void;
+  onNavigateToExecution?: () => void;
+  onNavigateToArchive?: () => void;
   onNavigateToEquipment?: () => void;
   onNavigateToCalendar?: () => void;
   onSelectTask?: (key: string) => void;
@@ -94,6 +98,9 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   onOpenArchiveModal,
   onNavigateToOrderForm,
   onNavigateToOrderMaster,
+  onNavigateToTimeline,
+  onNavigateToExecution,
+  onNavigateToArchive,
   onNavigateToEquipment,
   onNavigateToCalendar,
   onSelectTask,
@@ -222,18 +229,17 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   const setFilterOptions = propSetFilterOptions || setLocalFilterOptions;
 
   // Permissions
-  const canEditOrder =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canEditOrder === true;
-  const canArchive =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canArchive === true;
+  const effectivePerms = useMemo(() => computeEffectivePermissions(currentUser), [currentUser]);
+  const canEditOrder = effectivePerms.canEditOrder && (effectivePerms.canEditMenu['dashboard'] ?? true);
+  const canArchive = effectivePerms.canArchive && (effectivePerms.canEditMenu['dashboard'] ?? true);
+
+  const allOrdersList: Order[] = useMemo(() => {
+    return Object.values(orders || {}) as Order[];
+  }, [orders]);
 
   const activeOrders: Order[] = useMemo(() => {
-    return (Object.values(orders) as Order[]).filter((o) => !o.archived);
-  }, [orders]);
+    return allOrdersList.filter((o) => !o.archived);
+  }, [allOrdersList]);
 
   // Order Progress Mapping
   const orderProgressMap = useMemo(() => {
@@ -263,27 +269,41 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   }, [scheduledTasks]);
 
   // Executive KPI Metrics Calculation
-  const totalOrdersCount = activeOrders.length;
-  const completedOrdersList = useMemo(
-    () => activeOrders.filter((o) => (orderProgressMap[o.id]?.pct || 0) === 100),
-    [activeOrders, orderProgressMap]
-  );
+  // 1. 총 수주 건수: 등록된 전체 수주 (활성 수주 + 완료보관 수주)
+  const totalOrdersCount = allOrdersList.length;
+
+  // 2. 완료 건수:
+  //    - 완료보관함에 보관된 모든 수주 (진행중 100% 미완료였더라도 보관함에 존재하는 동안은 완료로 카운트)
+  //    - 보관되지 않은 활성 수주 중 상태가 'COMPLETED' 이거나 공정 진행률이 100% 완료된 수주
+  const completedOrdersList = useMemo(() => {
+    return allOrdersList.filter((o) => {
+      if (Boolean(o.archived)) return true;
+      if (o.status === 'COMPLETED') return true;
+      const prog = orderProgressMap[o.id];
+      if (prog && prog.total > 0 && prog.completed === prog.total) return true;
+      if (prog && prog.pct === 100) return true;
+      return false;
+    });
+  }, [allOrdersList, orderProgressMap]);
   const completedOrdersCount = completedOrdersList.length;
 
-  // Delayed orders (any order with at least 1 delayed task)
+  // 3. 지연 발생 수주 (보관되지 않은 활성 수주 중 미완료이면서 지연 공정이 1개 이상인 수주)
   const delayedOrdersList = useMemo(() => {
     return activeOrders.filter((o) => {
+      if (o.status === 'COMPLETED') return false;
       const prog = orderProgressMap[o.id];
+      if (prog && (prog.pct === 100 || (prog.total > 0 && prog.completed === prog.total))) return false;
       return (prog?.delayed || 0) > 0;
     });
   }, [activeOrders, orderProgressMap]);
   const delayedOrdersCount = delayedOrdersList.length;
 
-  // Normal On-Track in-progress orders
+  // 4. 정상 진행 수주 (보관되지 않은 활성 수주 중 미완료이면서 지연 공정이 없는 수주)
   const onTrackOrdersList = useMemo(() => {
     return activeOrders.filter((o) => {
+      if (o.status === 'COMPLETED') return false;
       const prog = orderProgressMap[o.id];
-      const isCompleted = (prog?.pct || 0) === 100;
+      const isCompleted = prog && (prog.pct === 100 || (prog.total > 0 && prog.completed === prog.total));
       const hasDelay = (prog?.delayed || 0) > 0;
       return !isCompleted && !hasDelay;
     });
@@ -292,9 +312,9 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
 
   const totalTasksCount = scheduledTasks.length;
   const completedTasksCount = scheduledTasks.filter((t) => t.isCompleted).length;
+  const totalProductionQty = allOrdersList.reduce((sum, ord) => sum + (ord.qty || 1), 0);
   const overallProgressPct =
-    totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
-  const totalProductionQty = activeOrders.reduce((sum, ord) => sum + (ord.qty || 1), 0);
+    totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : 0;
 
   // Equipment OEE & Status Calculation (21 Machines)
   const equipmentStatusSummary = useMemo(() => {
@@ -530,16 +550,24 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 2. 간략한 수주 현황 요약 카드 (4대 핵심 지표 그리드)                         */}
+      {/* 2. 간략한 수주 현황 요약 카드 (4대 핵심 지표 네비게이션 그리드)               */}
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* KPI 1: 총 수주 건수 (Total Orders) */}
+        {/* KPI 1: 총 수주 건수 -> 수주관리 화면 이동 */}
         <div
+          role="button"
+          tabIndex={0}
           onClick={onNavigateToOrderMaster}
-          className="bg-white rounded-2xl p-4 border border-blue-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden group cursor-pointer"
-          title="클릭 시 수주관리 상세 화면으로 이동"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onNavigateToOrderMaster?.();
+            }
+          }}
+          className="bg-white rounded-2xl p-4 border border-blue-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-blue-400 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none"
+          title="클릭 시 '수주관리' 메뉴로 이동합니다."
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-[#0066FF]" />
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#0066FF] group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700 flex items-center gap-1.5">
@@ -547,25 +575,42 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 총 수주 건수 (Total Orders)
               </span>
               <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-3xl font-black text-slate-900 tracking-tight">{totalOrdersCount}</span>
+                <span className="text-3xl font-black text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">
+                  {totalOrdersCount}
+                </span>
                 <span className="text-sm font-bold text-slate-500">건</span>
               </div>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0066FF] font-extrabold shadow-2xs group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0066FF] font-extrabold shadow-2xs group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white transition-all">
               <Layers className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-semibold">총 생산 목표량</span>
-            <span className="font-extrabold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md">
-              {totalProductionQty.toLocaleString()} EA
+            <span className="text-slate-500 font-semibold flex items-center gap-1">
+              목표량: <strong className="text-blue-900">{totalProductionQty.toLocaleString()} EA</strong>
+            </span>
+            <span className="font-black text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
+              <span>수주관리</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>
 
-        {/* KPI 2: 정상 진행 (On Track) */}
-        <div className="bg-white rounded-2xl p-4 border border-sky-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-sky-500" />
+        {/* KPI 2: 정상 진행 -> 공정 타임라인 (Gantt) 화면 이동 */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onNavigateToTimeline}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onNavigateToTimeline?.();
+            }
+          }}
+          className="bg-white rounded-2xl p-4 border border-sky-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-sky-400 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none"
+          title="클릭 시 '공정 타임라인 (Gantt)' 메뉴로 이동합니다."
+        >
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-sky-500 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-sky-700 flex items-center gap-1.5">
@@ -573,29 +618,46 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 정상 진행 (On Track)
               </span>
               <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-3xl font-black text-sky-900 tracking-tight">{onTrackOrdersCount}</span>
+                <span className="text-3xl font-black text-sky-900 tracking-tight group-hover:text-sky-600 transition-colors">
+                  {onTrackOrdersCount}
+                </span>
                 <span className="text-sm font-bold text-slate-500">건</span>
               </div>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 font-extrabold shadow-2xs group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 font-extrabold shadow-2xs group-hover:scale-110 group-hover:bg-sky-500 group-hover:text-white transition-all">
               <Activity className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-semibold">실시간 가동 라인</span>
-            <span className="font-extrabold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md">
-              {inProgressTasks.length}개 공정 가동중
+            <span className="text-slate-500 font-semibold">
+              실시간: <strong className="text-sky-900">{inProgressTasks.length}개 공정 가동중</strong>
+            </span>
+            <span className="font-black text-sky-700 bg-sky-50 group-hover:bg-sky-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
+              <span>공정 타임라인</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>
 
-        {/* KPI 3: 지연 및 병목 (Delayed / Bottleneck) */}
-        <div className={`rounded-2xl p-4 border transition-all flex flex-col justify-between relative overflow-hidden group ${
-          delayedOrdersCount > 0 || delayedTasks.length > 0
-            ? 'bg-red-50/70 border-red-300 shadow-md ring-2 ring-red-500/20'
-            : 'bg-white border-slate-200 shadow-xs'
-        }`}>
-          <div className="absolute top-0 left-0 right-0 h-1 bg-red-600" />
+        {/* KPI 3: 지연 발생 -> 현장 공정 실행 (Floor MES) 화면 이동 */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onNavigateToExecution}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onNavigateToExecution?.();
+            }
+          }}
+          className={`rounded-2xl p-4 border shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none ${
+            delayedOrdersCount > 0 || delayedTasks.length > 0
+              ? 'bg-red-50/70 border-red-300 ring-2 ring-red-500/20 hover:border-red-500'
+              : 'bg-white border-slate-200 hover:border-red-300'
+          }`}
+          title="클릭 시 '현장 공정 실행 (Floor MES)' 메뉴로 이동하여 지연 공정을 확인합니다."
+        >
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-600 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-700 flex items-center gap-1.5">
@@ -603,7 +665,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 지연 발생 (Delayed)
               </span>
               <div className="mt-2 flex items-baseline gap-1.5">
-                <span className={`text-3xl font-black tracking-tight ${
+                <span className={`text-3xl font-black tracking-tight group-hover:scale-105 transition-transform ${
                   delayedOrdersCount > 0 ? 'text-red-600' : 'text-slate-700'
                 }`}>
                   {delayedOrdersCount}
@@ -616,23 +678,43 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 )}
               </div>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-extrabold shadow-2xs group-hover:scale-105 transition-transform">
-              <ShieldAlert className="w-5 h-5 text-red-600" />
+            <div className="w-11 h-11 rounded-xl bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-extrabold shadow-2xs group-hover:scale-110 group-hover:bg-red-600 group-hover:text-white transition-all">
+              <ShieldAlert className="w-5 h-5 text-red-600 group-hover:text-white" />
             </div>
           </div>
           <div className="mt-3 pt-2.5 border-t border-red-200/80 flex items-center justify-between text-[11px]">
-            <span className="text-red-800 font-bold">임원 긴급 조치 현황</span>
-            <span className={`font-black px-2 py-0.5 rounded-md ${
-              delayedOrdersCount > 0 ? 'bg-red-200 text-red-950 font-bold' : 'text-slate-500'
-            }`}>
-              {delayedOrdersCount > 0 ? '위험 구간 조치필요' : '정상 가동'}
+            <span className={`font-bold ${delayedOrdersCount > 0 ? 'text-red-900' : 'text-slate-500'}`}>
+              {delayedOrdersCount > 0 ? '⚠️ 긴급 조치 필요' : '정상 가동 중'}
+            </span>
+            <span className="font-black text-red-700 bg-red-100 group-hover:bg-red-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
+              <span>현장 공정 실행</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>
 
-        {/* KPI 4: 완료 건수 (Completed) */}
-        <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+        {/* KPI 4: 완료 건수 -> 완료 수주 보관함 화면 이동 */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (onNavigateToArchive) {
+              onNavigateToArchive();
+            } else if (onOpenArchiveModal) {
+              onOpenArchiveModal();
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (onNavigateToArchive) onNavigateToArchive();
+              else onOpenArchiveModal?.();
+            }
+          }}
+          className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-emerald-400 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none"
+          title="클릭 시 '완료 수주 보관함' 메뉴로 이동합니다."
+        >
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
@@ -640,18 +722,23 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 완료 건수 (Completed)
               </span>
               <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-3xl font-black text-emerald-900 tracking-tight">{completedOrdersCount}</span>
+                <span className="text-3xl font-black text-emerald-900 tracking-tight group-hover:text-emerald-600 transition-colors">
+                  {completedOrdersCount}
+                </span>
                 <span className="text-sm font-bold text-slate-500">건</span>
               </div>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 font-extrabold shadow-2xs group-hover:scale-105 transition-transform">
-              <Check className="w-5 h-5 text-emerald-600" />
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 font-extrabold shadow-2xs group-hover:scale-110 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+              <Check className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-semibold">전체 공정 달성율</span>
-            <span className="font-extrabold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
-              {overallProgressPct}% 달성 ({completedTasksCount}/{totalTasksCount})
+            <span className="text-slate-500 font-semibold">
+              달성율: <strong className="text-emerald-800">{overallProgressPct}%</strong>
+            </span>
+            <span className="font-black text-emerald-700 bg-emerald-50 group-hover:bg-emerald-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
+              <span>완료 보관함</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>

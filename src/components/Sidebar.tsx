@@ -18,10 +18,12 @@ import {
   Calendar,
   LogOut,
   User as UserIcon,
-  Shield
+  Shield,
+  Lock,
 } from 'lucide-react';
 import { ScheduledTaskItem, User } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
+import { computeEffectivePermissions, isMenuAllowed } from '../utils/permissionManager';
 
 interface SidebarProps {
   activeTab: string;
@@ -48,14 +50,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
 
-  const canEditOrder =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canEditOrder === true;
-  const canArchive =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canArchive === true;
+  const effectivePerms = computeEffectivePermissions(currentUser);
+  const canEditOrder = effectivePerms.canEditOrder;
+  const canArchive = effectivePerms.canArchive;
 
   // Calculate real-time OEE / Active Line Utilization
   const activeMachinesCount = ALL_EQUIPMENT_LIST.filter((machineName) =>
@@ -158,6 +155,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  const visibleNavItems = navItems.filter((item) =>
+    effectivePerms.allowedMenus.includes(item.id as any)
+  );
+
   return (
     <aside
       className={`bg-gradient-to-b from-[#F2F9F9] via-[#E8F5F5] to-[#F0F6F6] dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 dark:bg-slate-900 border-r border-[#D0E8E6] dark:border-slate-800 text-slate-800 dark:text-slate-100 flex flex-col transition-all duration-300 ${
@@ -186,22 +187,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Navigation Group */}
       <div className="p-2 space-y-1.5 flex-1 overflow-y-auto">
         {!collapsed && (
-          <div className="px-2 py-1.5 text-[10px] font-black text-slate-800 dark:text-slate-300 uppercase tracking-wider">
-            준성테크 생산관리 모듈
+          <div className="px-2 py-1.5 text-[10px] font-black text-slate-800 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between">
+            <span>준성테크 생산관리 모듈</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#00A396]/10 text-[#00A396] font-bold">
+              {visibleNavItems.length}개 메뉴
+            </span>
           </div>
         )}
 
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
 
           const handleMenuClick = () => {
             if (item.id === 'order-form' && !canEditOrder) {
-              alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록 권한이 제한되어 있습니다. 관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+              alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(수주 등록 권한이 필요합니다. 관리자에게 문의하세요.)');
               return;
             }
             if (item.id === 'archive' && !canArchive) {
-              alert('⚠️ 완료 보관함 접근 권한이 없습니다.\n(수주 아카이브 조회의 경우 관리자 권한이 필요합니다.)');
+              alert('⚠️ 완료 보관함 접근 권한이 없습니다.\n(보관함 관리 권한이 필요합니다. 관리자에게 문의하세요.)');
               return;
             }
             setActiveTab(item.id);

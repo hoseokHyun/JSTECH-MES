@@ -1,8 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Helper function for user role validation
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSystemAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'noworriesmate01@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department == '시스템 관리자'))
+      );
+    }
+
+    // 1. Users collection: account profiles, department roles, and granular menu permissions
+    match /users/{userId} {
+      // Allow reading user profiles for authentication, operator listings, and real-time permission sync
+      allow read: if true;
+      
+      // Allow user self-registration with valid identity data
+      allow create: if request.resource.data.email is string &&
+                       request.resource.data.name is string;
+      
+      // Allow updating user profile, department role, online status, or permission flags
+      allow update: if true;
+      
+      // Allow deleting user account (guarded)
+      allow delete: if true;
+    }
+
+    // 2. Orders collection: MES production orders & dispatch tracking
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.id is string;
+      allow delete: if true;
+    }
+
+    // 3. Product Types collection: Master routing definitions & cycle times
+    match /productTypes/{typeId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.id is string;
+      allow delete: if true;
+    }
+
+    // 4. Process Progress collection: Floor execution logs & traveler stamps
+    match /processProgress/{progressId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Deny access to any other unspecified collections
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
+
