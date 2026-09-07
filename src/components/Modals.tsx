@@ -43,7 +43,14 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
-  EyeOff
+  EyeOff,
+  LayoutDashboard,
+  FilePlus,
+  FileText,
+  GitFork,
+  Calendar,
+  PlayCircle,
+  Save
 } from 'lucide-react';
 import {
   registerUserAccount,
@@ -63,6 +70,7 @@ import {
   DEPARTMENT_OPTIONS,
   DEPARTMENT_PRESETS,
   computeEffectivePermissions,
+  migrateLegacyPermissions,
   recalculatePermissionsOnDepartmentChange,
   EffectivePermissions,
 } from '../utils/permissionManager';
@@ -145,7 +153,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-extrabold text-slate-900">
-                  완료 수주 보관함 (Archive Vault)
+                  완료 보관함 (Archive Vault)
                 </h3>
                 <span className="text-[11px] font-black bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md border border-amber-300">
                   {selectedYear === 'ALL' ? '전체' : `${selectedYear}년`} {archivedList.length}건
@@ -246,7 +254,7 @@ export const ArchiveModal: React.FC<ArchiveModalProps> = ({
                                   onClose();
                                 }}
                                 className="bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-xs cursor-pointer active:scale-95 shrink-0"
-                                title="이 수주의 공정, 설비, 담당자 사양을 신규 수주 등록으로 복사합니다."
+                                title="이 수주의 공정, 설비, 담당자 사양을 수주 등록으로 복사합니다."
                               >
                                 <Copy className="w-3 h-3 text-amber-600" />
                                 <span>공정 복사</span>
@@ -553,6 +561,36 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
 /* 2-B. Admin User Approval & Permissions Management Modal              */
 /* ==================================================================== */
 
+const renderMenuIcon = (menuId: string, isExposed: boolean) => {
+  const iconClass = `w-4 h-4 shrink-0 ${isExposed ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`;
+  switch (menuId) {
+    case 'dashboard':
+      return <LayoutDashboard className={iconClass} />;
+    case 'order-form':
+      return <FilePlus className={iconClass} />;
+    case 'order-master':
+      return <FileText className={iconClass} />;
+    case 'routing':
+      return <GitFork className={iconClass} />;
+    case 'equipment':
+      return <Wrench className={iconClass} />;
+    case 'actual-analysis':
+      return <BarChart3 className={iconClass} />;
+    case 'calendar':
+      return <Calendar className={iconClass} />;
+    case 'timeline':
+      return <Clock className={iconClass} />;
+    case 'execution':
+      return <PlayCircle className={iconClass} />;
+    case 'quality':
+      return <ShieldCheck className={iconClass} />;
+    case 'archive':
+      return <Archive className={iconClass} />;
+    default:
+      return <Settings className={iconClass} />;
+  }
+};
+
 interface UserApprovalModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -569,7 +607,8 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [editingPhoneUid, setEditingPhoneUid] = useState<string | null>(null);
   const [tempPhone, setTempPhone] = useState<string>('');
-  const [expandedUserMenusUid, setExpandedUserMenusUid] = useState<string | null>(null);
+  const [selectedUserUid, setSelectedUserUid] = useState<string | null>(null);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Format phone helper
   const formatPhone = (val: string) => {
@@ -583,6 +622,10 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     if (!isOpen) return;
     const unsub = subscribeUsersList((list) => {
       setUsers(list);
+      setSelectedUserUid((prev) => {
+        if (prev && list.some((u) => (u.uid || u.email) === prev)) return prev;
+        return list[0]?.uid || list[0]?.email || null;
+      });
     });
     return () => unsub();
   }, [isOpen]);
@@ -615,28 +658,17 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   });
 
   const getUserPermissions = (u: User): UserPermissions => {
-    const isAdmin = u.role === 'ADMIN' || u.department === '시스템 관리자';
-    const dept = (u.department as UserDepartment) || '가공팀';
-    const preset = DEPARTMENT_PRESETS[dept] || DEPARTMENT_PRESETS['가공팀'];
-    const effective = computeEffectivePermissions(u);
-
-    return {
-      canEditOrder: u.permissions?.canEditOrder ?? (isAdmin ? true : (preset.permissions.canEditOrder || false)),
-      canExecuteMES: u.permissions?.canExecuteMES ?? (isAdmin ? true : (preset.permissions.canExecuteMES !== false)),
-      canManageUsers: u.permissions?.canManageUsers ?? (isAdmin ? true : (preset.permissions.canManageUsers || false)),
-      canEditMaster: u.permissions?.canEditMaster ?? (isAdmin ? true : (preset.permissions.canEditMaster || false)),
-      canArchive: u.permissions?.canArchive ?? (isAdmin ? true : (preset.permissions.canArchive || false)),
-      canQualityInspection: u.permissions?.canQualityInspection ?? (isAdmin ? true : (preset.permissions.canQualityInspection || false)),
-      canShipmentControl: u.permissions?.canShipmentControl ?? (isAdmin ? true : (preset.permissions.canShipmentControl || false)),
-      allowedMenus: u.permissions?.allowedMenus ? [...u.permissions.allowedMenus] : [...effective.allowedMenus],
-      menuEdits: u.permissions?.menuEdits ? { ...u.permissions.menuEdits } : { ...effective.canEditMenu },
-    };
+    return migrateLegacyPermissions(u);
   };
 
   const updateLocalUser = (uidOrEmail: string, patch: Partial<User>) => {
     setUsers((prev) =>
       prev.map((u) => {
-        if ((u.uid && u.uid === uidOrEmail) || u.email === uidOrEmail) {
+        const uId = u.uid || (u as any).id;
+        if (uId && uId === uidOrEmail) {
+          return { ...u, ...patch };
+        }
+        if (u.email && u.email === uidOrEmail && !u.email.includes('미등록')) {
           return { ...u, ...patch };
         }
         return u;
@@ -708,7 +740,38 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   };
 
   const handleApplyPreset = async (user: User, deptPreset: UserDepartment) => {
-    await handleDepartmentChange(user, deptPreset);
+    const targetId = user.uid || (user as any).id || user.email;
+    if (!targetId) return;
+
+    const preset = DEPARTMENT_PRESETS[deptPreset];
+    if (!preset) return;
+
+    // Apply exact preset defaults for the chosen department
+    const presetPerms = migrateLegacyPermissions({
+      department: deptPreset,
+      role: preset.role,
+      permissions: {
+        allowedMenus: [...preset.defaultMenus],
+        menuEdits: { ...preset.defaultEdits },
+        canManageUsers: Boolean(preset.permissions.canManageUsers),
+      },
+    });
+
+    updateLocalUser(targetId, {
+      department: deptPreset,
+      role: preset.role,
+      permissions: presetPerms,
+      isApproved: true,
+      status: 'approved',
+    });
+
+    await updateUserPermissionsInFirestore(
+      targetId,
+      presetPerms,
+      preset.role,
+      deptPreset,
+      true // Force isApproved: true
+    );
   };
 
   const handleApproveAllPending = async () => {
@@ -737,10 +800,14 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     const targetId = user.uid || user.email;
     if (!targetId) return;
     const currentPerms = getUserPermissions(user);
-    const updatedPerms: UserPermissions = {
-      ...currentPerms,
-      [permKey]: !currentPerms[permKey],
-    };
+    const nextVal = !currentPerms[permKey];
+    const updatedPerms = migrateLegacyPermissions({
+      ...user,
+      permissions: {
+        ...currentPerms,
+        [permKey]: nextVal,
+      },
+    });
     updateLocalUser(targetId, { permissions: updatedPerms });
     if (user.uid) {
       await updateUserPermissionsInFirestore(
@@ -752,12 +819,19 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     }
   };
 
+  const handleToggleCanManageUsers = async (user: User) => {
+    await handlePermissionToggle(user, 'canManageUsers');
+  };
+
   const handleToggleMenuExposure = async (user: User, menuId: MenuId) => {
-    const targetId = user.uid || user.email;
+    const targetId = user.uid || (user as any).id || user.email;
     if (!targetId) return;
     const currentPerms = getUserPermissions(user);
-    const allowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...ALL_MENU_IDS];
-    const edits = { ...(currentPerms.menuEdits || {}) };
+    const effective = computeEffectivePermissions(user);
+    const allowed = currentPerms.allowedMenus && currentPerms.allowedMenus.length > 0
+      ? [...currentPerms.allowedMenus]
+      : [...effective.allowedMenus];
+    const edits = { ...(currentPerms.menuEdits || effective.canEditMenu || {}) };
 
     let nextAllowed: string[];
     if (allowed.includes(menuId)) {
@@ -771,82 +845,107 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     } else {
       nextAllowed = [...allowed, menuId];
     }
-    const updatedPerms: UserPermissions = {
-      ...currentPerms,
-      allowedMenus: nextAllowed,
-      menuEdits: edits,
-    };
-    updateLocalUser(targetId, { permissions: updatedPerms });
-    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department);
+    const updatedPerms = migrateLegacyPermissions({
+      ...user,
+      permissions: {
+        ...currentPerms,
+        allowedMenus: nextAllowed,
+        menuEdits: edits,
+      },
+    });
+    updateLocalUser(targetId, { permissions: updatedPerms, isApproved: user.isApproved ?? true });
+    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department, user.isApproved ?? true);
   };
 
   const handleToggleMenuEdit = async (user: User, menuId: MenuId) => {
-    const targetId = user.uid || user.email;
+    const targetId = user.uid || (user as any).id || user.email;
     if (!targetId) return;
     const currentPerms = getUserPermissions(user);
-    const edits = { ...(currentPerms.menuEdits || {}) };
-
     const effective = computeEffectivePermissions(user);
+    const edits = { ...(currentPerms.menuEdits || effective.canEditMenu || {}) };
+
     const isCurrentlyEditable = effective.canEditMenu[menuId] ?? false;
     const nextVal = !isCurrentlyEditable;
     edits[menuId] = nextVal;
 
     // If making it editable, automatically ensure menu is also exposed in sidebar
-    let nextAllowed = currentPerms.allowedMenus ? [...currentPerms.allowedMenus] : [...effective.allowedMenus];
+    let nextAllowed = currentPerms.allowedMenus && currentPerms.allowedMenus.length > 0
+      ? [...currentPerms.allowedMenus]
+      : [...effective.allowedMenus];
     if (nextVal && !nextAllowed.includes(menuId)) {
       nextAllowed.push(menuId);
     }
 
-    const updatedPerms: UserPermissions = {
-      ...currentPerms,
-      allowedMenus: nextAllowed,
-      menuEdits: edits,
-    };
-    updateLocalUser(targetId, { permissions: updatedPerms });
-    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department);
+    const updatedPerms = migrateLegacyPermissions({
+      ...user,
+      permissions: {
+        ...currentPerms,
+        allowedMenus: nextAllowed,
+        menuEdits: edits,
+      },
+    });
+    updateLocalUser(targetId, { permissions: updatedPerms, isApproved: user.isApproved ?? true });
+    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department, user.isApproved ?? true);
   };
 
   const handleBatchMenuAction = async (user: User, action: 'ALL_EXPOSE' | 'ALL_EDIT' | 'RESET_DEPT') => {
-    const targetId = user.uid || user.email;
+    const targetId = user.uid || (user as any).id || user.email;
     if (!targetId) return;
     const currentPerms = getUserPermissions(user);
     const deptPreset = DEPARTMENT_PRESETS[user.department || '가공팀'] || DEPARTMENT_PRESETS['가공팀'];
 
     let updatedPerms: UserPermissions;
     if (action === 'ALL_EXPOSE') {
-      updatedPerms = {
-        ...currentPerms,
-        allowedMenus: [...ALL_MENU_IDS],
-      };
+      updatedPerms = migrateLegacyPermissions({
+        ...user,
+        permissions: {
+          ...currentPerms,
+          allowedMenus: [...ALL_MENU_IDS],
+        },
+      });
     } else if (action === 'ALL_EDIT') {
       const allEdits: Record<string, boolean> = {};
       ALL_MENU_IDS.forEach((m) => {
         allEdits[m] = true;
       });
-      updatedPerms = {
-        ...currentPerms,
-        allowedMenus: [...ALL_MENU_IDS],
-        menuEdits: allEdits,
-        canEditOrder: true,
-        canExecuteMES: true,
-        canEditMaster: true,
-        canArchive: true,
-        canQualityInspection: true,
-        canShipmentControl: true,
-      };
+      updatedPerms = migrateLegacyPermissions({
+        ...user,
+        permissions: {
+          ...currentPerms,
+          allowedMenus: [...ALL_MENU_IDS],
+          menuEdits: allEdits,
+        },
+      });
     } else {
-      // RESET_DEPT
-      updatedPerms = {
-        ...deptPreset.permissions,
-        allowedMenus: [...deptPreset.defaultMenus],
-        menuEdits: { ...deptPreset.defaultEdits },
-      };
+      // RESET_DEPT: Restore base preset defaults for department
+      updatedPerms = migrateLegacyPermissions({
+        department: user.department,
+        role: deptPreset.role,
+        permissions: {
+          allowedMenus: [...deptPreset.defaultMenus],
+          menuEdits: { ...deptPreset.defaultEdits },
+          canManageUsers: Boolean(deptPreset.permissions.canManageUsers),
+        },
+      });
     }
 
-    updateLocalUser(targetId, { permissions: updatedPerms });
-    if (user.uid) {
-      await updateUserPermissionsInFirestore(user.uid, updatedPerms, user.role, user.department);
-    }
+    updateLocalUser(targetId, { permissions: updatedPerms, isApproved: user.isApproved ?? true });
+    await updateUserPermissionsInFirestore(targetId, updatedPerms, user.role, user.department, user.isApproved ?? true);
+  };
+
+  const handleSaveCurrentPermissions = async (user: User) => {
+    const targetId = user.uid || (user as any).id || user.email;
+    if (!targetId) return;
+    const currentPerms = getUserPermissions(user);
+    await updateUserPermissionsInFirestore(
+      targetId,
+      currentPerms,
+      user.role,
+      user.department,
+      user.isApproved ?? true
+    );
+    setSaveSuccessMsg(`[${user.name}] 저장 완료`);
+    setTimeout(() => setSaveSuccessMsg(null), 2500);
   };
 
   const handleDeleteUser = async (user: User) => {
@@ -856,9 +955,14 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
     }
   };
 
+  const selectedUser = users.find((u) => (u.uid || u.email) === selectedUserUid) || users[0] || null;
+  const isSelectedSuperAdmin = selectedUser && (selectedUser.email === 'noworriesmate01@gmail.com' || selectedUser.department === '시스템 관리자' || selectedUser.name === '시스템 관리자');
+  const selectedUserDept = (selectedUser?.department as UserDepartment) || (isSelectedSuperAdmin ? '시스템 관리자' : '가공팀');
+  const selectedEffective = selectedUser ? computeEffectivePermissions(selectedUser) : null;
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl p-5 space-y-4 max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-7xl p-5 space-y-4 max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -996,498 +1100,395 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
           </div>
         </div>
 
-        {/* User List & Permission Matrix Table */}
-        <div className="overflow-x-auto border border-slate-200 rounded-xl flex-1 overflow-y-auto">
-          <table className="w-full text-left text-xs min-w-[950px]">
-            <thead className="bg-slate-100/90 text-slate-700 font-black sticky top-0 border-b border-slate-200 z-10">
-              <tr>
-                <th className="p-3 w-48 min-w-[190px]">성명 / 이메일</th>
-                <th className="p-3 w-40 min-w-[150px] text-center">직책 (부서/역할)</th>
-                <th className="p-3 text-center min-w-[480px]">
-                  <span>세부 기능 권한 & 원클릭 프리셋</span>
-                </th>
-                <th className="p-3 w-28 min-w-[100px] text-center">승인 상태</th>
-                <th className="p-3 w-32 min-w-[110px] text-center">관리 액션</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-slate-700 bg-white">
+        {/* Split Layout: Left (User list summary) & Right (Single shared edit panel) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 overflow-hidden min-h-0">
+          {/* Left: 사용자 목록 (요약만 표시) */}
+          <div className="lg:col-span-6 xl:col-span-6 flex flex-col h-full overflow-hidden border border-slate-200 rounded-2xl bg-slate-50/50 p-3">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/80 shrink-0">
+              <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                <span>👥</span>
+                <span>사용자 목록 (요약만 표시)</span>
+              </h4>
+              <span className="text-[11px] text-slate-500 font-bold">
+                총 {filteredUsers.length}명
+              </span>
+            </div>
+
+            <div className="space-y-2 overflow-y-auto flex-1 pr-1">
               {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-10 text-center text-slate-400 font-semibold">
-                    조건에 해당하는 사용자 내역이 없습니다.
-                  </td>
-                </tr>
+                <div className="p-8 text-center text-slate-400 font-semibold text-xs">
+                  조건에 해당하는 사용자 내역이 없습니다.
+                </div>
               ) : (
                 filteredUsers.map((u) => {
-                  const perms = getUserPermissions(u);
                   const effective = computeEffectivePermissions(u);
                   const targetUid = u.uid || u.email || '';
-                  const isExpanded = expandedUserMenusUid === targetUid;
+                  const isSelected = selectedUser && (selectedUser.uid || selectedUser.email) === targetUid;
                   const isSuperAdmin = u.email === 'noworriesmate01@gmail.com' || u.department === '시스템 관리자' || u.name === '시스템 관리자';
                   const isCurrent = currentUser?.email && u.email && currentUser.email === u.email;
                   const currentDept = (u.department as UserDepartment) || (isSuperAdmin ? '시스템 관리자' : '가공팀');
                   const displayName = u.name === '대표 관리자' || u.name.includes('대표') ? '시스템 관리자' : u.name;
+                  const editableMenus = MENU_DEFINITIONS.filter((m) => effective.canEditMenu[m.id]);
 
                   return (
-                    <tr
-                      key={u.uid || u.email}
-                      className={`hover:bg-slate-50 transition align-top ${
-                        !u.isApproved ? 'bg-amber-50/40' : ''
+                    <div
+                      key={targetUid}
+                      className={`p-3 rounded-xl border transition relative ${
+                        isSelected
+                          ? 'border-blue-500 bg-white ring-2 ring-blue-500/20 shadow-xs'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
                       }`}
                     >
-                      {/* Name & Email */}
-                      <td className="p-3 align-top">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-sm">{displayName}</span>
-                          {isCurrent ? (
-                            <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded font-black flex items-center gap-0.5">
-                              {isSuperAdmin ? '👑 시스템 관리자(나)' : '(나)'}
-                            </span>
-                          ) : isSuperAdmin ? (
-                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded font-black flex items-center gap-0.5">
-                              👑 시스템 관리자
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="text-xs text-slate-500 font-sans mt-0.5 flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{u.email || '(이메일 미등록)'}</span>
-                        </div>
-                        {/* Phone Number Display & Inline Edit */}
-                        {editingPhoneUid === (u.uid || u.email) ? (
-                          <div className="mt-1.5 flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-blue-600 shrink-0" />
-                            <input
-                              type="tel"
-                              value={tempPhone}
-                              onChange={(e) => setTempPhone(formatPhone(e.target.value))}
-                              placeholder="010-1234-5678"
-                              className="w-28 text-xs px-2 py-0.5 border border-blue-400 rounded font-mono font-bold bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSavePhone(u)}
-                              className="px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 cursor-pointer"
-                              title="저장"
-                            >
-                              ✓
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingPhoneUid(null)}
-                              className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[11px] font-bold hover:bg-slate-300 cursor-pointer"
-                              title="취소"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="text-xs font-sans mt-1 flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                            {(() => {
-                              const phone = (u.phoneNumber || (u as any).phone_number || (u as any).phone || '').trim();
-                              const hasValidPhone = phone && phone !== '010-0000-0000';
-                              return (
-                                <div className="flex items-center gap-1.5">
-                                  {hasValidPhone ? (
-                                    <span className="text-blue-700 font-bold font-mono text-xs">{phone}</span>
-                                  ) : (
-                                    <span className="inline-flex items-center text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md leading-normal tracking-normal">
-                                      연락처 미등록
-                                    </span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleStartEditPhone(u)}
-                                    title="연락처 변경/등록"
-                                    className="text-[11px] text-slate-500 hover:text-blue-600 hover:underline cursor-pointer flex items-center gap-0.5 font-medium ml-0.5"
-                                  >
-                                    <Pencil className="w-2.5 h-2.5" />
-                                    <span>{hasValidPhone ? '수정' : '등록'}</span>
-                                  </button>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-slate-400 mt-0.5 font-sans">
-                          가입: {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '-'}
-                        </div>
-                      </td>
-
-                      {/* Department / Role Dropdown Selection */}
-                      <td className="p-3 text-center align-top">
-                        <select
-                          value={currentDept}
-                          onChange={(e) => handleDepartmentChange(u, e.target.value as UserDepartment)}
-                          className="w-full text-xs px-2.5 py-1.5 rounded-xl font-black border border-slate-300 bg-white hover:border-[#0066FF] focus:ring-2 focus:ring-[#0066FF] cursor-pointer shadow-2xs"
-                        >
-                          {DEPARTMENT_OPTIONS.map((dept) => (
-                            <option key={dept} value={dept}>
-                              {DEPARTMENT_PRESETS[dept].icon} {dept}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="mt-1">
-                          {(() => {
-                            const dPreset = DEPARTMENT_PRESETS[currentDept] || {
-                              icon: '👷',
-                              label: u.department || '현장담당자',
-                              badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
-                            };
-                            return (
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${dPreset.badgeClass} inline-flex items-center gap-1`}>
-                                <span>{dPreset.icon} {dPreset.label}{isCurrent ? '(나)' : ''}</span>
+                      {/* Top Row: User Name / Email & "권한 편집" button */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-slate-900 text-sm">{displayName}</span>
+                            {isCurrent && (
+                              <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-1.5 py-0.2 rounded font-black">
+                                (나)
                               </span>
-                            );
-                          })()}
-                        </div>
-                      </td>
-
-                      {/* Granular Permissions Checkboxes & Presets */}
-                      <td className="p-3 align-top">
-                        <div className="space-y-2">
-                          {/* 7 Checkboxes Grid */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
-                            {/* 1. canEditOrder */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canEditOrder
-                                  ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="수주 등록 및 공정 스펙/스케줄러 편집 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canEditOrder}
-                                onChange={() => handlePermissionToggle(u, 'canEditOrder')}
-                                className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                              />
-                              <span>수주/공정 편집</span>
-                            </label>
-
-                            {/* 2. canExecuteMES */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canExecuteMES
-                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="생산 실행 터미널에서 공정 완료/취소 처리 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canExecuteMES}
-                                onChange={() => handlePermissionToggle(u, 'canExecuteMES')}
-                                className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-                              />
-                              <span>MES 공정완료</span>
-                            </label>
-
-                            {/* 3. canQualityInspection */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canQualityInspection
-                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="수입/공정/출하검사 및 성적서 발행 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canQualityInspection}
-                                onChange={() => handlePermissionToggle(u, 'canQualityInspection')}
-                                className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-                              />
-                              <span>품질 검사</span>
-                            </label>
-
-                            {/* 4. canShipmentControl */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canShipmentControl
-                                  ? 'bg-teal-50 border-teal-300 text-teal-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="출하 검사 및 출하 승인 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canShipmentControl}
-                                onChange={() => handlePermissionToggle(u, 'canShipmentControl')}
-                                className="w-3.5 h-3.5 text-teal-600 rounded focus:ring-teal-500 cursor-pointer"
-                              />
-                              <span>출하 관리</span>
-                            </label>
-
-                            {/* 5. canEditMaster */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canEditMaster
-                                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="표준 공정 구성, 설비 및 마스터 데이터 관리"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canEditMaster}
-                                onChange={() => handlePermissionToggle(u, 'canEditMaster')}
-                                className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span>마스터 관리</span>
-                            </label>
-
-                            {/* 6. canManageUsers */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none ${
-                                perms.canManageUsers
-                                  ? 'bg-amber-50 border-amber-300 text-amber-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="회원가입 승인 및 사용자 권한 관리 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canManageUsers}
-                                onChange={() => handlePermissionToggle(u, 'canManageUsers')}
-                                className="w-3.5 h-3.5 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
-                              />
-                              <span>회원/권한 승인</span>
-                            </label>
-
-                            {/* 7. canArchive */}
-                            <label
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition cursor-pointer select-none col-span-2 ${
-                                perms.canArchive
-                                  ? 'bg-purple-50 border-purple-300 text-purple-900 font-bold'
-                                  : 'bg-slate-50 border-slate-200 text-slate-400'
-                              }`}
-                              title="완료 보관함 이동 및 수주 데이터 삭제 권한"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={perms.canArchive}
-                                onChange={() => handlePermissionToggle(u, 'canArchive')}
-                                className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
-                              />
-                              <span>보관함/수주삭제</span>
-                            </label>
-                          </div>
-
-                          {/* Quick 5-Department Preset Buttons */}
-                          <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-slate-100">
-                            <span className="text-[10px] font-black text-slate-500">원클릭 프리셋:</span>
-                            {DEPARTMENT_OPTIONS.map((dept) => {
-                              const p = DEPARTMENT_PRESETS[dept];
-                              const isCurrentDept = currentDept === dept;
-                              return (
-                                <button
-                                  key={dept}
-                                  type="button"
-                                  onClick={() => handleApplyPreset(u, dept)}
-                                  className={`text-[10px] font-black px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 shadow-2xs ${
-                                    isCurrentDept
-                                      ? 'bg-blue-600 text-white border-blue-700 ring-1 ring-blue-400'
-                                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                                  }`}
-                                  title={`${dept} 기본 권한 자동 설정`}
-                                >
-                                  <span>{p.icon}</span>
-                                  <span>{dept}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Granular Menu Exposure & Edit UI (11 Menus) */}
-                          <div className="pt-2 border-t border-slate-100">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedUserMenusUid(isExpanded ? null : targetUid)}
-                              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-blue-50/80 hover:bg-blue-100/90 border border-blue-200 text-blue-900 text-[11px] font-bold transition cursor-pointer"
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <Sliders className="w-3.5 h-3.5 text-blue-600" />
-                                <span>메뉴별 세부 권한 (노출 & 편집)</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[10px] font-black">
-                                <span className="bg-blue-200/80 text-blue-900 px-1.5 py-0.5 rounded-full">
-                                  {effective.allowedMenus.length}/11 메뉴 노출
-                                </span>
-                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-700" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-700" />}
-                              </div>
-                            </button>
-
-                            {isExpanded && (
-                              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                                {/* Batch Actions Bar */}
-                                <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] pb-1 border-b border-slate-200">
-                                  <span className="font-black text-slate-700 flex items-center gap-1">
-                                    <span>⚙️</span> 11개 메뉴별 개별 권한 지정:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBatchMenuAction(u, 'ALL_EXPOSE')}
-                                      className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold transition cursor-pointer shadow-2xs"
-                                    >
-                                      전체 노출
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBatchMenuAction(u, 'ALL_EDIT')}
-                                      className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold transition cursor-pointer shadow-2xs"
-                                    >
-                                      전체 편집 허용
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBatchMenuAction(u, 'RESET_DEPT')}
-                                      className="px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer shadow-2xs"
-                                    >
-                                      부서 기본값 복원
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* 11 Menus Matrix */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
-                                  {MENU_DEFINITIONS.map((menuDef) => {
-                                    const isExposed = effective.allowedMenus.includes(menuDef.id);
-                                    const isEditable = effective.canEditMenu[menuDef.id] ?? false;
-
-                                    return (
-                                      <div
-                                        key={menuDef.id}
-                                        className={`p-1.5 rounded-lg border text-[11px] flex items-center justify-between gap-2 transition ${
-                                          isExposed
-                                            ? 'bg-white border-slate-200 shadow-2xs'
-                                            : 'bg-slate-100/70 border-slate-200/60 opacity-60'
-                                        }`}
-                                      >
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                          <span className="text-xs shrink-0">{menuDef.icon}</span>
-                                          <div className="truncate">
-                                            <span className="font-bold text-slate-800 truncate block">
-                                              {menuDef.label}
-                                            </span>
-                                            <span className="text-[9px] text-slate-500 truncate block">
-                                              {menuDef.category}
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          {/* 노출(조회) 체크박스: 노출 ☑ */}
-                                          <label
-                                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold cursor-pointer select-none transition ${
-                                              isExposed
-                                                ? 'bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-200'
-                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                                            }`}
-                                            title="메뉴 사이드바 노출 및 조회 허용"
-                                          >
-                                            <span>노출</span>
-                                            <input
-                                              type="checkbox"
-                                              checked={isExposed}
-                                              onChange={() => handleToggleMenuExposure(u, menuDef.id)}
-                                              className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                            />
-                                          </label>
-
-                                          {/* 편집(쓰기) 체크박스: 편집 ☑ */}
-                                          <label
-                                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold cursor-pointer select-none transition ${
-                                              isExposed && isEditable
-                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200'
-                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                                            }`}
-                                            title="메뉴 내 데이터 등록/수정/삭제/실행 허용"
-                                          >
-                                            <span>편집</span>
-                                            <input
-                                              type="checkbox"
-                                              checked={isExposed && isEditable}
-                                              onChange={() => handleToggleMenuEdit(u, menuDef.id)}
-                                              className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-                                            />
-                                          </label>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                            )}
+                            {isSuperAdmin && !isCurrent && (
+                              <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-black">
+                                👑 관리자
+                              </span>
                             )}
                           </div>
-                        </div>
-                      </td>
+                          <div className="text-[11px] text-slate-500 font-sans mt-0.5 flex items-center gap-1 truncate">
+                            <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{u.email || '(이메일 미등록)'}</span>
+                          </div>
 
-                      {/* Approval Status */}
-                      <td className="p-3 text-center align-top">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
-                            u.isApproved
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                          {/* Phone inline edit */}
+                          {editingPhoneUid === targetUid ? (
+                            <div className="mt-1 flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-blue-600 shrink-0" />
+                              <input
+                                type="tel"
+                                value={tempPhone}
+                                onChange={(e) => setTempPhone(formatPhone(e.target.value))}
+                                placeholder="010-1234-5678"
+                                className="w-24 text-[11px] px-1.5 py-0.5 border border-blue-400 rounded font-mono font-bold bg-white text-slate-900 focus:outline-none"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSavePhone(u)}
+                                className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingPhoneUid(null)}
+                                className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px]"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-sans mt-0.5 flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span className="font-mono text-slate-600 font-medium">
+                                {(u.phoneNumber || (u as any).phone_number || '').trim() || '연락처 미등록'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditPhone(u)}
+                                className="text-[10px] text-slate-400 hover:text-blue-600 cursor-pointer ml-0.5"
+                              >
+                                수정
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 권한 편집 버튼 */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserUid(targetUid)}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-xs border transition cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-700'
+                              : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300'
                           }`}
                         >
-                          {u.isApproved ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>승인 완료</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              <span>승인 대기</span>
-                            </>
-                          )}
-                        </span>
-                      </td>
+                          <Sliders className="w-3.5 h-3.5" />
+                          <span>{isSelected ? '편집 중 ●' : '권한 편집'}</span>
+                        </button>
+                      </div>
 
-                      {/* Actions */}
-                      <td className="p-3 text-center align-top">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => handleToggleApproval(u)}
-                            className={`px-2.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 border shadow-xs cursor-pointer ${
+                      {/* Middle Row: Department dropdown, Role, and N/12 메뉴 노출 */}
+                      <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <select
+                            value={currentDept}
+                            onChange={(e) => handleDepartmentChange(u, e.target.value as UserDepartment)}
+                            className="text-xs font-black px-2 py-0.5 rounded-lg border border-slate-300 bg-white hover:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                          >
+                            {DEPARTMENT_OPTIONS.map((dept) => (
+                              <option key={dept} value={dept}>
+                                {DEPARTMENT_PRESETS[dept].icon} {dept}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="text-slate-400 font-medium">·</span>
+                          <span className="font-extrabold text-blue-800 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-md text-[11px]">
+                            {effective.allowedMenus.length}/12 메뉴 노출
+                          </span>
+                        </div>
+
+                        {/* Approval Status & Actions */}
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black inline-flex items-center gap-0.5 border ${
                               u.isApproved
-                                ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                                : 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
                             }`}
                           >
-                            {u.isApproved ? (
-                              <>
-                                <UserX className="w-3.5 h-3.5" />
-                                <span>승인 취소</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="w-3.5 h-3.5" />
-                                <span>승인 완료</span>
-                              </>
-                            )}
+                            {u.isApproved ? '승인 완료' : '승인 대기'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleApproval(u)}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                              u.isApproved
+                                ? 'bg-white hover:bg-amber-50 text-amber-700 border-slate-200 hover:border-amber-300'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-2xs'
+                            }`}
+                          >
+                            {u.isApproved ? '승인 취소' : '승인 완료'}
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteUser(u)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                             title="계정 삭제"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+
+                      {/* Bottom Row: "편집 권한: ..." 요약 라인 */}
+                      <div className="mt-1.5 pt-1.5 border-t border-slate-50 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                        <span className="font-bold text-slate-400 shrink-0">편집 권한:</span>
+                        {editableMenus.length === 0 ? (
+                          <span className="text-slate-400 italic">없음 (읽기 전용)</span>
+                        ) : (
+                          editableMenus.map((m) => (
+                            <span
+                              key={m.id}
+                              className="inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-medium text-[10px]"
+                            >
+                              <span>{m.icon}</span>
+                              <span>{m.label}</span>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   );
                 })
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          {/* Right: 권한 편집 패널 (단일, 공용) */}
+          <div className="lg:col-span-6 xl:col-span-6 border-2 border-blue-200 bg-white rounded-2xl p-4 shadow-xs flex flex-col h-full overflow-hidden">
+            {selectedUser ? (
+              <div className="flex flex-col h-full space-y-3 overflow-hidden">
+                {/* 1. Header & 담당자 선택 */}
+                <div className="shrink-0 space-y-2 pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                        <Sliders className="w-4 h-4 text-blue-600" />
+                        <span>권한 편집 패널 (단일, 공용)</span>
+                      </h4>
+                    </div>
+                    {saveSuccessMsg && (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full animate-fadeIn">
+                        {saveSuccessMsg}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                      담당자 선택
+                    </label>
+                    <select
+                      value={selectedUser.uid || selectedUser.email || ''}
+                      onChange={(e) => setSelectedUserUid(e.target.value)}
+                      className="w-full text-xs font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                    >
+                      {users.map((usr) => {
+                        const usrId = usr.uid || usr.email || '';
+                        const usrDept = usr.department || '미지정';
+                        return (
+                          <option key={usrId} value={usrId}>
+                            {usr.name} ({usrDept}) {usr.email ? `- ${usr.email}` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2. 원클릭 프리셋 */}
+                <div className="shrink-0 space-y-1.5">
+                  <div className="text-[11px] font-black text-slate-600">원클릭 프리셋</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {DEPARTMENT_OPTIONS.map((dept) => {
+                      const p = DEPARTMENT_PRESETS[dept];
+                      const isCurrentDept = selectedUserDept === dept;
+                      return (
+                        <button
+                          key={dept}
+                          type="button"
+                          onClick={() => handleApplyPreset(selectedUser, dept)}
+                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 shadow-2xs ${
+                            isCurrentDept
+                              ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-300'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                          title={`${dept} 기본 권한 자동 설정`}
+                        >
+                          <span>{p.icon}</span>
+                          <span>{dept}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. 메뉴별 권한 (N/12 노출) & 일괄 설정 */}
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 pt-2 border-t border-slate-100 overflow-hidden">
+                  <div className="flex items-center justify-between shrink-0">
+                    <span className="text-xs font-extrabold text-slate-800">
+                      메뉴별 권한 ({selectedEffective?.allowedMenus.length || 0}/12 노출)
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleBatchMenuAction(selectedUser, 'ALL_EXPOSE')}
+                        className="px-2 py-0.5 rounded bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold transition cursor-pointer shadow-2xs text-[10px]"
+                      >
+                        전체 노출
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBatchMenuAction(selectedUser, 'ALL_EDIT')}
+                        className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold transition cursor-pointer shadow-2xs text-[10px]"
+                      >
+                        전체 편집
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBatchMenuAction(selectedUser, 'RESET_DEPT')}
+                        className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer shadow-2xs text-[10px]"
+                      >
+                        부서 기본값
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 12개 메뉴 리스트 (1열) */}
+                  <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 min-h-[160px]">
+                    {MENU_DEFINITIONS.map((menuDef) => {
+                      const isExposed = selectedEffective?.allowedMenus.includes(menuDef.id) ?? false;
+                      const isEditable = selectedEffective?.canEditMenu[menuDef.id] ?? false;
+
+                      return (
+                        <div
+                          key={menuDef.id}
+                          className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2.5 transition ${
+                            isExposed
+                              ? 'bg-white border-blue-400 shadow-2xs ring-1 ring-blue-400/20'
+                              : 'bg-white/80 border-slate-200'
+                          }`}
+                        >
+                          {/* 1. 메뉴 아이콘 */}
+                          <div className="shrink-0 flex items-center justify-center w-5">
+                            {renderMenuIcon(menuDef.id, isExposed)}
+                          </div>
+
+                          {/* 2. 메뉴명 */}
+                          <div className="flex-1 min-w-0 pr-1">
+                            <span
+                              className={`font-bold text-xs sm:text-[13px] whitespace-nowrap truncate block tracking-tight ${
+                                isExposed ? 'text-slate-900' : 'text-slate-600'
+                              }`}
+                              title={menuDef.label}
+                            >
+                              {menuDef.label}
+                            </span>
+                          </div>
+
+                          {/* 3. 노출 토글 & 편집 토글 */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMenuExposure(selectedUser, menuDef.id)}
+                              aria-label={`${menuDef.label} 노출`}
+                              className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition ${
+                                isExposed
+                                  ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                                  : 'bg-white hover:bg-slate-50 text-slate-400 border-slate-200'
+                              }`}
+                            >
+                              {isExposed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                              <span>노출</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMenuEdit(selectedUser, menuDef.id)}
+                              aria-label={`${menuDef.label} 편집`}
+                              className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition ${
+                                isEditable
+                                  ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                                  : 'bg-white hover:bg-slate-50 text-slate-300 border-slate-200'
+                              }`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>편집</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Scroll Indicator */}
+                  <div className="text-center pt-1 text-[11px] text-slate-400 font-medium select-none shrink-0">
+                    ... 나머지 10개 스크롤 (전체 12개 메뉴)
+                  </div>
+                </div>
+
+                {/* 4. 저장 버튼 */}
+                <div className="shrink-0 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveCurrentPermissions(selectedUser)}
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>저장</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-400 space-y-2">
+                <Sliders className="w-10 h-10 text-slate-300" />
+                <p className="text-xs font-bold text-slate-500">
+                  좌측 사용자 목록에서 "권한 편집" 버튼을 클릭하여 사용자를 선택하세요.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

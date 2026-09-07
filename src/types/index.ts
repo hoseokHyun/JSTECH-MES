@@ -154,18 +154,22 @@ export type UserDepartment =
   | '생산 관리'
   | '시스템 관리자'
   | '영업팀'
+  | '경영진'
   | '임원진';
 
 export interface UserPermissions {
-  canEditOrder?: boolean;         // 수주 관리, 스케줄러 편집, 공정 일정 제어
-  canExecuteMES?: boolean;        // MES 공정 완료 및 현장 작업 관련 권한
-  canManageUsers?: boolean;       // 회원 승인/삭제 권한, 시스템 계정 관리
-  canEditMaster?: boolean;        // 표준 공정 구성, 설비/담당자 마스터 관리
-  canArchive?: boolean;           // 완료 보관함 이동 및 수주 데이터 관리
-  canQualityInspection?: boolean; // 수입/공정/출하검사 및 성적서 발행 (품질팀)
-  canShipmentControl?: boolean;   // 출하 승인 및 COA 발행 권한
-  allowedMenus?: string[];        // 접근 허용(노출)된 메뉴 ID 목록
-  menuEdits?: Record<string, boolean>; // 메뉴별 개별 편집(쓰기) 권한 오버라이드
+  // 통합 단일 권한 체계 (New Unified RBAC)
+  allowedMenus?: string[];             // 접근 허용(사이드바 노출 및 조회)된 메뉴 ID 목록
+  menuEdits?: Record<string, boolean>; // 각 메뉴별 개별 쓰기/편집/실행/삭제 권한
+  canManageUsers?: boolean;            // 회원 승인 관리 및 권한 위임 (헤더 관리자 전용 모달 단일 토글)
+
+  // 하위 호환 및 원활한 마이그레이션을 위해 menuEdits와 자동 동기화되는 레거시 미러 필드
+  canEditOrder?: boolean;              // [레거시 미러] 수주관리/수주등록/공정구성 편집
+  canExecuteMES?: boolean;             // [레거시 미러] 공정 실행
+  canEditMaster?: boolean;             // [레거시 미러] 공정 구성 마스터 관리
+  canArchive?: boolean;                // [레거시 미러] 완료 보관함 복원/삭제
+  canQualityInspection?: boolean;      // [레거시 미러] 품질/검사 편집
+  canShipmentControl?: boolean;        // [레거시 미러] 출하 관리 (품질/검사 편집으로 통합)
 }
 
 export interface User {
@@ -187,6 +191,7 @@ export interface User {
   createdAt?: string;
   loginAt?: string;
   logoutAt?: string;
+  lastSeenAt?: string;
 }
 
 export interface ScheduledTaskItem {

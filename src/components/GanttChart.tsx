@@ -551,7 +551,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-black text-slate-800 dark:text-white tracking-tight">
-                공정 타임라인 (Gantt Chart)
+                생산 타임라인 (Gantt Chart)
               </h2>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold font-mono">
                 {displayItems.length}개 공정

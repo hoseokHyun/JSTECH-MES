@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenArchiveModal}
             className="bg-[#FFF9EB] hover:bg-[#FEF3D6] dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-[#B45309] dark:text-amber-300 border border-[#FCD34D] dark:border-amber-700/80 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer"
-            title="완료 수주 보관함"
+            title="완료 보관함"
           >
             <Archive className="w-3.5 h-3.5 text-[#B45309] dark:text-amber-400" />
             <span>보관함</span>

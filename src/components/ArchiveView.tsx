@@ -182,7 +182,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                완료 수주 보관함 (Archive Vault)
+                완료 보관함 (Archive Vault)
               </h2>
               <span className="bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-black border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs">
                 {selectedYear === 'ALL' ? '전체 연도' : `${selectedYear}년`} 보관 {archivedList.length}건
@@ -481,7 +481,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                               type="button"
                               onClick={() => onCopyOrderToNew(ord)}
                               className="bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2.5 py-1.5 rounded-lg font-bold transition inline-flex items-center gap-1 text-xs shadow-2xs cursor-pointer active:scale-95 shrink-0"
-                              title="이 수주의 공정 구성 및 설비/담당자 사양을 신규 수주 등록으로 복사합니다."
+                              title="이 수주의 공정 구성 및 설비/담당자 사양을 수주 등록으로 복사합니다."
                             >
                               <Copy className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                               <span>사양복사</span>
@@ -651,7 +651,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                   className="px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:hover:bg-amber-800/80 dark:text-amber-200 rounded-xl font-black text-xs transition cursor-pointer flex items-center gap-1"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  <span>사양 복사하여 신규 수주 등록</span>
+                  <span>사양 복사하여 수주 등록</span>
                 </button>
               )}
               <button

@@ -822,7 +822,7 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
               className="px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>신규 수주</span>
+              <span>수주 등록</span>
             </button>
           )}
         </div>

@@ -165,7 +165,28 @@ export const StandaloneFloorMESLayout: React.FC<StandaloneFloorMESLayoutProps> =
           orders={orders}
           productTypes={productTypes}
           processProgressMap={processProgressMap}
-          currentUser={currentUser ? { ...currentUser, name: activeWorker } : { name: activeWorker, role: 'USER' }}
+          currentUser={
+            currentUser
+              ? {
+                  ...currentUser,
+                  name: activeWorker,
+                  department: currentUser.department || '가공팀',
+                  permissions: {
+                    ...(currentUser.permissions || {}),
+                    canExecuteMES: true,
+                    menuEdits: { ...(currentUser.permissions?.menuEdits || {}), execution: true },
+                  },
+                }
+              : {
+                  name: activeWorker,
+                  role: 'USER',
+                  department: '가공팀',
+                  permissions: {
+                    canExecuteMES: true,
+                    menuEdits: { execution: true },
+                  },
+                }
+          }
           approvedOperators={approvedOperators}
           onUpdateProgress={onUpdateProgress}
         />

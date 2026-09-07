@@ -15,6 +15,7 @@ import { EasyTravelerModal } from './EasyTravelerModal';
 import { AndonReportModal } from './AndonReportModal';
 import { PausePromptModal } from './PausePromptModal';
 import { PlcBridgeModal } from './PlcBridgeModal';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 import {
   Play,
   Pause,
@@ -130,10 +131,23 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   const [isPlcBridgeOpen, setIsPlcBridgeOpen] = useState(false);
 
+  const effectivePerms = computeEffectivePermissions(currentUser);
+  const isFieldDept =
+    currentUser?.department === '가공팀' ||
+    currentUser?.department === '연마팀' ||
+    currentUser?.department === '생산관리' ||
+    currentUser?.department === '생산 관리' ||
+    currentUser?.department === '시스템 관리자';
+
   const canExecuteMES =
     !currentUser ||
     currentUser.role === 'ADMIN' ||
-    currentUser.permissions?.canExecuteMES !== false;
+    effectivePerms.isAdmin ||
+    effectivePerms.canExecuteMES ||
+    effectivePerms.canEditMenu['execution'] === true ||
+    currentUser.permissions?.canExecuteMES === true ||
+    currentUser.permissions?.menuEdits?.['execution'] === true ||
+    isFieldDept;
 
   // Filter tasks with complete field search support (pjtNo, pjtName, orderId, processKey, orderName, worker, machine, memo)
   const filteredTasks = taskList.filter((task) => {
@@ -161,15 +175,20 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       matchesStatus = task.status === selectedStatus;
     }
 
+    const filterWorkerBase = selectedWorkerFilter === 'ALL' ? '' : selectedWorkerFilter.replace(/\s*\([^)]*\)/g, '').trim();
+    const taskWorkerBase = (task.worker || '').replace(/\s*\([^)]*\)/g, '').trim();
     const matchesWorker =
-      selectedWorkerFilter === 'ALL' || task.worker === selectedWorkerFilter;
+      selectedWorkerFilter === 'ALL' ||
+      task.worker === selectedWorkerFilter ||
+      Boolean(filterWorkerBase && taskWorkerBase === filterWorkerBase);
 
     const matchesMachine =
       selectedMachineFilter === 'ALL' || task.machine === selectedMachineFilter;
 
+    const myNameBase = (currentUser?.name || '').replace(/\s*\([^)]*\)/g, '').trim();
     const matchesMyTask =
       !showOnlyMyTasks ||
-      (currentUser?.name && task.worker?.trim() === currentUser.name.trim());
+      Boolean(myNameBase && taskWorkerBase === myNameBase);
 
     return matchesSearch && matchesCategory && matchesStatus && matchesWorker && matchesMachine && matchesMyTask;
   });

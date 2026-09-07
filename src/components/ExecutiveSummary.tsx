@@ -317,6 +317,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : 0;
 
   // Equipment OEE & Status Calculation (21 Machines)
+  // Single Source of Truth: aligned with real-time active machine tasks in scheduledTasks
   const equipmentStatusSummary = useMemo(() => {
     let running = 0;
     let paused = 0;
@@ -327,13 +328,20 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     const cmmStatus = { running: 0, idle: 0, paused: 0, total: CMM_MACHINES.length };
 
     ALL_EQUIPMENT_LIST.forEach((machineName) => {
-      const task = scheduledTasks.find((t) => t.machine === machineName && !t.isCompleted);
+      const activeTasks = scheduledTasks.filter((t) => t.machine === machineName && !t.isCompleted);
       const isMct = MCT_MACHINES.includes(machineName);
       const isGrinder = GRINDER_MACHINES.includes(machineName);
       const isCmm = CMM_MACHINES.includes(machineName);
 
-      if (task) {
-        if (task.status === 'PAUSED' || task.status === 'DELAYED') {
+      if (activeTasks.length === 0) {
+        idle++;
+        if (isMct) mctStatus.idle++;
+        else if (isGrinder) grinderStatus.idle++;
+        else if (isCmm) cmmStatus.idle++;
+      } else {
+        // Machine is paused/halted ONLY if its tasks are explicitly PAUSED (점검/정지)
+        const isPaused = activeTasks.every((t) => t.status === 'PAUSED');
+        if (isPaused) {
           paused++;
           if (isMct) mctStatus.paused++;
           else if (isGrinder) grinderStatus.paused++;
@@ -344,15 +352,10 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           else if (isGrinder) grinderStatus.running++;
           else if (isCmm) cmmStatus.running++;
         }
-      } else {
-        idle++;
-        if (isMct) mctStatus.idle++;
-        else if (isGrinder) grinderStatus.idle++;
-        else if (isCmm) cmmStatus.idle++;
       }
     });
 
-    const oeeRate = ALL_EQUIPMENT_LIST.length > 0
+    const oeeRate = ALL_EQUIPMENT_LIST.length > 0 && running > 0
       ? Math.round((running / ALL_EQUIPMENT_LIST.length) * 1000) / 10
       : 0;
 
@@ -364,7 +367,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       oeeRate,
       mctStatus,
       grinderStatus,
-      cmmStatus
+      cmmStatus,
     };
   }, [scheduledTasks]);
 
@@ -407,7 +410,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                생산 총괄 대시보드
+                대시보드
               </h1>
               <span className="text-[10px] bg-blue-100 text-[#0066FF] border border-blue-200 px-2 py-0.5 rounded-full font-extrabold">
                 Executive Overview
@@ -435,7 +438,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             <button
               onClick={onOpenArchiveModal}
               className="px-3.5 py-1.5 bg-[#FFF9EB] hover:bg-[#FEF3D6] text-[#B45309] border border-[#FCD34D] rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="완료 수주 보관함 열기"
+              title="완료 보관함 열기"
             >
               <Archive className="w-3.5 h-3.5 text-[#B45309]" />
               <span>보관함</span>
@@ -445,7 +448,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             <button
               onClick={() => {
                 if (!canEditOrder) {
-                  alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(관리자 또는 영업담당자 계정으로 로그인해주세요.)');
+                  alert('⚠️ 수주 등록 권한이 없습니다.\n(관리자 또는 영업담당자 계정으로 로그인해주세요.)');
                   return;
                 }
                 onNavigateToOrderForm();
@@ -596,7 +599,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           </div>
         </div>
 
-        {/* KPI 2: 정상 진행 -> 공정 타임라인 (Gantt) 화면 이동 */}
+        {/* KPI 2: 정상 진행 -> 생산 타임라인 화면 이동 */}
         <div
           role="button"
           tabIndex={0}
@@ -608,7 +611,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             }
           }}
           className="bg-white rounded-2xl p-4 border border-sky-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-sky-400 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none"
-          title="클릭 시 '공정 타임라인 (Gantt)' 메뉴로 이동합니다."
+          title="클릭 시 '생산 타임라인' 메뉴로 이동합니다."
         >
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-sky-500 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
@@ -633,13 +636,13 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               실시간: <strong className="text-sky-900">{inProgressTasks.length}개 공정 가동중</strong>
             </span>
             <span className="font-black text-sky-700 bg-sky-50 group-hover:bg-sky-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
-              <span>공정 타임라인</span>
+              <span>생산 타임라인</span>
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>
 
-        {/* KPI 3: 지연 발생 -> 현장 공정 실행 (Floor MES) 화면 이동 */}
+        {/* KPI 3: 지연 발생 -> 공정 실행 화면 이동 */}
         <div
           role="button"
           tabIndex={0}
@@ -655,7 +658,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               ? 'bg-red-50/70 border-red-300 ring-2 ring-red-500/20 hover:border-red-500'
               : 'bg-white border-slate-200 hover:border-red-300'
           }`}
-          title="클릭 시 '현장 공정 실행 (Floor MES)' 메뉴로 이동하여 지연 공정을 확인합니다."
+          title="클릭 시 '공정 실행' 메뉴로 이동하여 지연 공정을 확인합니다."
         >
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-600 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">
@@ -687,13 +690,13 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               {delayedOrdersCount > 0 ? '⚠️ 긴급 조치 필요' : '정상 가동 중'}
             </span>
             <span className="font-black text-red-700 bg-red-100 group-hover:bg-red-600 group-hover:text-white px-2 py-0.5 rounded-md transition-all flex items-center gap-0.5">
-              <span>현장 공정 실행</span>
+              <span>공정 실행</span>
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
         </div>
 
-        {/* KPI 4: 완료 건수 -> 완료 수주 보관함 화면 이동 */}
+        {/* KPI 4: 완료 건수 -> 완료 보관함 화면 이동 */}
         <div
           role="button"
           tabIndex={0}
@@ -712,7 +715,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             }
           }}
           className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-emerald-400 transition-all duration-200 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.99] select-none"
-          title="클릭 시 '완료 수주 보관함' 메뉴로 이동합니다."
+          title="클릭 시 '완료 보관함' 메뉴로 이동합니다."
         >
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500 group-hover:h-2 transition-all" />
           <div className="flex items-start justify-between">

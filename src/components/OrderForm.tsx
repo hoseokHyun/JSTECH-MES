@@ -1262,7 +1262,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!canEditOrder) {
-      alert('⚠️ 신규 수주 등록/편집 권한이 없습니다.\n관리자에게 권한을 요청하세요.');
+      alert('⚠️ 수주 등록/편집 권한이 없습니다.\n관리자에게 권한을 요청하세요.');
       return;
     }
 
@@ -1856,7 +1856,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             <div className="p-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-white flex justify-between items-center">
               <h3 className="font-extrabold text-sm flex items-center gap-2">
                 <Copy className="w-4 h-4" />
-                <span>이전 수주 및 완료보관함 사양 복사</span>
+                <span>이전 수주 및 완료 보관함 사양 복사</span>
               </h3>
               <button
                 type="button"
@@ -1869,7 +1869,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
             <div className="p-4 space-y-3 text-xs">
               <p className="text-slate-600">
-                과거 완료된 수주의 공정 구성 및 설비/담당자 지정 정보를 복사하여 신규 수주에 즉시 적용합니다.
+                과거 완료된 수주의 공정 구성 및 설비/담당자 지정 정보를 복사하여 수주 등록에 즉시 적용합니다.
               </p>
               <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
                 {completedOrArchivedOrders.length === 0 ? (
@@ -1912,7 +1912,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="w-7 h-7 text-white" />
                 <div>
-                  <h3 className="font-extrabold text-base">🎉 신규 수주가 성공적으로 등록되었습니다!</h3>
+                  <h3 className="font-extrabold text-base">🎉 수주가 성공적으로 등록되었습니다!</h3>
                   <p className="text-xs text-emerald-100 font-mono mt-0.5">
                     {createdOrderForTraveler.id} | {createdOrderForTraveler.name}
                   </p>

@@ -190,7 +190,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
               className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>신규 수주 등록하기</span>
+              <span>수주 등록하기</span>
             </button>
           )}
         </div>
@@ -537,8 +537,8 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                                 onCopyOrderToNew(ord);
                               }
                             }}
-                            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
-                            title="이 수주의 공정 구성 및 설비/담당자를 신규 수주 등록으로 복사합니다."
+                            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
+                            title="이 수주의 공정 구성 및 설비/담당자를 수주 등록으로 복사합니다."
                           >
                             <Copy className="w-3 h-3 text-slate-600" />
                             <span>사양복사</span>
@@ -550,7 +550,7 @@ export const OrderMasterManagementView: React.FC<OrderMasterManagementViewProps>
                               type="button"
                               onClick={() => {
                                 if (!canArchive) {
-                                  alert('⚠️ 보관함 이동 권한이 없습니다.');
+                                  alert('⚠️ 완료 보관함 이동 권한이 없습니다.');
                                   return;
                                 }
                                 onArchiveOrder(ord.id);

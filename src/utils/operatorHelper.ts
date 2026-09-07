@@ -7,6 +7,72 @@ export interface BadgeInfo {
 }
 
 /**
+ * Strips any parentheses from a worker or user name to get the pure base name.
+ * e.g. "박세령 (가공)" -> "박세령", "김현아 (경영진)" -> "김현아"
+ */
+export function getBaseWorkerName(name?: string | null): string {
+  return (name || '').replace(/\s*\([^)]*\)/g, '').trim();
+}
+
+/**
+ * Canonical helper to get the standardized department tag for display:
+ * - '가공팀' -> '(가공)'
+ * - '연마팀' -> '(연마)'
+ * - '품질팀' -> '(품질)'
+ * - '생산관리' -> '(생산관리)'
+ * - '영업팀' -> '(영업팀)'
+ * - '경영진' -> '(경영진)'
+ * - '시스템 관리자' -> '(관리자)'
+ */
+export function getDepartmentSuffix(dept?: string | null, u?: User): string {
+  const d = (dept || '').trim();
+  if (!d || d === '미지정') {
+    if (u && (u.skillGrinderLevel || 0) > (u.skillMctLevel || 0)) {
+      return '(연마)';
+    }
+    return '(가공)';
+  }
+  if (d === '영업팀' || d.includes('영업')) return '(영업팀)';
+  if (d === '경영진' || d.includes('경영') || d.includes('임원')) return '(경영진)';
+  if (d === '시스템 관리자' || d.includes('관리자')) return '(관리자)';
+  if (d === '생산관리' || d === '생산 관리') return '(생산관리)';
+  if (d.includes('품질') || d.includes('검사')) return '(품질)';
+  if (d.includes('연마') || d.includes('래핑')) return '(연마)';
+  if (d.includes('가공')) return '(가공)';
+  if (d.includes('조립') || d.includes('클린룸')) return '(조립)';
+  if (d.includes('생산')) return '(생산)';
+  return `(${d.replace('팀', '')})`;
+}
+
+/**
+ * Returns formatted operator display string "이름 (부서)" by looking up the latest
+ * user record in usersList at render time.
+ * If user exists in usersList, always uses their current department!
+ */
+export function formatOperatorWithLatestDept(
+  nameOrString: string,
+  usersList: User[] = []
+): string {
+  const baseName = getBaseWorkerName(nameOrString);
+  if (!baseName) return nameOrString || '';
+  if (baseName === '미지정' || baseName === '(미지정)' || baseName.includes('외주') || baseName.includes('협력사')) {
+    return nameOrString;
+  }
+
+  const user = usersList.find((u) => getBaseWorkerName(u.name) === baseName);
+  if (user && user.department && user.department !== '미지정') {
+    const suffix = getDepartmentSuffix(user.department, user);
+    return suffix ? `${baseName} ${suffix}` : baseName;
+  }
+
+  const match = (nameOrString || '').match(/\(([^)]+)\)/);
+  if (match) {
+    return `${baseName} (${match[1]})`;
+  }
+  return baseName;
+}
+
+/**
  * Checks if a user is a valid, officially registered and approved member with valid email and information.
  * Strictly excludes dummy, placeholder, "이메일 미등록", and rejected/unregistered entries.
  */
@@ -31,18 +97,9 @@ export function isValidRegisteredOperatorUser(u: User): boolean {
     return false;
   }
 
-  // Strictly check email: Must have a valid registered email address
+  // Check email: reject dummy/placeholder accounts
   const email = (u.email || '').toLowerCase().trim();
-  if (
-    !email ||
-    email === '(이메일 미등록)' ||
-    email === '이메일 미등록' ||
-    email === '미등록' ||
-    !email.includes('@') ||
-    !email.includes('.') ||
-    email.includes('dummy') ||
-    email.includes('placeholder')
-  ) {
+  if (email.includes('dummy') || email.includes('placeholder')) {
     return false;
   }
 
@@ -73,7 +130,7 @@ export function isValidRegisteredOperatorUser(u: User): boolean {
 }
 
 /**
- * Extracts and formats valid approved operator strings ("이름 (팀명)") from usersList.
+ * Extracts and formats valid approved operator strings ("이름 (팀명)") strictly from usersList (source of truth).
  */
 export function extractValidApprovedOperators(
   usersList: User[] = [],
@@ -81,27 +138,15 @@ export function extractValidApprovedOperators(
 ): string[] {
   const operatorMap = new Map<string, string>();
 
-  const getTeamSuffix = (dept: string | undefined, u?: User): string => {
-    const d = (dept || '').trim();
-    if (d.includes('가공')) return '(가공)';
-    if (d.includes('연마')) return '(연마)';
-    if (d.includes('품질') || d.includes('검사')) return '(품질)';
-    if (d.includes('조립') || d.includes('클린룸')) return '(조립)';
-    if (d.includes('생산')) return '(생산)';
-
-    if (u && (u.skillGrinderLevel || 0) > (u.skillMctLevel || 0)) {
-      return '(연마)';
-    }
-    return '(가공)';
-  };
-
-  // 1. Process valid registered users from Firestore users list
+  // 1. Process valid registered users from Firestore users list (Source of Truth)
   usersList.forEach((u) => {
     if (!isValidRegisteredOperatorUser(u)) return;
 
     const rawName = (u.name || '').trim();
-    const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-    const teamSuffix = getTeamSuffix(u.department, u);
+    const baseName = getBaseWorkerName(rawName);
+    if (!baseName) return;
+
+    const teamSuffix = getDepartmentSuffix(u.department, u);
     operatorMap.set(baseName, `${baseName} ${teamSuffix}`);
   });
 
@@ -110,7 +155,7 @@ export function extractValidApprovedOperators(
     additionalApprovedOps.forEach((op) => {
       const clean = (op || '').trim();
       if (!clean) return;
-      const baseName = clean.replace(/\s*\([^)]*\)/g, '').trim();
+      const baseName = getBaseWorkerName(clean);
       if (
         !baseName ||
         baseName.length < 2 ||
@@ -124,17 +169,24 @@ export function extractValidApprovedOperators(
       ) {
         return;
       }
+      // If user is already in operatorMap (derived from usersList), DO NOT OVERWRITE with stale string!
       if (!operatorMap.has(baseName)) {
-        let formatted = clean;
-        if (!formatted.includes('(')) {
-          formatted = `${baseName} (가공)`;
+        const foundUser = usersList.find((u) => getBaseWorkerName(u.name) === baseName);
+        if (foundUser) {
+          const suffix = getDepartmentSuffix(foundUser.department, foundUser);
+          operatorMap.set(baseName, `${baseName} ${suffix}`);
+        } else {
+          let formatted = clean;
+          if (!formatted.includes('(')) {
+            formatted = `${baseName} (가공)`;
+          }
+          operatorMap.set(baseName, formatted);
         }
-        operatorMap.set(baseName, formatted);
       }
     });
   }
 
-  // 3. Sort operators: (가공) -> (연마) -> (품질) -> (조립) -> (생산) -> Alphabetical
+  // 3. Sort operators: (가공) -> (연마) -> (품질) -> (조립) -> (생산관리) -> (영업팀) -> (경영진) -> Alphabetical
   const teamOrder: Record<string, number> = {
     '(가공)': 1,
     '(연마)': 2,
@@ -142,6 +194,11 @@ export function extractValidApprovedOperators(
     '(조립)': 4,
     '(생산)': 5,
     '(생산관리)': 5,
+    '(영업팀)': 6,
+    '(영업)': 6,
+    '(경영진)': 7,
+    '(경영)': 7,
+    '(관리자)': 8,
   };
 
   return Array.from(operatorMap.values()).sort((a, b) => {
@@ -201,10 +258,28 @@ export function getOperatorBadgeInfo(opName: string): BadgeInfo {
       badgeColor: 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800',
     };
   }
-  if (clean.includes('(생산') || clean.includes('생산')) {
+  if (clean.includes('(생산관리)') || clean.includes('(생산') || clean.includes('생산')) {
     return {
       badge: '생산',
       badgeColor: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+    };
+  }
+  if (clean.includes('(영업팀)') || clean.includes('(영업)') || clean.includes('영업')) {
+    return {
+      badge: '영업팀',
+      badgeColor: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800',
+    };
+  }
+  if (clean.includes('(경영진)') || clean.includes('(경영)') || clean.includes('경영')) {
+    return {
+      badge: '경영진',
+      badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800',
+    };
+  }
+  if (clean.includes('(관리자)') || clean.includes('(관리)') || clean.includes('관리자')) {
+    return {
+      badge: '관리자',
+      badgeColor: 'bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800',
     };
   }
 
@@ -219,15 +294,16 @@ export interface BuildOperatorOptionsConfig {
   allowOutsourcing?: boolean;
   busyWorkersMap?: Map<string, any>;
   customPlaceholderValue?: string;
+  usersList?: User[];
 }
 
 /**
  * Builds unified SelectOption[] for Operator Dropdown across all modals:
  * - 수주 및 공정 구성 수정 (EditOrderModal)
- * - 신규 수주 등록 (OrderForm)
+ * - 수주 등록 (OrderForm)
  * - 캘린더 공정 상세 (CalendarTaskDetailModal)
- * - 공정 타임라인 상세 (ProcessDetailModal)
- * - 현장 MES 실행 (FloorExecutionView)
+ * - 생산 타임라인 상세 (ProcessDetailModal)
+ * - 공정 실행 (FloorExecutionView)
  */
 export function buildOperatorSelectOptions(
   approvedOperators: string[] = [],
@@ -249,6 +325,7 @@ export function buildOperatorSelectOptions(
   ];
 
   const addedValues = new Set<string>([customPlaceholderValue, '']);
+  const addedBaseNames = new Set<string>();
 
   // Add outsourcing option if allowed
   if (allowOutsourcing) {
@@ -266,7 +343,7 @@ export function buildOperatorSelectOptions(
     const clean = (op || '').trim();
     if (!clean || addedValues.has(clean)) return;
 
-    const baseName = clean.replace(/\s*\([^)]*\)/g, '').trim();
+    const baseName = getBaseWorkerName(clean);
     if (
       !baseName ||
       baseName === '시스템 관리자' ||
@@ -280,6 +357,7 @@ export function buildOperatorSelectOptions(
     }
 
     addedValues.add(clean);
+    addedBaseNames.add(baseName);
 
     const { badge, badgeColor } = getOperatorBadgeInfo(clean);
     const isBusy = busyWorkersMap ? (busyWorkersMap.get(clean) || busyWorkersMap.get(baseName)) : false;
@@ -295,7 +373,7 @@ export function buildOperatorSelectOptions(
   });
 
   // Also ensure any currently assigned worker value (e.g. from existing DB record) is present in the list,
-  // while strictly skipping dummy/unregistered/placeholder values
+  // while strictly skipping dummy/unregistered/placeholder values and avoiding stale duplicates if the base worker is already in the list
   const extraValues: string[] = Array.isArray(currentValues)
     ? (currentValues.filter(Boolean) as string[])
     : currentValues ? [currentValues] : [];
@@ -304,7 +382,7 @@ export function buildOperatorSelectOptions(
     const clean = (val || '').trim();
     if (!clean || addedValues.has(clean)) return;
 
-    const baseName = clean.replace(/\s*\([^)]*\)/g, '').trim();
+    const baseName = getBaseWorkerName(clean);
     if (
       !baseName ||
       baseName === '(미지정)' ||
@@ -320,7 +398,13 @@ export function buildOperatorSelectOptions(
       return;
     }
 
+    // If the operator already exists in approved list with their latest department, don't re-add an old snapshot!
+    if (addedBaseNames.has(baseName)) {
+      return;
+    }
+
     addedValues.add(clean);
+    addedBaseNames.add(baseName);
 
     const { badge, badgeColor } = getOperatorBadgeInfo(clean);
     opts.push({

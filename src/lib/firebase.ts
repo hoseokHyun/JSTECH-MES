@@ -370,6 +370,7 @@ export async function setUserOnlineStatus(userIdent: string | null | undefined, 
   try {
     const usersSnap = await getDocs(collection(db, 'users'));
     let targetDocId: string | null = null;
+    let existingData: User | null = null;
     usersSnap.forEach((docSnap) => {
       const data = docSnap.data() as User;
       if (
@@ -379,18 +380,26 @@ export async function setUserOnlineStatus(userIdent: string | null | undefined, 
         data.name === userIdent
       ) {
         targetDocId = docSnap.id;
+        existingData = data;
       }
     });
 
     if (targetDocId) {
-      await setDoc(
-        doc(db, 'users', targetDocId),
-        {
-          isOnline,
-          ...(isOnline ? { loginAt: new Date().toISOString() } : { logoutAt: new Date().toISOString() }),
-        },
-        { merge: true }
-      );
+      const nowIso = new Date().toISOString();
+      const updatePayload: Record<string, any> = {
+        isOnline,
+        lastSeenAt: nowIso,
+      };
+
+      if (isOnline) {
+        if (!existingData?.loginAt) {
+          updatePayload.loginAt = nowIso;
+        }
+      } else {
+        updatePayload.logoutAt = nowIso;
+      }
+
+      await setDoc(doc(db, 'users', targetDocId), updatePayload, { merge: true });
     }
   } catch (err) {
     console.warn('Failed to update online status:', err);
@@ -649,8 +658,9 @@ export function subscribeUsersList(
           status: isApproved ? 'approved' : (raw.status || 'pending'),
         };
 
-        // Deduplicate: Ensure only 1 entry for super admin
-        const primaryKey = isSuperAdmin ? 'admin_primary_single' : (email || uid || docId);
+        // Deduplicate: Ensure only 1 entry for super admin, and use unique uid/docId for users without a real email
+        const isPlaceholderEmail = !email || email.includes('미등록') || !email.includes('@');
+        const primaryKey = isSuperAdmin ? 'admin_primary_single' : (isPlaceholderEmail ? (uid || docId) : email);
         if (!usersMap.has(primaryKey)) {
           usersMap.set(primaryKey, userObj);
         } else {
@@ -690,11 +700,13 @@ async function resolveUserDocRef(uidOrEmail: string) {
   if (!snapUid.empty) {
     return snapUid.docs[0].ref;
   }
-  // 3. Query by email field
-  const qEmail = query(collection(db, 'users'), where('email', '==', uidOrEmail.toLowerCase().trim()));
-  const snapEmail = await getDocs(qEmail);
-  if (!snapEmail.empty) {
-    return snapEmail.docs[0].ref;
+  // 3. Query by email field (only if it is a genuine email, not a placeholder)
+  if (!uidOrEmail.includes('미등록') && uidOrEmail.includes('@')) {
+    const qEmail = query(collection(db, 'users'), where('email', '==', uidOrEmail.toLowerCase().trim()));
+    const snapEmail = await getDocs(qEmail);
+    if (!snapEmail.empty) {
+      return snapEmail.docs[0].ref;
+    }
   }
   return directRef;
 }

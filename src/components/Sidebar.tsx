@@ -22,7 +22,6 @@ import {
   Lock,
 } from 'lucide-react';
 import { ScheduledTaskItem, User } from '../types';
-import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { computeEffectivePermissions, isMenuAllowed } from '../utils/permissionManager';
 
 interface SidebarProps {
@@ -54,20 +53,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canEditOrder = effectivePerms.canEditOrder;
   const canArchive = effectivePerms.canArchive;
 
-  // Calculate real-time OEE / Active Line Utilization
-  const activeMachinesCount = ALL_EQUIPMENT_LIST.filter((machineName) =>
-    scheduledTasks.some((t) => t.machine === machineName && !t.isCompleted)
-  ).length;
-
-  const oeePct =
-    scheduledTasks.length === 0 || activeMachinesCount === 0
-      ? 0
-      : Math.round((activeMachinesCount / ALL_EQUIPMENT_LIST.length) * 1000) / 10;
-
   const navItems = [
     {
       id: 'dashboard',
-      label: '생산 종합 대시보드',
+      label: '대시보드',
       sublabel: '설비 21대/실시간 현황',
       icon: LayoutDashboard,
       badge: '메인 현황',
@@ -75,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'order-form',
-      label: '신규 수주 등록',
+      label: '수주 등록',
       sublabel: '수주 스펙 및 공정 지정',
       icon: FilePlus,
       badge: '신규등록',
@@ -99,7 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'actual-analysis',
-      label: '실적 및 계획대비 분석',
+      label: '공정 분석',
       sublabel: 'Plan vs. Actual 편차/지연 추적',
       icon: Activity,
       badge: '분석',
@@ -115,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'timeline',
-      label: '공정 타임라인 (Gantt)',
+      label: '생산 타임라인',
       sublabel: '장기 타임라인 차트',
       icon: Layers,
       badge: 'Gantt',
@@ -123,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'execution',
-      label: '현장 공정 실행 (Floor MES)',
+      label: '공정 실행',
       sublabel: '시작/일시정지/완료 터미널',
       icon: PlaySquare,
       badge: '실시간',
@@ -131,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'equipment',
-      label: '생산 설비 및 공정 담당자',
+      label: '설비 현황',
       sublabel: '총 21대 설비 가동 모니터링',
       icon: Cpu,
       badge: '21대',
@@ -147,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'archive',
-      label: '완료 수주 보관함',
+      label: '완료 보관함',
       sublabel: '완료 수주 아카이브 & 사양 복사',
       icon: Archive,
       badge: archivedCount > 0 ? `${archivedCount}건` : null,
@@ -201,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           const handleMenuClick = () => {
             if (item.id === 'order-form' && !canEditOrder) {
-              alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(수주 등록 권한이 필요합니다. 관리자에게 문의하세요.)');
+              alert('⚠️ 수주 등록 권한이 없습니다.\n(수주 등록 권한이 필요합니다. 관리자에게 문의하세요.)');
               return;
             }
             if (item.id === 'archive' && !canArchive) {
@@ -252,42 +241,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
       </div>
-
-      {/* System Status Summary */}
-      {!collapsed && (
-        <div className="p-3 border-t border-[#D0E8E6] dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 text-xs space-y-2">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1">
-              <Activity className="w-3.5 h-3.5 text-[#00C4B4]" /> 라인 가동율 (OEE)
-            </span>
-            <span
-              className={`font-extrabold ${
-                activeMachinesCount > 0 ? 'text-[#00A396] dark:text-[#00C4B4]' : 'text-slate-500 dark:text-slate-400'
-              }`}
-            >
-              {oeePct.toFixed(1)}%
-            </span>
-          </div>
-          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-200 dark:border-slate-700">
-            <div
-              className={`h-2 rounded-full transition-all duration-500 ${
-                activeMachinesCount > 0 ? 'bg-[#00C4B4]' : 'bg-slate-300 dark:bg-slate-600'
-              }`}
-              style={{ width: `${Math.max(oeePct, 2)}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 font-medium">
-            <span>설비 21대 / 공정 담당자 {operatorCount}명</span>
-            <span
-              className={`font-bold ${
-                activeMachinesCount > 0 ? 'text-[#00A396] dark:text-[#00C4B4]' : 'text-slate-400 dark:text-slate-500'
-              }`}
-            >
-              {activeMachinesCount > 0 ? `${activeMachinesCount}대 가동중` : '전체 대기중'}
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* User Account & Direct Logout */}
       {currentUser && (

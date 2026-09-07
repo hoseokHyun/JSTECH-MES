@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScheduledTaskItem, Order, User } from '../types';
 import { MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
+import { getBaseWorkerName, getDepartmentSuffix } from '../utils/operatorHelper';
 import {
   Cpu,
   UserCheck,
@@ -381,17 +382,41 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             </div>
           ) : (
             approvedOperators.map((w) => {
-              const workerTasks = items.filter((i) => i.worker === w);
-              const active = workerTasks.filter((i) => !i.isCompleted);
+              const baseName = getBaseWorkerName(w);
               const userRecord = usersList.find(
-                (u) => u.name === w || (u.name && w.startsWith(u.name))
+                (u) => getBaseWorkerName(u.name) === baseName
               );
-              const isSelf = currentUser?.name === w || Boolean(userRecord && currentUser?.email && userRecord.email?.toLowerCase() === currentUser.email.toLowerCase());
-              // Online status: Realtime session sync, explicit Firestore online status, or recent login record
+
+              // Real-time department suffix directly derived from usersList (Source of Truth)
+              const currentDept = userRecord?.department;
+              const deptSuffix = getDepartmentSuffix(currentDept, userRecord);
+              const displayName = deptSuffix ? `${baseName} ${deptSuffix}` : (w || baseName);
+
+              // Accurately match tasks assigned to this operator by base name in real-time
+              const allTasks = items && items.length > 0 ? items : (scheduledTasks || []);
+              const workerTasks = allTasks.filter((i) => {
+                const itemWorkerBase = getBaseWorkerName(i.worker);
+                return Boolean(itemWorkerBase && itemWorkerBase === baseName);
+              });
+              const active = workerTasks.filter((i) => !i.isCompleted);
+
+              const isSelf = getBaseWorkerName(currentUser?.name) === baseName ||
+                Boolean(userRecord && currentUser?.email && userRecord.email?.toLowerCase() === currentUser.email.toLowerCase());
+
+              // Online status: Realtime session sync, explicit Firestore online status with fresh heartbeat within 5 minutes
+              const PRESENCE_TIMEOUT_MS = 5 * 60 * 1000;
+              const now = Date.now();
+              const lastActivityIso = userRecord?.lastSeenAt || userRecord?.loginAt;
+              const lastActivityTime = lastActivityIso ? new Date(lastActivityIso).getTime() : 0;
+              const isRecent = lastActivityTime > 0 && (now - lastActivityTime) < PRESENCE_TIMEOUT_MS;
+              const isLoggedOut = Boolean(
+                userRecord?.logoutAt &&
+                new Date(userRecord.logoutAt).getTime() >= lastActivityTime
+              );
+
               const isOnline = Boolean(
                 isSelf ||
-                userRecord?.isOnline === true ||
-                (userRecord?.isOnline === undefined && userRecord?.loginAt && (!userRecord?.logoutAt || new Date(userRecord.logoutAt) < new Date(userRecord.loginAt)))
+                (userRecord?.isOnline === true && isRecent && !isLoggedOut)
               );
 
               return (
@@ -414,8 +439,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                         <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" title="미접속/대기"></span>
                       )}
                     </div>
-                    <span className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm whitespace-nowrap truncate text-center px-3" title={w}>
-                      {w} {isSelf && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">(나)</span>}
+                    <span className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm whitespace-nowrap truncate text-center px-3" title={displayName}>
+                      {displayName} {isSelf && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">(나)</span>}
                     </span>
                   </div>
 

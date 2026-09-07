@@ -216,7 +216,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `생산실적_계획대비분석_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `공정분석_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -232,7 +232,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
           </div>
           <div>
             <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-              생산 실적 및 계획대비 분석 (Plan vs. Actual Analysis)
+              공정 분석 (Plan vs. Actual Analysis)
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               표준 공정 계획 시간 대비 실제 현장 소요시간, 일시정지 이력, 지연 원인을 정밀 추적합니다.

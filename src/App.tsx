@@ -326,6 +326,34 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [authSession, isWarningOpen]);
 
+  // Realtime Presence Heartbeat & Window Cleanup
+  useEffect(() => {
+    if (!currentUser) return;
+    const userIdent = currentUser.uid || currentUser.email || currentUser.name;
+    if (!userIdent) return;
+
+    // Send immediate heartbeat on mount
+    setUserOnlineStatus(userIdent, true);
+
+    // Keep presence fresh every 60 seconds
+    const heartbeatInterval = setInterval(() => {
+      setUserOnlineStatus(userIdent, true);
+    }, 60000);
+
+    const handleUnload = () => {
+      setUserOnlineStatus(userIdent, false);
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [currentUser?.uid, currentUser?.email, currentUser?.name]);
+
   // Back/Forward Navigation Security: prevent history cache from bypassing login
   useEffect(() => {
     const handlePopState = () => {
@@ -368,7 +396,7 @@ export default function App() {
 
   const handleCopyOrderToNew = (order: Order) => {
     if (!effectivePerms.allowedMenus.includes('order-form')) {
-      alert('[접근 제한] 신규 수주 등록 메뉴에 대한 접근 권한이 없습니다.');
+      alert('[접근 제한] 수주 등록 메뉴에 대한 접근 권한이 없습니다.');
       return;
     }
     setPendingCopyOrder(order);
@@ -474,7 +502,7 @@ export default function App() {
       currentUser.permissions?.canEditOrder === true;
 
     if (!canEditOrder) {
-      alert('⚠️ 신규 수주 등록 권한이 없습니다.\n(현장담당자 계정은 신규 수주 등록 권한이 제한되어 있습니다.)');
+      alert('⚠️ 수주 등록 권한이 없습니다.\n(현장담당자 계정은 수주 등록 권한이 제한되어 있습니다.)');
       return;
     }
 
@@ -634,7 +662,7 @@ export default function App() {
       currentUser.permissions?.canArchive === true;
 
     if (!canArchive) {
-      alert('⚠️ 수주 보관함 이동 권한이 없습니다.\n(수주 보관 처리 및 관리는 관리자(ADMIN) 또는 영업/수주 담당자 권한이 필요합니다.)');
+      alert('⚠️ 완료 보관함 이동 권한이 없습니다.\n(수주 보관 처리 및 관리는 관리자(ADMIN) 또는 영업/수주 담당자 권한이 필요합니다.)');
       return;
     }
 
@@ -846,10 +874,23 @@ export default function App() {
       durationHours?: number;
     }
   ) => {
+    const effectiveProgressPerms = computeEffectivePermissions(currentUser);
+    const isFieldDept =
+      currentUser?.department === '가공팀' ||
+      currentUser?.department === '연마팀' ||
+      currentUser?.department === '생산관리' ||
+      currentUser?.department === '생산 관리' ||
+      currentUser?.department === '시스템 관리자';
+
     const canExecuteMES =
       !currentUser ||
       currentUser.role === 'ADMIN' ||
-      currentUser.permissions?.canExecuteMES !== false;
+      effectiveProgressPerms.isAdmin ||
+      effectiveProgressPerms.canExecuteMES ||
+      effectiveProgressPerms.canEditMenu['execution'] === true ||
+      currentUser.permissions?.canExecuteMES === true ||
+      currentUser.permissions?.menuEdits?.['execution'] === true ||
+      isFieldDept;
 
     if (!canExecuteMES) {
       alert('⚠️ 공정 상태 변경 권한이 없습니다.');
@@ -1174,7 +1215,7 @@ export default function App() {
     setSessionNotice(null);
     setIsWarningOpen(false);
 
-    // 로그인 완료 후 기본 진입 화면: "생산 종합 대시보드" ('dashboard')
+    // 로그인 완료 후 기본 진입 화면: "대시보드" ('dashboard')
     // 단, 사용자가 직접 특정 URL 또는 파라미터(/floor, ?tab=..., ?orderId=...)로 접근한 경우 기존 목적지로 정상 이동
     if (typeof window !== 'undefined') {
       const path = window.location.pathname;
@@ -1506,7 +1547,7 @@ export default function App() {
                   />
                 )}
 
-                {/* TAB: ARCHIVE MASTER VAULT (완료 수주 보관함) */}
+                {/* TAB: ARCHIVE MASTER VAULT (완료 보관함) */}
                 {activeTab === 'archive' && (
                   <ArchiveView
                     orders={orders}

@@ -27,18 +27,18 @@ export interface MenuDefinition {
 export const MENU_DEFINITIONS: MenuDefinition[] = [
   {
     id: 'dashboard',
-    label: '생산 종합 대시보드',
+    label: '대시보드',
     sublabel: '설비 21대/실시간 현황',
-    featureName: '생산 종합 대시보드',
+    featureName: '대시보드',
     category: '분석/일정',
     description: '공장 전체 가동률(OEE), 수주 현황 및 생산 진척 모니터링',
     icon: '📊',
   },
   {
     id: 'order-form',
-    label: '신규 수주 등록',
+    label: '수주 등록',
     sublabel: '수주 스펙 및 공정 지정',
-    featureName: '신규 수주 등록',
+    featureName: '수주 등록',
     category: '생산/수주',
     relatedPermKey: 'canEditOrder',
     description: '신규 고객사 수주 등록 및 초기 공정/일정 배포',
@@ -66,9 +66,9 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   },
   {
     id: 'actual-analysis',
-    label: '실적 및 계획대비 분석',
+    label: '공정 분석',
     sublabel: 'Plan vs. Actual 편차/지연 추적',
-    featureName: '실적/계획 분석',
+    featureName: '공정 분석',
     category: '분석/일정',
     description: '계획 대비 실적 오차 및 지연 공정 종합 분석',
     icon: '📈',
@@ -85,9 +85,9 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   },
   {
     id: 'timeline',
-    label: '공정 타임라인 (Gantt)',
+    label: '생산 타임라인',
     sublabel: '장기 타임라인 차트',
-    featureName: '공정 타임라인',
+    featureName: '생산 타임라인',
     category: '분석/일정',
     relatedPermKey: 'canEditOrder',
     description: '간트 차트 기반 수주별 공정 흐름 및 간섭 분석',
@@ -95,9 +95,9 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   },
   {
     id: 'execution',
-    label: '현장 공정 실행 (Floor MES)',
+    label: '공정 실행',
     sublabel: '시작/일시정지/완료 터미널',
-    featureName: 'MES 공정 완료',
+    featureName: '공정 실행',
     category: '현장',
     relatedPermKey: 'canExecuteMES',
     description: '현장 터미널에서 공정 착수, 안돈(일시정지), 완료 및 실적 등록',
@@ -105,9 +105,9 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   },
   {
     id: 'equipment',
-    label: '생산 설비 및 공정 담당자',
+    label: '설비 현황',
     sublabel: '총 21대 설비 가동 모니터링',
-    featureName: '설비/담당자 모니터링',
+    featureName: '설비 현황',
     category: '현장',
     description: '설비별 가동/비가동 상태 및 담당자 배정 현황 확인',
     icon: '🤖',
@@ -116,36 +116,36 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
     id: 'quality',
     label: '품질/검사 (CMM)',
     sublabel: '3D 정밀측정 및 성적서 관리',
-    featureName: '품질 검사 & 출하 관리',
+    featureName: '품질 검사 및 출하 승인 (COA)',
     category: '품질',
     relatedPermKey: 'canQualityInspection',
-    description: '수입/공정/출하 검사 성적서 등록 및 3D CMM 정밀 측정 관리',
+    description: '수입/공정/출하 검사 성적서 등록, 3D CMM 정밀 측정 및 출하 승인/COA 발행 관리',
     icon: '🔬',
   },
   {
     id: 'archive',
-    label: '완료 수주 보관함',
+    label: '완료 보관함',
     sublabel: '완료 수주 아카이브 & 사양 복사',
-    featureName: '보관함/수주삭제',
+    featureName: '완료 보관함 & 수주 삭제',
     category: '생산/수주',
     relatedPermKey: 'canArchive',
-    description: '완료된 수주 아카이브 조회, 복사 및 영구 삭제 관리',
+    description: '완료된 수주 아카이브 조회, 활성 수주 복원 및 보관함 내 수주 영구 삭제 관리',
     icon: '📦',
   },
 ];
 
 export const MENU_LABELS: Record<string, string> = {
-  dashboard: '생산 종합 대시보드',
-  'order-form': '신규 수주 등록',
+  dashboard: '대시보드',
+  'order-form': '수주 등록',
   'order-master': '수주관리',
   routing: '공정 구성',
-  'actual-analysis': '실적 및 계획대비 분석',
+  'actual-analysis': '공정 분석',
   calendar: '생산 캘린더',
-  timeline: '공정 타임라인 (Gantt)',
-  execution: '현장 공정 실행 (Floor MES)',
-  equipment: '생산 설비 및 공정 담당자',
+  timeline: '생산 타임라인',
+  execution: '공정 실행',
+  equipment: '설비 현황',
   quality: '품질/검사 (CMM)',
-  archive: '완료 수주 보관함',
+  archive: '완료 보관함',
 };
 
 export const ALL_MENU_IDS: MenuId[] = [
@@ -169,7 +169,7 @@ export const DEPARTMENT_OPTIONS: UserDepartment[] = [
   '생산관리',
   '시스템 관리자',
   '영업팀',
-  '임원진',
+  '경영진',
 ];
 
 export interface DepartmentPresetConfig {
@@ -188,57 +188,60 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
     role: 'USER',
     label: '가공팀',
     badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
-    desc: '현장 담당자 - 현장 공정 실행(MCT 가공 착수/완료/상태변경)',
+    desc: '현장 담당자 - 생산 캘린더/타임라인 조회, 공정 실행(MCT 가공 착수/완료/상태변경)',
     icon: '⚙️',
-    defaultMenus: ['execution'],
-    defaultEdits: { execution: true },
+    defaultMenus: ['calendar', 'timeline', 'execution'],
+    defaultEdits: { calendar: false, timeline: false, execution: true },
     permissions: {
+      allowedMenus: ['calendar', 'timeline', 'execution'],
+      menuEdits: { calendar: false, timeline: false, execution: true },
+      canManageUsers: false,
       canEditOrder: false,
       canExecuteMES: true,
-      canManageUsers: false,
       canEditMaster: false,
       canArchive: false,
       canQualityInspection: false,
       canShipmentControl: false,
-      allowedMenus: ['execution'],
     },
   },
   '연마팀': {
     role: 'USER',
     label: '연마팀',
     badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
-    desc: '현장 담당자 - 현장 공정 실행(평면/성형 연마 착수/완료/상태변경)',
+    desc: '현장 담당자 - 생산 캘린더/타임라인 조회, 공정 실행(평면/성형 연마 착수/완료/상태변경)',
     icon: '✨',
-    defaultMenus: ['execution'],
-    defaultEdits: { execution: true },
+    defaultMenus: ['calendar', 'timeline', 'execution'],
+    defaultEdits: { calendar: false, timeline: false, execution: true },
     permissions: {
+      allowedMenus: ['calendar', 'timeline', 'execution'],
+      menuEdits: { calendar: false, timeline: false, execution: true },
+      canManageUsers: false,
       canEditOrder: false,
       canExecuteMES: true,
-      canManageUsers: false,
       canEditMaster: false,
       canArchive: false,
       canQualityInspection: false,
       canShipmentControl: false,
-      allowedMenus: ['execution'],
     },
   },
   '품질팀': {
     role: 'USER',
     label: '품질팀',
     badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-    desc: '현장 담당자 + 품질 검사 - 공정 실행, 3D CMM 성적서 및 출하 관리',
+    desc: '현장 담당자 + 품질 검사 - 생산 캘린더/타임라인 조회, 공정 실행, 3D CMM 성적서 및 출하 관리',
     icon: '🔬',
-    defaultMenus: ['execution', 'quality'],
-    defaultEdits: { execution: true, quality: true },
+    defaultMenus: ['calendar', 'timeline', 'execution', 'quality'],
+    defaultEdits: { calendar: false, timeline: false, execution: true, quality: true },
     permissions: {
+      allowedMenus: ['calendar', 'timeline', 'execution', 'quality'],
+      menuEdits: { calendar: false, timeline: false, execution: true, quality: true },
+      canManageUsers: false,
       canEditOrder: false,
       canExecuteMES: true,
-      canManageUsers: false,
       canEditMaster: false,
       canArchive: false,
       canQualityInspection: true,
       canShipmentControl: true,
-      allowedMenus: ['execution', 'quality'],
     },
   },
   '생산관리': {
@@ -274,13 +277,6 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
       archive: true,
     },
     permissions: {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: true,
-      canArchive: true,
-      canQualityInspection: true,
-      canShipmentControl: true,
       allowedMenus: [
         'dashboard',
         'order-form',
@@ -294,6 +290,26 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
         'quality',
         'archive',
       ],
+      menuEdits: {
+        dashboard: true,
+        'order-form': true,
+        'order-master': true,
+        routing: true,
+        'actual-analysis': true,
+        calendar: true,
+        timeline: true,
+        execution: true,
+        equipment: true,
+        quality: true,
+        archive: true,
+      },
+      canManageUsers: false,
+      canEditOrder: true,
+      canExecuteMES: true,
+      canEditMaster: true,
+      canArchive: true,
+      canQualityInspection: true,
+      canShipmentControl: true,
     },
   },
   // Alias support for legacy '생산 관리'
@@ -330,13 +346,6 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
       archive: true,
     },
     permissions: {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: false,
-      canEditMaster: true,
-      canArchive: true,
-      canQualityInspection: true,
-      canShipmentControl: true,
       allowedMenus: [
         'dashboard',
         'order-form',
@@ -350,6 +359,26 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
         'quality',
         'archive',
       ],
+      menuEdits: {
+        dashboard: true,
+        'order-form': true,
+        'order-master': true,
+        routing: true,
+        'actual-analysis': true,
+        calendar: true,
+        timeline: true,
+        execution: true,
+        equipment: true,
+        quality: true,
+        archive: true,
+      },
+      canManageUsers: false,
+      canEditOrder: true,
+      canExecuteMES: true,
+      canEditMaster: true,
+      canArchive: true,
+      canQualityInspection: true,
+      canShipmentControl: true,
     },
   },
   '시스템 관리자': {
@@ -385,13 +414,6 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
       archive: true,
     },
     permissions: {
-      canEditOrder: true,
-      canExecuteMES: true,
-      canManageUsers: true,
-      canEditMaster: true,
-      canArchive: true,
-      canQualityInspection: true,
-      canShipmentControl: true,
       allowedMenus: [
         'dashboard',
         'order-form',
@@ -405,44 +427,116 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
         'quality',
         'archive',
       ],
+      menuEdits: {
+        dashboard: true,
+        'order-form': true,
+        'order-master': true,
+        routing: true,
+        'actual-analysis': true,
+        calendar: true,
+        timeline: true,
+        execution: true,
+        equipment: true,
+        quality: true,
+        archive: true,
+      },
+      canManageUsers: true,
+      canEditOrder: true,
+      canExecuteMES: true,
+      canEditMaster: true,
+      canArchive: true,
+      canQualityInspection: true,
+      canShipmentControl: true,
     },
   },
   '영업팀': {
     role: 'USER',
     label: '영업팀',
     badgeClass: 'bg-sky-100 text-sky-800 border-sky-300',
-    desc: '업무 조회 중심 - 생산 종합 대시보드, 생산 캘린더, 공정 타임라인 (읽기 전용)',
+    desc: '영업 업무 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
     icon: '💼',
-    defaultMenus: ['dashboard', 'calendar', 'timeline'],
-    defaultEdits: {},
+    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultEdits: {
+      dashboard: false,
+      calendar: false,
+      timeline: false,
+      equipment: false,
+    },
     permissions: {
+      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      menuEdits: {
+        dashboard: false,
+        calendar: false,
+        timeline: false,
+        equipment: false,
+      },
+      canManageUsers: false,
       canEditOrder: false,
       canExecuteMES: false,
-      canManageUsers: false,
       canEditMaster: false,
       canArchive: false,
       canQualityInspection: false,
       canShipmentControl: false,
-      allowedMenus: ['dashboard', 'calendar', 'timeline'],
+    },
+  },
+  '경영진': {
+    role: 'USER',
+    label: '경영진',
+    badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    desc: '경영 및 생산 현황 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
+    icon: '🏢',
+    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultEdits: {
+      dashboard: false,
+      calendar: false,
+      timeline: false,
+      equipment: false,
+    },
+    permissions: {
+      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      menuEdits: {
+        dashboard: false,
+        calendar: false,
+        timeline: false,
+        equipment: false,
+      },
+      canManageUsers: false,
+      canEditOrder: false,
+      canExecuteMES: false,
+      canEditMaster: false,
+      canArchive: false,
+      canQualityInspection: false,
+      canShipmentControl: false,
     },
   },
   '임원진': {
     role: 'USER',
     label: '임원진',
     badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-    desc: '경영 및 생산 현황 모니터링 - 대시보드, 캘린더, 타임라인 (읽기 전용, 확장 가능)',
+    desc: '경영 및 생산 현황 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
     icon: '🏢',
-    defaultMenus: ['dashboard', 'calendar', 'timeline'],
-    defaultEdits: {},
+    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultEdits: {
+      dashboard: false,
+      calendar: false,
+      timeline: false,
+      equipment: false,
+    },
     permissions: {
+      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      menuEdits: {
+        dashboard: false,
+        calendar: false,
+        timeline: false,
+        equipment: false,
+      },
+      canManageUsers: false,
       canEditOrder: false,
       canExecuteMES: false,
-      canManageUsers: false,
       canEditMaster: false,
       canArchive: false,
       canQualityInspection: false,
       canShipmentControl: false,
-      allowedMenus: ['dashboard', 'calendar', 'timeline'],
     },
   },
 };
@@ -464,12 +558,148 @@ export interface EffectivePermissions {
 }
 
 /**
- * 16. 권한 계산 및 우선순위
+ * 구 권한 체계(canEditOrder, canExecuteMES 등 7개 플래그)를
+ * 신규 체계(allowedMenus, menuEdits, canManageUsers)로 안전하게 변환하는 마이그레이션 함수
  *
- * 1. 시스템 관리자 권한 (ADMIN / 슈퍼어드민) -> 모든 메뉴 노출, 모든 쓰기/편집 허용
- * 2. 개별 사용자 세부 기능 권한 (노출 여부 + 편집 여부)
- * 3. 팀 기본 권한
- * 4. 기본 차단
+ * [변환 및 권한 보존 원칙]
+ * 1. allowedMenus: 기존 배열이 있으면 유지하되, 구 플래그가 활성화되어 있던 메뉴는 반드시 노출 목록에 포함
+ * 2. menuEdits:
+ *    - order-form / order-master / routing: 기존 canEditOrder 또는 canEditMaster가 true였으면 편집 true
+ *    - execution: canExecuteMES가 true였으면 편집 true
+ *    - quality: canQualityInspection 또는 canShipmentControl 중 하나라도 true면 품질/검사 편집 true (출하관리 자동 통합)
+ *    - archive: canArchive가 true면 보관함 편집 true (보관 및 영구삭제 권한)
+ *    - calendar / timeline: canEditOrder가 true면 편집 true
+ * 3. canManageUsers: 시스템 관리자이거나 기존 canManageUsers 플래그가 true인 경우만 true 유지
+ * 4. 기존 구 플래그 필드도 menuEdits 상태와 100% 동기화하여 유지하므로, 기존 코드가 어떤 방식으로 읽더라도 오차 없이 완벽 호환
+ */
+export function migrateLegacyPermissions(
+  user: { department?: string | null; role?: string; permissions?: UserPermissions | null }
+): UserPermissions {
+  const perms = user.permissions || {};
+  const deptKey = (user.department || '가공팀').trim();
+  const preset = DEPARTMENT_PRESETS[deptKey] || DEPARTMENT_PRESETS['가공팀'];
+  const isAdmin = user.role === 'ADMIN' || deptKey === '시스템 관리자';
+
+  // 1. Resolve allowedMenus
+  let nextAllowed: MenuId[] = [];
+  if (perms.allowedMenus && Array.isArray(perms.allowedMenus) && perms.allowedMenus.length > 0) {
+    nextAllowed = [...(perms.allowedMenus as MenuId[])];
+  } else {
+    // Only infer from legacy flags if allowedMenus was never populated
+    nextAllowed = [...preset.defaultMenus];
+    if (perms.canEditOrder) {
+      if (!nextAllowed.includes('order-master')) nextAllowed.push('order-master');
+      if (!nextAllowed.includes('order-form')) nextAllowed.push('order-form');
+      if (!nextAllowed.includes('routing')) nextAllowed.push('routing');
+    }
+    if (perms.canEditMaster && !nextAllowed.includes('routing')) {
+      nextAllowed.push('routing');
+    }
+    if (perms.canExecuteMES && !nextAllowed.includes('execution')) {
+      nextAllowed.push('execution');
+    }
+    if ((perms.canQualityInspection || perms.canShipmentControl) && !nextAllowed.includes('quality')) {
+      nextAllowed.push('quality');
+    }
+    if (perms.canArchive && !nextAllowed.includes('archive')) {
+      nextAllowed.push('archive');
+    }
+  }
+
+  // Deduplicate and filter to valid menus
+  nextAllowed = Array.from(new Set(nextAllowed)).filter((m) => ALL_MENU_IDS.includes(m));
+  if (nextAllowed.length === 0) {
+    nextAllowed = [...preset.defaultMenus];
+  }
+
+  // Seamless auto-upgrade for legacy field operators (가공팀, 연마팀, 품질팀):
+  // If their saved permissions only had legacy 'execution' (or 'execution' + 'quality') without calendar/timeline,
+  // automatically include read-only calendar and timeline so existing users reflect the latest spec immediately.
+  if (deptKey === '가공팀' || deptKey === '연마팀' || deptKey === '품질팀') {
+    const isLegacyRestricted =
+      nextAllowed.includes('execution') &&
+      (!nextAllowed.includes('calendar') || !nextAllowed.includes('timeline')) &&
+      nextAllowed.length <= 3;
+
+    if (isLegacyRestricted) {
+      if (!nextAllowed.includes('calendar')) nextAllowed.push('calendar');
+      if (!nextAllowed.includes('timeline')) nextAllowed.push('timeline');
+    }
+  }
+
+  // 2. Resolve menuEdits
+  const nextEdits: Record<string, boolean> = { ...(preset.defaultEdits || {}) };
+
+  // If user already had explicit menuEdits, incorporate them
+  if (perms.menuEdits && typeof perms.menuEdits === 'object') {
+    Object.entries(perms.menuEdits).forEach(([m, val]) => {
+      if (typeof val === 'boolean') {
+        nextEdits[m] = val;
+      }
+    });
+  }
+
+  // Map legacy flags if menuEdits didn't explicitly override them
+  if (perms.canEditOrder !== undefined) {
+    if (perms.menuEdits?.['order-form'] === undefined) nextEdits['order-form'] = perms.canEditOrder;
+    if (perms.menuEdits?.['order-master'] === undefined) nextEdits['order-master'] = perms.canEditOrder;
+    if (perms.menuEdits?.['routing'] === undefined) nextEdits['routing'] = perms.canEditOrder || (perms.canEditMaster ?? false);
+    if (perms.menuEdits?.['calendar'] === undefined) nextEdits['calendar'] = perms.canEditOrder;
+    if (perms.menuEdits?.['timeline'] === undefined) nextEdits['timeline'] = perms.canEditOrder;
+  }
+  if (perms.canEditMaster !== undefined && perms.menuEdits?.['routing'] === undefined) {
+    nextEdits['routing'] = perms.canEditMaster || (nextEdits['routing'] ?? false);
+  }
+  if (perms.canExecuteMES !== undefined && perms.menuEdits?.['execution'] === undefined) {
+    nextEdits['execution'] = perms.canExecuteMES;
+  }
+  // Merge quality & shipment control into 'quality'
+  if ((perms.canQualityInspection !== undefined || perms.canShipmentControl !== undefined) && perms.menuEdits?.['quality'] === undefined) {
+    nextEdits['quality'] = Boolean(perms.canQualityInspection || perms.canShipmentControl);
+  }
+  if (perms.canArchive !== undefined && perms.menuEdits?.['archive'] === undefined) {
+    nextEdits['archive'] = perms.canArchive;
+  }
+
+  // Enforce structural integrity:
+  // Rule A: If a menu is marked editable, it MUST be exposed (allowed)
+  ALL_MENU_IDS.forEach((m) => {
+    if (nextEdits[m] && !nextAllowed.includes(m)) {
+      nextAllowed.push(m);
+    }
+  });
+
+  // Rule B: If a menu is NOT exposed, its edit permission MUST be false
+  ALL_MENU_IDS.forEach((m) => {
+    if (!nextAllowed.includes(m)) {
+      nextEdits[m] = false;
+    }
+  });
+
+  // 3. Resolve canManageUsers (Dedicated standalone toggle)
+  const canManageUsers = isAdmin || Boolean(perms.canManageUsers);
+
+  // Return unified permissions with synchronized legacy fields for backward compatibility
+  return {
+    allowedMenus: nextAllowed,
+    menuEdits: nextEdits,
+    canManageUsers,
+    // Synchronized legacy mirrors so no downstream code breaks
+    canEditOrder: Boolean(nextEdits['order-master'] || nextEdits['order-form']),
+    canExecuteMES: Boolean(nextEdits['execution']),
+    canEditMaster: Boolean(nextEdits['routing']),
+    canArchive: Boolean(nextEdits['archive']),
+    canQualityInspection: Boolean(nextEdits['quality']),
+    canShipmentControl: Boolean(nextEdits['quality']),
+  };
+}
+
+/**
+ * 16. 권한 계산 및 우선순위 (단일화된 RBAC 엔진)
+ *
+ * 1. 시스템 관리자 권한 (ADMIN / 슈퍼어드민) -> 모든 메뉴 노출, 모든 쓰기/편집 허용, 회원관리 허용
+ * 2. 개별 사용자 세부 기능 권한 (allowedMenus 노출 목록 + menuEdits 편집 맵 + canManageUsers 단일 토글)
+ * 3. 팀 기본 프리셋 (DEPARTMENT_PRESETS)
  */
 export function computeEffectivePermissions(user: User | null | undefined): EffectivePermissions {
   if (!user) {
@@ -522,112 +752,45 @@ export function computeEffectivePermissions(user: User | null | undefined): Effe
     };
   }
 
-  // 2. Determine department base preset
+  // 2. Normal user: Unified migration & permission calculation
   const deptKey = (user.department || '가공팀').trim();
   const preset = DEPARTMENT_PRESETS[deptKey] || DEPARTMENT_PRESETS['가공팀'];
 
-  // Start with team default menus
-  let effectiveMenus: MenuId[] = [...preset.defaultMenus];
+  const migrated = migrateLegacyPermissions(user);
+  let effectiveMenus = [...migrated.allowedMenus as MenuId[]];
 
-  // If user has customized allowedMenus, apply it
-  if (user.permissions?.allowedMenus && Array.isArray(user.permissions.allowedMenus) && user.permissions.allowedMenus.length > 0) {
-    const rawAllowed = [...user.permissions.allowedMenus as MenuId[]];
-    // Check if the user's stored allowedMenus is completely disjoint from this department's default menus
-    // (e.g. user was switched to '영업팀' but Firestore still held old '가공팀' allowedMenus)
-    const hasAnyDeptDefault = preset.defaultMenus.some((m) => rawAllowed.includes(m));
-    if (!hasAnyDeptDefault) {
-      const sanitizedExtras = rawAllowed.filter((m) => {
-        if (m === 'execution' && deptKey !== '가공팀' && deptKey !== '연마팀' && !user.permissions?.canExecuteMES) {
-          return false;
-        }
-        return true;
-      });
-      effectiveMenus = Array.from(new Set([...preset.defaultMenus, ...sanitizedExtras]));
-    } else {
-      effectiveMenus = rawAllowed;
-    }
+  // If user department changed but old menus were disjoint, handle sanitized default
+  const hasAnyDeptDefault = preset.defaultMenus.some((m) => effectiveMenus.includes(m));
+  if (!hasAnyDeptDefault) {
+    const sanitizedExtras = effectiveMenus.filter((m) => {
+      if (m === 'execution' && deptKey !== '가공팀' && deptKey !== '연마팀' && !migrated.menuEdits?.['execution']) {
+        return false;
+      }
+      return true;
+    });
+    effectiveMenus = Array.from(new Set([...preset.defaultMenus, ...sanitizedExtras]));
   }
 
-  // Backward compatibility: If user has legacy permission flags true, ensure relevant menus are exposed
-  if (user.permissions?.canEditOrder && !effectiveMenus.includes('order-master')) {
-    effectiveMenus.push('order-master');
-    if (!effectiveMenus.includes('order-form')) effectiveMenus.push('order-form');
-  }
-  if (user.permissions?.canArchive && !effectiveMenus.includes('archive')) {
-    effectiveMenus.push('archive');
-  }
-  if (user.permissions?.canEditMaster && !effectiveMenus.includes('routing')) {
-    effectiveMenus.push('routing');
-  }
-  if (user.permissions?.canQualityInspection && !effectiveMenus.includes('quality')) {
-    effectiveMenus.push('quality');
-  }
-  if (user.permissions?.canExecuteMES && !effectiveMenus.includes('execution')) {
-    effectiveMenus.push('execution');
-  }
-
-  // Deduplicate and retain only known MenuIds
-  effectiveMenus = Array.from(new Set(effectiveMenus)).filter((m) =>
-    ALL_MENU_IDS.includes(m)
-  );
-
-  // If no menus somehow, fallback to department default
+  // Filter valid menus
+  effectiveMenus = Array.from(new Set(effectiveMenus)).filter((m) => ALL_MENU_IDS.includes(m));
   if (effectiveMenus.length === 0) {
     effectiveMenus = [...preset.defaultMenus];
   }
 
-  // Calculate Edit flags
-  const canEditOrder = user.permissions?.canEditOrder ?? (preset.permissions.canEditOrder || false);
-  const canExecuteMES = user.permissions?.canExecuteMES ?? (preset.permissions.canExecuteMES !== false);
-  const canManageUsers = user.permissions?.canManageUsers ?? (preset.permissions.canManageUsers || false);
-  const canEditMaster = user.permissions?.canEditMaster ?? (preset.permissions.canEditMaster || false);
-  const canArchive = user.permissions?.canArchive ?? (preset.permissions.canArchive || false);
-  const canQualityInspection =
-    user.permissions?.canQualityInspection ?? (preset.permissions.canQualityInspection || false);
-  const canShipmentControl =
-    user.permissions?.canShipmentControl ?? (preset.permissions.canShipmentControl || false);
-
-  // Calculate per-menu edit permissions
+  // Calculate per-menu edit map: only allowed menus can be edited
   const canEditMenuMap: Record<string, boolean> = {};
-
   effectiveMenus.forEach((menuId) => {
-    let editable = false;
-    // Check explicit override in user.permissions.menuEdits first
-    if (user.permissions?.menuEdits && typeof user.permissions.menuEdits[menuId] === 'boolean') {
-      editable = user.permissions.menuEdits[menuId];
-    } else {
-      switch (menuId) {
-        case 'order-form':
-        case 'order-master':
-          editable = canEditOrder;
-          break;
-        case 'execution':
-          editable = canExecuteMES;
-          break;
-        case 'quality':
-          editable = canQualityInspection || canShipmentControl;
-          break;
-        case 'routing':
-          editable = canEditMaster;
-          break;
-        case 'archive':
-          editable = canArchive;
-          break;
-        case 'calendar':
-        case 'timeline':
-          editable = canEditOrder;
-          break;
-        case 'dashboard':
-        case 'actual-analysis':
-        case 'equipment':
-          editable = deptKey === '생산관리' || deptKey === '생산 관리';
-          break;
-        default:
-          editable = false;
-      }
-    }
-    canEditMenuMap[menuId] = editable;
+    canEditMenuMap[menuId] = Boolean(migrated.menuEdits?.[menuId]);
   });
+
+  // Synchronized legacy mirrors
+  const canEditOrder = Boolean(canEditMenuMap['order-master'] || canEditMenuMap['order-form']);
+  const canExecuteMES = Boolean(canEditMenuMap['execution']);
+  const canEditMaster = Boolean(canEditMenuMap['routing']);
+  const canArchive = Boolean(canEditMenuMap['archive']);
+  const canQualityInspection = Boolean(canEditMenuMap['quality']);
+  const canShipmentControl = Boolean(canEditMenuMap['quality']);
+  const canManageUsers = Boolean(migrated.canManageUsers);
 
   // Determine primary landing menu
   let primaryMenu: MenuId = 'dashboard';
@@ -676,17 +839,6 @@ export function canEditMenu(user: User | null | undefined, menuId: string): bool
 /**
  * 부서 변경 시 새 부서의 기본 권한/메뉴 세트로 재계산하면서,
  * 기존에 관리자가 해당 사용자에게 개별적으로 추가 부여했던 세부 기능 권한을 보존하는 핵심 함수
- *
- * [정책 및 판단 근거]
- * 1. 메뉴 (allowedMenus):
- *    - 새 부서의 기본 메뉴(newPreset.defaultMenus)는 반드시 기본 활성화 (영업팀의 경우 대시보드, 캘린더, 타임라인)
- *    - 이전 부서의 고유 기본 메뉴(예: 가공팀의 execution)는 새 부서의 기본 메뉴에 포함되지 않으면 기본 정리
- *    - 단, 이전 부서 기본 메뉴 세트 외에 관리자가 해당 사용자에게 특별히 추가해 주었던 '수동 추가 메뉴(custom additions)'는 유지하여 합집합(Union)
- * 2. 기능 플래그 (canEditOrder, canArchive 등):
- *    - 새 부서의 기본 권한 세트(newPreset.permissions)를 기본 적용
- *    - 단, 관리자가 이전에 수동으로 활성화(true)해 주었던 개별 권한(이전 부서 프리셋에서는 false였는데 user에서 true였던 플래그)은 임의 삭제하지 않고 유지
- * 3. 메뉴별 편집 권한 (menuEdits):
- *    - 새 부서의 기본 편집 권한(newPreset.defaultEdits)을 베이스로 하고, 기존의 커스텀 편집 설정을 안전하게 병합
  */
 export function recalculatePermissionsOnDepartmentChange(
   oldUser: User,
@@ -696,9 +848,28 @@ export function recalculatePermissionsOnDepartmentChange(
   const oldPreset = DEPARTMENT_PRESETS[oldDept] || DEPARTMENT_PRESETS['가공팀'];
   const newPreset = DEPARTMENT_PRESETS[newDept] || DEPARTMENT_PRESETS['가공팀'];
 
+  const oldMigrated = migrateLegacyPermissions(oldUser);
+
+  // For '영업팀' or '경영진'/'임원진', enforce strictly read-only defaults (no edit permissions)
+  if (newDept === '영업팀' || newDept === '경영진' || newDept === '임원진') {
+    const allFalseEdits: Record<string, boolean> = {};
+    ALL_MENU_IDS.forEach((m) => {
+      allFalseEdits[m] = false;
+    });
+    return migrateLegacyPermissions({
+      department: newDept,
+      role: newPreset.role,
+      permissions: {
+        allowedMenus: [...newPreset.defaultMenus],
+        menuEdits: allFalseEdits,
+        canManageUsers: false,
+      },
+    });
+  }
+
   // 1. Calculate custom menu additions beyond old department's preset
-  const oldAllowed = (oldUser.permissions?.allowedMenus && oldUser.permissions.allowedMenus.length > 0
-    ? oldUser.permissions.allowedMenus
+  const oldAllowed = (oldMigrated.allowedMenus && oldMigrated.allowedMenus.length > 0
+    ? oldMigrated.allowedMenus
     : oldPreset.defaultMenus) as MenuId[];
 
   const customMenuAdditions = oldAllowed.filter(
@@ -709,34 +880,33 @@ export function recalculatePermissionsOnDepartmentChange(
     new Set([...newPreset.defaultMenus, ...customMenuAdditions])
   ).filter((m) => ALL_MENU_IDS.includes(m as MenuId)) as string[];
 
-  // 2. Preserve any explicitly granted custom flags that were enabled beyond old preset
-  const customGrantedFlags: Partial<UserPermissions> = {};
-  const flagKeys: (keyof UserPermissions)[] = [
-    'canEditOrder',
-    'canExecuteMES',
-    'canManageUsers',
-    'canEditMaster',
-    'canArchive',
-    'canQualityInspection',
-    'canShipmentControl',
-  ];
+  // 2. Preserve custom menu edit permissions that were explicitly granted beyond old preset
+  const customMenuEdits: Record<string, boolean> = {};
+  if (oldMigrated.menuEdits) {
+    Object.entries(oldMigrated.menuEdits).forEach(([m, val]) => {
+      const wasInOldPreset = Boolean(oldPreset.defaultEdits?.[m]);
+      if (val === true && !wasInOldPreset) {
+        customMenuEdits[m] = true;
+      }
+    });
+  }
 
-  flagKeys.forEach((k) => {
-    const userVal = oldUser.permissions?.[k];
-    const oldPresetVal = oldPreset.permissions[k];
-    if (userVal === true && !oldPresetVal) {
-      (customGrantedFlags as any)[k] = true;
-    }
-  });
+  // 3. Preserve canManageUsers if explicitly granted
+  const canManageUsers = Boolean(oldMigrated.canManageUsers || newPreset.permissions.canManageUsers);
 
-  // 3. Assemble merged permissions
-  return {
-    ...newPreset.permissions,
-    ...customGrantedFlags,
-    allowedMenus: newAllowedMenus,
-    menuEdits: {
-      ...newPreset.defaultEdits,
-      ...(oldUser.permissions?.menuEdits || {}),
-    },
+  // 4. Assemble merged permissions
+  const mergedEdits = {
+    ...newPreset.defaultEdits,
+    ...customMenuEdits,
   };
+
+  return migrateLegacyPermissions({
+    department: newDept,
+    role: newPreset.role,
+    permissions: {
+      allowedMenus: newAllowedMenus,
+      menuEdits: mergedEdits,
+      canManageUsers,
+    },
+  });
 }

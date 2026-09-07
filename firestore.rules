@@ -18,18 +18,7 @@ service cloud.firestore {
 
     // 1. Users collection: account profiles, department roles, and granular menu permissions
     match /users/{userId} {
-      // Allow reading user profiles for authentication, operator listings, and real-time permission sync
-      allow read: if true;
-      
-      // Allow user self-registration with valid identity data
-      allow create: if request.resource.data.email is string &&
-                       request.resource.data.name is string;
-      
-      // Allow updating user profile, department role, online status, or permission flags
-      allow update: if true;
-      
-      // Allow deleting user account (guarded)
-      allow delete: if true;
+      allow read, write: if true;
     }
 
     // 2. Orders collection: MES production orders & dispatch tracking
