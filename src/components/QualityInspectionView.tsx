@@ -50,6 +50,7 @@ import {
   Undo2
 } from 'lucide-react';
 import { Order, OrderStatus, ScheduledTaskItem, User } from '../types';
+import { extractValidApprovedOperators } from '../utils/operatorHelper';
 import { SlotDieCertificateView } from './SlotDieCertificateView';
 import { IqcDetailModal, IqcLotItem, DEFAULT_IQC_LOTS, calculateIqcOverallResult } from './IqcDetailModal';
 import { IpqcPrintModal } from './IpqcPrintModal';
@@ -1055,36 +1056,12 @@ export const QualityInspectionView: React.FC<QualityInspectionViewProps> = ({
       list.push(currentUserName);
     }
 
-    // 2. Add DB registered approved field operators
-    if (usersList && usersList.length > 0) {
-      usersList
-        .filter((u) => {
-          if (!u.name || u.isApproved === false || u.role === 'ADMIN') return false;
-          const dept = (u.department || '').trim();
-          if (
-            dept === '시스템 관리자' ||
-            dept === '생산 관리' ||
-            dept.includes('관리자') ||
-            dept.includes('생산관리')
-          ) {
-            return false;
-          }
-          return true;
-        })
-        .forEach((u) => {
-          const deptLabel = u.department ? ` (${u.department.replace('팀', '')})` : '';
-          const name = `${u.name.trim()}${deptLabel}`;
-          if (name && !list.includes(name)) list.push(name);
-        });
-    }
-
-    // 3. Add approvedOperators (which are floor operators)
-    if (approvedOperators && approvedOperators.length > 0) {
-      approvedOperators.forEach((op) => {
-        const name = op.trim();
-        if (name && !list.includes(name)) list.push(name);
-      });
-    }
+    // 2. Add DB registered approved field operators (가공팀, 연마팀, 품질팀)
+    const fieldOps = extractValidApprovedOperators(usersList, approvedOperators);
+    fieldOps.forEach((op) => {
+      const name = op.trim();
+      if (name && !list.includes(name)) list.push(name);
+    });
 
     return Array.from(new Set(list.filter(Boolean)));
   }, [currentUser, currentUserName, usersList, approvedOperators]);

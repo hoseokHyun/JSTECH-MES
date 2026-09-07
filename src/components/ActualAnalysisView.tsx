@@ -10,7 +10,8 @@ import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
 import {
   getBaseWorkerName,
   getDepartmentSuffix,
-  isValidRegisteredOperatorUser
+  isValidRegisteredOperatorUser,
+  extractFieldOperatorObjects
 } from '../utils/operatorHelper';
 import {
   BarChart3,
@@ -150,82 +151,9 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   }, [tasksAnalysis]);
 
   // Dynamically filter field operators (가공팀, 연마팀, 품질팀) from usersList (Source of Truth)
-  // Strictly excludes: 영업팀, 경영진, 생산관리, 시스템 관리자
+  // Strictly excludes: 영업팀, 경영진, 생산관리, 시스템 관리자 using centralized operatorHelper utility
   const fieldOperators = useMemo(() => {
-    const isFieldDept = (dept?: string | null): boolean => {
-      if (!dept) return false;
-      const d = dept.trim();
-      // Excluded departments
-      if (
-        d === '영업팀' ||
-        d.includes('영업') ||
-        d === '경영진' ||
-        d.includes('경영') ||
-        d.includes('임원') ||
-        d === '생산관리' ||
-        d === '생산 관리' ||
-        d === '시스템 관리자' ||
-        d.includes('관리자')
-      ) {
-        return false;
-      }
-      // Allowed field departments
-      return (
-        d === '가공팀' ||
-        d.includes('가공') ||
-        d === '연마팀' ||
-        d.includes('연마') ||
-        d.includes('래핑') ||
-        d === '품질팀' ||
-        d.includes('품질') ||
-        d.includes('검사')
-      );
-    };
-
-    const opMap = new Map<string, { baseName: string; displayName: string }>();
-
-    // 1. Process from Firestore usersList (Source of Truth - updates dynamically when admin approves new user)
-    if (usersList && usersList.length > 0) {
-      usersList.forEach((u) => {
-        if (!isValidRegisteredOperatorUser(u)) return;
-        if (!isFieldDept(u.department)) return;
-
-        const baseName = getBaseWorkerName(u.name);
-        if (!baseName) return;
-
-        const suffix = getDepartmentSuffix(u.department, u);
-        const displayName = `${baseName} ${suffix}`.trim();
-        opMap.set(baseName, { baseName, displayName });
-      });
-    }
-
-    // 2. Fallback / supplement from approvedOperators if usersList is empty
-    if (opMap.size === 0 && approvedOperators && approvedOperators.length > 0) {
-      approvedOperators.forEach((op) => {
-        const clean = (op || '').trim();
-        if (!clean) return;
-        if (
-          clean.includes('영업') ||
-          clean.includes('경영') ||
-          clean.includes('임원') ||
-          clean.includes('생산관리') ||
-          clean.includes('관리자')
-        ) {
-          return;
-        }
-
-        const baseName = getBaseWorkerName(clean);
-        if (!baseName) return;
-
-        if (!opMap.has(baseName)) {
-          opMap.set(baseName, { baseName, displayName: clean });
-        }
-      });
-    }
-
-    return Array.from(opMap.values()).sort((a, b) =>
-      a.displayName.localeCompare(b.displayName, 'ko')
-    );
+    return extractFieldOperatorObjects(usersList, approvedOperators);
   }, [usersList, approvedOperators]);
 
   // Overall KPI Metrics

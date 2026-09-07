@@ -7,6 +7,91 @@ export interface BadgeInfo {
 }
 
 /**
+ * Canonical list of departments that perform physical floor operations (현장 담당자 부서 목록).
+ * Current Standard: 현장 담당자 = 가공팀, 연마팀, 품질팀
+ * Excluded: 영업팀, 경영진, 생산관리, 시스템 관리자
+ */
+export const FIELD_OPERATOR_DEPARTMENTS = [
+  '가공팀',
+  '연마팀',
+  '품질팀',
+] as const;
+
+export type FieldOperatorDepartment = (typeof FIELD_OPERATOR_DEPARTMENTS)[number];
+
+export const EXCLUDED_OPERATOR_DEPARTMENTS = [
+  '영업팀',
+  '경영진',
+  '생산관리',
+  '생산 관리',
+  '시스템 관리자',
+] as const;
+
+/**
+ * Determines whether a given department string qualifies as a field operator department.
+ * Accepts exact matches ('가공팀', '연마팀', '품질팀') or normalized field keywords.
+ * Strictly excludes non-field departments: '영업팀', '경영진', '생산관리', '시스템 관리자'.
+ */
+export function isFieldOperatorDepartment(dept?: string | null): boolean {
+  if (!dept) return false;
+  const d = dept.trim();
+
+  // 1. Explicitly reject non-field / excluded departments
+  if (
+    d === '영업팀' ||
+    d.includes('영업') ||
+    d === '경영진' ||
+    d.includes('경영') ||
+    d.includes('임원') ||
+    d === '생산관리' ||
+    d === '생산 관리' ||
+    d === '시스템 관리자' ||
+    d.includes('관리자')
+  ) {
+    return false;
+  }
+
+  // 2. Allow matching field departments
+  return (
+    FIELD_OPERATOR_DEPARTMENTS.some(
+      (allowed) => d === allowed || d.includes(allowed.replace('팀', ''))
+    ) ||
+    d.includes('가공') ||
+    d.includes('연마') ||
+    d.includes('래핑') ||
+    d.includes('품질') ||
+    d.includes('검사') ||
+    d.includes('CMM')
+  );
+}
+
+/**
+ * Determines whether a worker string/label belongs to an excluded department or contains non-field tags.
+ */
+export function isExcludedOperatorString(opStr?: string | null): boolean {
+  if (!opStr) return true;
+  const clean = opStr.trim();
+  if (
+    clean === '(미지정)' ||
+    clean === '미지정' ||
+    clean === '시스템 관리자' ||
+    clean === '시스템관리자' ||
+    clean === '관리자' ||
+    clean.includes('영업') ||
+    clean.includes('경영') ||
+    clean.includes('임원') ||
+    clean.includes('생산관리') ||
+    clean.includes('관리자') ||
+    clean.includes('더미') ||
+    clean.toLowerCase().includes('dummy') ||
+    clean.toLowerCase().includes('placeholder')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Strips any parentheses from a worker or user name to get the pure base name.
  * e.g. "박세령 (가공)" -> "박세령", "김현아 (경영진)" -> "김현아"
  */
@@ -130,7 +215,18 @@ export function isValidRegisteredOperatorUser(u: User): boolean {
 }
 
 /**
- * Extracts and formats valid approved operator strings ("이름 (팀명)") strictly from usersList (source of truth).
+ * Checks if a user is an active approved member of a field department (가공팀, 연마팀, 품질팀).
+ * Strictly excludes 영업팀, 경영진, 생산관리, 시스템 관리자.
+ */
+export function isFieldOperatorUser(u: User): boolean {
+  if (!isValidRegisteredOperatorUser(u)) return false;
+  return isFieldOperatorDepartment(u.department);
+}
+
+/**
+ * Extracts and formats valid approved field operator strings ("이름 (팀명)") strictly from usersList (source of truth).
+ * Unified across the entire system: ONLY returns members from 가공팀, 연마팀, 품질팀.
+ * Strictly excludes 영업팀, 경영진, 생산관리, 시스템 관리자.
  */
 export function extractValidApprovedOperators(
   usersList: User[] = [],
@@ -138,9 +234,9 @@ export function extractValidApprovedOperators(
 ): string[] {
   const operatorMap = new Map<string, string>();
 
-  // 1. Process valid registered users from Firestore users list (Source of Truth)
+  // 1. Process valid registered field users from Firestore users list (Source of Truth)
   usersList.forEach((u) => {
-    if (!isValidRegisteredOperatorUser(u)) return;
+    if (!isFieldOperatorUser(u)) return;
 
     const rawName = (u.name || '').trim();
     const baseName = getBaseWorkerName(rawName);
@@ -150,55 +246,52 @@ export function extractValidApprovedOperators(
     operatorMap.set(baseName, `${baseName} ${teamSuffix}`);
   });
 
-  // 2. Process any additional approved operator strings (validate against dummy/placeholder/admin)
+  // 2. Process any additional approved operator strings (validate against excluded departments)
   if (additionalApprovedOps && additionalApprovedOps.length > 0) {
     additionalApprovedOps.forEach((op) => {
       const clean = (op || '').trim();
-      if (!clean) return;
+      if (!clean || isExcludedOperatorString(clean)) return;
+
       const baseName = getBaseWorkerName(clean);
-      if (
-        !baseName ||
-        baseName.length < 2 ||
-        baseName === '시스템 관리자' ||
-        baseName === '시스템관리자' ||
-        baseName === '관리자' ||
-        baseName.includes('미등록') ||
-        baseName.includes('미지정') ||
-        baseName.includes('더미') ||
-        baseName.toLowerCase().includes('dummy')
-      ) {
-        return;
-      }
-      // If user is already in operatorMap (derived from usersList), DO NOT OVERWRITE with stale string!
+      if (!baseName || baseName.length < 2) return;
+
+      // If user is already in operatorMap (derived from usersList), DO NOT OVERWRITE
       if (!operatorMap.has(baseName)) {
         const foundUser = usersList.find((u) => getBaseWorkerName(u.name) === baseName);
         if (foundUser) {
-          const suffix = getDepartmentSuffix(foundUser.department, foundUser);
-          operatorMap.set(baseName, `${baseName} ${suffix}`);
-        } else {
-          let formatted = clean;
-          if (!formatted.includes('(')) {
-            formatted = `${baseName} (가공)`;
+          if (isFieldOperatorUser(foundUser)) {
+            const suffix = getDepartmentSuffix(foundUser.department, foundUser);
+            operatorMap.set(baseName, `${baseName} ${suffix}`);
           }
-          operatorMap.set(baseName, formatted);
+        } else {
+          // If not in usersList, only keep if the string itself qualifies as field operator
+          if (
+            clean.includes('(가공)') ||
+            clean.includes('가공') ||
+            clean.includes('(연마)') ||
+            clean.includes('연마') ||
+            clean.includes('래핑') ||
+            clean.includes('(품질)') ||
+            clean.includes('품질') ||
+            clean.includes('검사') ||
+            clean.includes('CMM')
+          ) {
+            let formatted = clean;
+            if (!formatted.includes('(')) {
+              formatted = `${baseName} (가공)`;
+            }
+            operatorMap.set(baseName, formatted);
+          }
         }
       }
     });
   }
 
-  // 3. Sort operators: (가공) -> (연마) -> (품질) -> (조립) -> (생산관리) -> (영업팀) -> (경영진) -> Alphabetical
+  // 3. Sort operators: (가공) -> (연마) -> (품질) -> Alphabetical
   const teamOrder: Record<string, number> = {
     '(가공)': 1,
     '(연마)': 2,
     '(품질)': 3,
-    '(조립)': 4,
-    '(생산)': 5,
-    '(생산관리)': 5,
-    '(영업팀)': 6,
-    '(영업)': 6,
-    '(경영진)': 7,
-    '(경영)': 7,
-    '(관리자)': 8,
   };
 
   return Array.from(operatorMap.values()).sort((a, b) => {
@@ -212,6 +305,33 @@ export function extractValidApprovedOperators(
     const orderB = getOrder(b);
     if (orderA !== orderB) return orderA - orderB;
     return a.localeCompare(b, 'ko-KR');
+  });
+}
+
+export interface FieldOperatorInfo {
+  baseName: string;
+  displayName: string;
+  departmentSuffix: string;
+}
+
+/**
+ * Common extractor for field operators returning structured objects { baseName, displayName, departmentSuffix }.
+ * Uses the canonical FIELD_OPERATOR_DEPARTMENTS and isFieldOperatorUser.
+ */
+export function extractFieldOperatorObjects(
+  usersList: User[] = [],
+  additionalApprovedOps?: string[]
+): FieldOperatorInfo[] {
+  const ops = extractValidApprovedOperators(usersList, additionalApprovedOps);
+  return ops.map((op) => {
+    const baseName = getBaseWorkerName(op);
+    const match = op.match(/\(([^)]+)\)/);
+    const suffix = match ? `(${match[1]})` : '';
+    return {
+      baseName,
+      displayName: op,
+      departmentSuffix: suffix,
+    };
   });
 }
 
@@ -341,20 +461,10 @@ export function buildOperatorSelectOptions(
   // Iterate over approved master operators
   approvedOperators.forEach((op) => {
     const clean = (op || '').trim();
-    if (!clean || addedValues.has(clean)) return;
+    if (!clean || addedValues.has(clean) || isExcludedOperatorString(clean)) return;
 
     const baseName = getBaseWorkerName(clean);
-    if (
-      !baseName ||
-      baseName === '시스템 관리자' ||
-      baseName === '시스템관리자' ||
-      baseName === '관리자' ||
-      baseName.includes('미등록') ||
-      baseName.includes('미지정') ||
-      baseName.includes('더미')
-    ) {
-      return;
-    }
+    if (!baseName) return;
 
     addedValues.add(clean);
     addedBaseNames.add(baseName);
@@ -373,30 +483,18 @@ export function buildOperatorSelectOptions(
   });
 
   // Also ensure any currently assigned worker value (e.g. from existing DB record) is present in the list,
-  // while strictly skipping dummy/unregistered/placeholder values and avoiding stale duplicates if the base worker is already in the list
+  // while strictly skipping excluded departments, dummy/unregistered/placeholder values,
+  // and avoiding stale duplicates if the base worker is already in the list
   const extraValues: string[] = Array.isArray(currentValues)
     ? (currentValues.filter(Boolean) as string[])
     : currentValues ? [currentValues] : [];
 
   extraValues.forEach((val) => {
     const clean = (val || '').trim();
-    if (!clean || addedValues.has(clean)) return;
+    if (!clean || addedValues.has(clean) || isExcludedOperatorString(clean)) return;
 
     const baseName = getBaseWorkerName(clean);
-    if (
-      !baseName ||
-      baseName === '(미지정)' ||
-      baseName === '미지정' ||
-      baseName === '시스템 관리자' ||
-      baseName === '시스템관리자' ||
-      baseName === '관리자' ||
-      baseName.includes('미등록') ||
-      baseName.includes('미지정') ||
-      baseName.includes('더미') ||
-      baseName.toLowerCase().includes('dummy')
-    ) {
-      return;
-    }
+    if (!baseName) return;
 
     // If the operator already exists in approved list with their latest department, don't re-add an old snapshot!
     if (addedBaseNames.has(baseName)) {

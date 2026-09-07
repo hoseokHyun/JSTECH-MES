@@ -289,13 +289,14 @@ export async function resetFirestoreData() {
 // Canonical standard departments for company members
 export const KNOWN_MEMBER_DEPARTMENTS: Record<string, string> = {
   '김현아': '가공팀',
-  '제갈문정': '가공팀',
+  '제갈문정': '영업팀',
   '전광식': '가공팀',
-  '박준영': '연마팀',
-  '김수현': '연마팀',
-  '박종도': '품질팀',
-  '주장태': '생산 관리',
-  '박세령': '생산 관리',
+  '박준영': '경영진',
+  '김수현': '품질팀',
+  '박종도': '영업팀',
+  '주장태': '생산관리',
+  '주정태': '생산관리',
+  '박세령': '가공팀',
 };
 
 // 4. User Auth & Approval Functions

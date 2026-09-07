@@ -860,7 +860,7 @@ function getRuleBasedDefaultCandidates(
     return [{ worker: '(외주/협력사)', machine: '(외주/협력사)' }];
   }
 
-  const gagingOps = availableOperators.filter((op) => op.includes('가공') || op.includes('생산'));
+  const gagingOps = availableOperators.filter((op) => op.includes('가공'));
   const grindingOps = availableOperators.filter((op) => op.includes('연마') || op.includes('래핑'));
   const qualityOps = availableOperators.filter(
     (op) => op.includes('품질') || op.includes('검사') || op.includes('CMM')
@@ -898,7 +898,7 @@ function getRuleBasedDefaultCandidates(
     if (ops[0] && machs[0]) list.push({ worker: ops[0], machine: machs[0] });
     if (ops[1] && machs[1]) list.push({ worker: ops[1], machine: machs[1] });
     if (list.length > 0) return list;
-    return [{ worker: ops[0] || '박종도 (품질)', machine: machs[0] || 'CMM 덕인' }];
+    return [{ worker: ops[0] || '김수현 (품질)', machine: machs[0] || 'CMM 덕인' }];
   }
 
   return [
@@ -1039,7 +1039,7 @@ export function getProcessPairRecommendations(
     const catOps = availableOperators.filter((op) => {
       if (cat === '품질') return op.includes('품질') || op.includes('검사') || op.includes('CMM');
       if (cat === '연마') return op.includes('연마') || op.includes('래핑');
-      if (cat === '가공') return op.includes('가공') || op.includes('생산');
+      if (cat === '가공') return op.includes('가공');
       return true;
     });
 
