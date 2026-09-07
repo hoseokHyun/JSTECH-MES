@@ -840,3 +840,40 @@ export async function resetDataToDefaultInFirestore() {
     throw err;
   }
 }
+
+/**
+ * Equipment Metrics Mode settings persistence
+ */
+export function subscribeEquipmentMetricSettings(
+  onUpdate: (mode: import('../utils/equipmentMetrics').EquipmentMetricMode) => void,
+  onError?: (err: Error) => void
+) {
+  const docRef = doc(db, 'settings', 'equipmentMetrics');
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data && data.metricMode) {
+          onUpdate(data.metricMode as import('../utils/equipmentMetrics').EquipmentMetricMode);
+        }
+      }
+    },
+    (err) => {
+      console.warn('subscribeEquipmentMetricSettings error:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveEquipmentMetricSettings(
+  mode: import('../utils/equipmentMetrics').EquipmentMetricMode
+): Promise<void> {
+  try {
+    const docRef = doc(db, 'settings', 'equipmentMetrics');
+    await setDoc(docRef, { metricMode: mode, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (err) {
+    console.warn('saveEquipmentMetricSettings error:', err);
+  }
+}
+

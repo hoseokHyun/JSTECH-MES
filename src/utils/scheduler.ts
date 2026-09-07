@@ -1,5 +1,5 @@
 import { Order, ProductType, ProcessProgressMap, ScheduledTaskItem, ChartDisplayMode, ChartStatusFilter } from '../types';
-import { addWorkingHours, MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
+import { addWorkingHours, getNextWorkingTime, MCT_MACHINES, GRINDER_MACHINES, CMM_MACHINES } from '../data/defaultData';
 
 export interface ScheduleCalculationResult {
   scheduledTasks: ScheduledTaskItem[];
@@ -80,13 +80,13 @@ export function calculateSchedule(
     const ordStart = new Date(ord.startDate || Date.now());
 
     if (strategy === 'SERIAL') {
-      let currentProductStart = new Date(ordStart);
+      let currentProductStart = getNextWorkingTime(ordStart);
 
       for (let q = 1; q <= qty; q++) {
-        let currentPointer = new Date(currentProductStart);
+        let currentPointer = getNextWorkingTime(currentProductStart);
 
         baseProcesses.forEach((p, pIdx) => {
-          let pStart = new Date(currentPointer);
+          let pStart = getNextWorkingTime(currentPointer);
           let pEnd = addWorkingHours(pStart, p.durationHours);
 
           const processKey = `${ord.id}_Q${q}_P${pIdx}`;
@@ -179,12 +179,12 @@ export function calculateSchedule(
           let pStart: Date;
 
           if (q === 1) {
-            pStart = (pIdx === 0) ? new Date(ordStart) : new Date(lastProcEndTimes[pIdx - 1]);
+            pStart = (pIdx === 0) ? getNextWorkingTime(ordStart) : getNextWorkingTime(lastProcEndTimes[pIdx - 1]);
           } else {
             let prevProcessEnd = (pIdx === 0) ? ordStart : lastProcEndTimes[pIdx - 1];
             let sameProcessPrevItemEnd = lastProcEndTimes[pIdx];
 
-            pStart = new Date(Math.max(prevProcessEnd.getTime(), sameProcessPrevItemEnd.getTime()));
+            pStart = getNextWorkingTime(new Date(Math.max(prevProcessEnd.getTime(), sameProcessPrevItemEnd.getTime())));
           }
 
           let pEnd = addWorkingHours(pStart, p.durationHours);

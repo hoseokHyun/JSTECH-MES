@@ -446,8 +446,55 @@ export function isHolidayOrWeekend(date: Date): boolean {
   return HOLIDAYS_2026.includes(`${yyyy}-${mm}-${dd}`);
 }
 
+/**
+ * Returns the earliest valid working timestamp at or after the given date.
+ * Shifts past weekends, holidays, before 08:30, lunch (12:00-13:00), dinner (17:00-17:30), and after 20:30.
+ */
+export function getNextWorkingTime(date: Date): Date {
+  let curr = new Date(date);
+  while (true) {
+    if (isHolidayOrWeekend(curr)) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(8, 30, 0, 0);
+      continue;
+    }
+
+    const h = curr.getHours();
+    const m = curr.getMinutes();
+    const timeInMins = h * 60 + m;
+
+    const workStart = 8 * 60 + 30; // 08:30
+    const lunchStart = 12 * 60; // 12:00
+    const lunchEnd = 13 * 60; // 13:00
+    const dinnerStart = 17 * 60; // 17:00
+    const dinnerEnd = 17 * 60 + 30; // 17:30
+    const workEnd = 20 * 60 + 30; // 20:30
+
+    if (timeInMins < workStart) {
+      curr.setHours(8, 30, 0, 0);
+      continue;
+    }
+    if (timeInMins >= lunchStart && timeInMins < lunchEnd) {
+      curr.setHours(13, 0, 0, 0);
+      continue;
+    }
+    if (timeInMins >= dinnerStart && timeInMins < dinnerEnd) {
+      curr.setHours(17, 30, 0, 0);
+      continue;
+    }
+    if (timeInMins >= workEnd) {
+      curr.setDate(curr.getDate() + 1);
+      curr.setHours(8, 30, 0, 0);
+      continue;
+    }
+
+    break;
+  }
+  return curr;
+}
+
 export function addWorkingHours(startDate: Date, hoursToAdd: number): Date {
-  let curr = new Date(startDate);
+  let curr = getNextWorkingTime(startDate);
   let remainingMinutes = Math.round(hoursToAdd * 60);
 
   while (remainingMinutes > 0) {

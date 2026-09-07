@@ -181,9 +181,10 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                완료 보관함 (Archive Vault)
-              </h2>
+              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                완료 보관함
+              </h1>
+              <span className="text-xs text-slate-400 font-semibold">(Archive Vault)</span>
               <span className="bg-[#FFF9EB] dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-black border border-[#FCD34D] dark:border-amber-700/80 shadow-2xs">
                 {selectedYear === 'ALL' ? '전체 연도' : `${selectedYear}년`} 보관 {archivedList.length}건
               </span>

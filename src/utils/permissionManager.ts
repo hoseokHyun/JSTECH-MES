@@ -114,7 +114,7 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   },
   {
     id: 'quality',
-    label: '품질/검사 (CMM)',
+    label: '품질/검사',
     sublabel: '3D 정밀측정 및 성적서 관리',
     featureName: '품질 검사 및 출하 승인 (COA)',
     category: '품질',
@@ -144,7 +144,7 @@ export const MENU_LABELS: Record<string, string> = {
   timeline: '생산 타임라인',
   execution: '공정 실행',
   equipment: '설비 현황',
-  quality: '품질/검사 (CMM)',
+  quality: '품질/검사',
   archive: '완료 보관함',
 };
 

@@ -668,9 +668,16 @@ export const ProductionCalendarView: React.FC<ProductionCalendarViewProps> = ({
             </button>
           </div>
 
-          <h1 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight ml-1 sm:ml-2 truncate">
-            {calendarTitle || '생산 일정 캘린더'}
-          </h1>
+          <div className="flex items-baseline gap-2 ml-1 sm:ml-2">
+            <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight whitespace-nowrap">
+              생산 캘린더
+            </h1>
+            {calendarTitle && (
+              <span className="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap">
+                {calendarTitle}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Right: View Switcher, Search, Filter, New Order */}

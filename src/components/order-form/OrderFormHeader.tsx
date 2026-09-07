@@ -131,16 +131,17 @@ export const OrderFormHeader: React.FC<OrderFormHeaderProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
         {/* Left: 수주번호 & Title */}
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
-            <span className="text-[11px] font-bold text-slate-500">수주번호:</span>
-            <span className="text-sm font-black font-mono text-slate-900">{customOrderId || 'ORD-2026-001'}</span>
-            <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded">작성중</span>
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-black text-slate-900 tracking-tight">수주 등록</h1>
+            <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
+              <span className="text-[11px] font-bold text-slate-500">수주번호:</span>
+              <span className="text-sm font-black font-mono text-slate-900">{customOrderId || 'ORD-2026-001'}</span>
+              <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded">작성중</span>
+            </div>
           </div>
 
           <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 font-bold border-l border-slate-200 pl-3">
-            <span className="text-slate-400">MES 공정 스케줄러</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-slate-600 font-extrabold">수주 등록 및 공정·설비·담당자 지정</span>
+            <span className="text-slate-500 font-extrabold">공정·설비·담당자 지정 스케줄러</span>
           </div>
         </div>
 

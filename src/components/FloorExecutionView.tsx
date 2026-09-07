@@ -14,7 +14,6 @@ import { FloorProcessCard } from './FloorProcessCard';
 import { EasyTravelerModal } from './EasyTravelerModal';
 import { AndonReportModal } from './AndonReportModal';
 import { PausePromptModal } from './PausePromptModal';
-import { PlcBridgeModal } from './PlcBridgeModal';
 import { computeEffectivePermissions } from '../utils/permissionManager';
 import {
   Play,
@@ -128,8 +127,6 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   const [pauseTask, setPauseTask] = useState<ScheduledTaskItem | null>(null);
   const [isPauseOpen, setIsPauseOpen] = useState(false);
-
-  const [isPlcBridgeOpen, setIsPlcBridgeOpen] = useState(false);
 
   const effectivePerms = computeEffectivePermissions(currentUser);
   const isFieldDept =
@@ -423,16 +420,6 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     setIsTravelerOpen(true);
   };
 
-  // PLC rising edge cycle start trigger
-  const handleTriggerPlcCycleStart = (machineId: string, machineName: string) => {
-    const targetTask = taskList.find(
-      (t) => (t.machine?.includes(machineId) || t.machine?.includes(machineName)) && t.status !== 'COMPLETED'
-    );
-    if (targetTask) {
-      handleStartProcess(targetTask.processKey);
-    }
-  };
-
   return (
     <div className="flex flex-col h-full w-full space-y-4">
       {/* ========================================================================= */}
@@ -488,13 +475,16 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                현장 모바일 MES 공정 실행 터미널
+                공정 실행
               </h1>
               <span className="text-[10px] bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-black">
-                대형 터치 &amp; QR 전용
+                현장 터미널 &amp; QR 연동
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+            <p className="text-xs font-semibold text-slate-600 mt-0.5">
+              현장 모바일 MES 공정 실행 터미널
+            </p>
+            <p className="text-[11px] text-slate-500">
               모바일 원터치 [공정 시작/완료], 계획 vs 실적 실시간 타이머, 현장 긴급 이상발생 호출
             </p>
           </div>
@@ -502,16 +492,6 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
         {/* Action Buttons & Quick KPI Strip */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* PLC Bridge Button */}
-          <button
-            type="button"
-            onClick={() => setIsPlcBridgeOpen(true)}
-            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
-          >
-            <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-            <span>PLC IoT 연동 (M100)</span>
-          </button>
-
           {/* Quick KPI Strip */}
           <div className="flex items-center gap-1.5 text-xs font-black">
             {andonCount > 0 && (
@@ -767,15 +747,6 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
           currentUser={currentUser}
           approvedOperators={approvedOperators}
           onConfirmPause={handleConfirmPause}
-        />
-      )}
-
-      {/* PLC IoT Bridge Controller Modal */}
-      {isPlcBridgeOpen && (
-        <PlcBridgeModal
-          isOpen={isPlcBridgeOpen}
-          onClose={() => setIsPlcBridgeOpen(false)}
-          onTriggerPlcCycleStart={handleTriggerPlcCycleStart}
         />
       )}
     </div>

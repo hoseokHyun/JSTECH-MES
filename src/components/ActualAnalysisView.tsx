@@ -232,9 +232,12 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
           </div>
           <div>
             <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-              공정 분석 (Plan vs. Actual Analysis)
+              공정 분석
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mt-0.5">
+              계획 대비 실적 분석 (Plan vs. Actual Analysis)
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               표준 공정 계획 시간 대비 실제 현장 소요시간, 일시정지 이력, 지연 원인을 정밀 추적합니다.
             </p>
           </div>

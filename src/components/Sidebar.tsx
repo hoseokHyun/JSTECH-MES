@@ -128,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'quality',
-      label: '품질/검사 (CMM)',
+      label: '품질/검사',
       sublabel: '3D 정밀측정 및 성적서 관리',
       icon: CheckCircle2,
       badge: 'CMM',

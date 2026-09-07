@@ -41,6 +41,11 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
 
+    // 5. Settings collection: system preferences, equipment metric modes, and dashboard configs
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
     // Deny access to any other unspecified collections
     match /{document=**} {
       allow read, write: if false;

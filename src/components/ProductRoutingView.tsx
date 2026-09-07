@@ -480,13 +480,16 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
             <GitMerge className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-              <span>공정 구성 & 표준시간 관리 (Master)</span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-black text-white">공정 구성</h1>
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 총 {Object.keys(productTypes).length}개 마스터
               </span>
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            </div>
+            <p className="text-xs font-semibold text-slate-300 mt-0.5">
+              공정 구성 & 표준시간 관리 (Master)
+            </p>
+            <p className="text-[11px] text-slate-400">
               제품 타입별 표준 공정 단계, 순서, 작업 카테고리 및 표준 작업 시간(h)을 통합 관리합니다.
             </p>
           </div>

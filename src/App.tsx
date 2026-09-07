@@ -1533,6 +1533,8 @@ export default function App() {
                     approvedOperators={approvedOperators}
                     currentUser={currentUser}
                     usersList={usersList}
+                    processProgressMap={processProgressMap}
+                    onUpdateProgress={handleUpdateProgress}
                   />
                 )}
 
