@@ -26,7 +26,8 @@ import {
   Zap,
   Info,
   Flame,
-  CheckCheck
+  CheckCheck,
+  Download
 } from 'lucide-react';
 
 interface CalendarTaskDetailModalProps {
@@ -36,6 +37,7 @@ interface CalendarTaskDetailModalProps {
   onUpdateProgress: (processKey: string, progress: ProcessProgressItem) => void;
   currentUser?: User | null;
   approvedOperators?: string[];
+  onExportOrderCsv?: (orderId: string) => void;
 }
 
 const PAUSE_REASONS: PauseReason[] = [
@@ -54,6 +56,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   onUpdateProgress,
   currentUser,
   approvedOperators = [],
+  onExportOrderCsv,
 }) => {
   const [selectedWorker, setSelectedWorker] = useState(task?.worker || '');
   const [selectedMachine, setSelectedMachine] = useState(task?.machine || '');
@@ -582,13 +585,26 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
-            title="모달 닫기"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onExportOrderCsv && (
+              <button
+                type="button"
+                onClick={() => onExportOrderCsv(activeTask.orderId)}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title={`[${activeTask.orderId}] 수주의 모든 공정 실적 리포트를 CSV로 다운로드합니다.`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">이 수주 CSV</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+              title="모달 닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}

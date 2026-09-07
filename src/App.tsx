@@ -1406,6 +1406,7 @@ export default function App() {
                     onUpdateProgress={handleUpdateProgress}
                     currentUser={currentUser}
                     approvedOperators={approvedOperators}
+                    usersList={usersList}
                   />
                 )}
 

@@ -8,6 +8,11 @@ import {
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
 import {
+  getBaseWorkerName,
+  getDepartmentSuffix,
+  isValidRegisteredOperatorUser
+} from '../utils/operatorHelper';
+import {
   BarChart3,
   TrendingUp,
   TrendingDown,
@@ -23,7 +28,17 @@ import {
   User as UserIcon,
   Cpu,
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  FileSpreadsheet,
+  X,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 
 interface ActualAnalysisViewProps {
@@ -33,6 +48,7 @@ interface ActualAnalysisViewProps {
   onUpdateProgress: (processKey: string, progress: ProcessProgressItem) => void;
   currentUser?: User | null;
   approvedOperators?: string[];
+  usersList?: User[];
 }
 
 export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
@@ -42,6 +58,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   onUpdateProgress,
   currentUser,
   approvedOperators = [],
+  usersList = [],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -53,20 +70,34 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   const [selectedTask, setSelectedTask] = useState<ScheduledTaskItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // CSV Export Scope Modal states
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportOrderId, setSelectedExportOrderId] = useState<string>('');
+  const [downloadSuccessToast, setDownloadSuccessToast] = useState<string | null>(null);
+
+  // 1단계 & 2단계: 프로젝트 단위 아코디언 및 체크박스 상태
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [selectedProcesses, setSelectedProcesses] = useState<Record<string, string[]>>({}); // projectKey -> string[] of processKeys
+  const [unitFilters, setUnitFilters] = useState<Record<string, number | 'ALL'>>({}); // projectKey -> number | 'ALL'
+
   const currentSelectedTask = useMemo(() => {
     if (!selectedTask) return null;
     return scheduledTasks.find((t) => t.processKey === selectedTask.processKey) || selectedTask;
   }, [scheduledTasks, selectedTask]);
 
   // Format Date Helper
-  const formatDateTime = (dateVal: Date | string | null | undefined): string => {
+  const formatDateTime = (dateVal: Date | string | null | undefined, includeYear = false): string => {
     if (!dateVal) return '-';
     const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
     if (isNaN(d.getTime())) return '-';
+    const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     const hh = String(d.getHours()).padStart(2, '0');
     const min = String(d.getMinutes()).padStart(2, '0');
+    if (includeYear) {
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    }
     return `${mm}/${dd} ${hh}:${min}`;
   };
 
@@ -105,6 +136,97 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
       };
     });
   }, [scheduledTasks]);
+
+  // Unique Orders list for filtering and scoped export
+  const uniqueOrders = useMemo(() => {
+    const map = new Map<string, { orderId: string; orderName: string; count: number }>();
+    tasksAnalysis.forEach((t) => {
+      if (!map.has(t.orderId)) {
+        map.set(t.orderId, { orderId: t.orderId, orderName: t.orderName, count: 0 });
+      }
+      map.get(t.orderId)!.count += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => a.orderId.localeCompare(b.orderId));
+  }, [tasksAnalysis]);
+
+  // Dynamically filter field operators (가공팀, 연마팀, 품질팀) from usersList (Source of Truth)
+  // Strictly excludes: 영업팀, 경영진, 생산관리, 시스템 관리자
+  const fieldOperators = useMemo(() => {
+    const isFieldDept = (dept?: string | null): boolean => {
+      if (!dept) return false;
+      const d = dept.trim();
+      // Excluded departments
+      if (
+        d === '영업팀' ||
+        d.includes('영업') ||
+        d === '경영진' ||
+        d.includes('경영') ||
+        d.includes('임원') ||
+        d === '생산관리' ||
+        d === '생산 관리' ||
+        d === '시스템 관리자' ||
+        d.includes('관리자')
+      ) {
+        return false;
+      }
+      // Allowed field departments
+      return (
+        d === '가공팀' ||
+        d.includes('가공') ||
+        d === '연마팀' ||
+        d.includes('연마') ||
+        d.includes('래핑') ||
+        d === '품질팀' ||
+        d.includes('품질') ||
+        d.includes('검사')
+      );
+    };
+
+    const opMap = new Map<string, { baseName: string; displayName: string }>();
+
+    // 1. Process from Firestore usersList (Source of Truth - updates dynamically when admin approves new user)
+    if (usersList && usersList.length > 0) {
+      usersList.forEach((u) => {
+        if (!isValidRegisteredOperatorUser(u)) return;
+        if (!isFieldDept(u.department)) return;
+
+        const baseName = getBaseWorkerName(u.name);
+        if (!baseName) return;
+
+        const suffix = getDepartmentSuffix(u.department, u);
+        const displayName = `${baseName} ${suffix}`.trim();
+        opMap.set(baseName, { baseName, displayName });
+      });
+    }
+
+    // 2. Fallback / supplement from approvedOperators if usersList is empty
+    if (opMap.size === 0 && approvedOperators && approvedOperators.length > 0) {
+      approvedOperators.forEach((op) => {
+        const clean = (op || '').trim();
+        if (!clean) return;
+        if (
+          clean.includes('영업') ||
+          clean.includes('경영') ||
+          clean.includes('임원') ||
+          clean.includes('생산관리') ||
+          clean.includes('관리자')
+        ) {
+          return;
+        }
+
+        const baseName = getBaseWorkerName(clean);
+        if (!baseName) return;
+
+        if (!opMap.has(baseName)) {
+          opMap.set(baseName, { baseName, displayName: clean });
+        }
+      });
+    }
+
+    return Array.from(opMap.values()).sort((a, b) =>
+      a.displayName.localeCompare(b.displayName, 'ko')
+    );
+  }, [usersList, approvedOperators]);
 
   // Overall KPI Metrics
   const kpis = useMemo(() => {
@@ -154,19 +276,36 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
       if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
       if (varianceFilter !== 'ALL' && t.varianceType !== varianceFilter) return false;
       if (machineFilter !== 'ALL' && t.machine !== machineFilter) return false;
-      if (workerFilter !== 'ALL' && t.worker !== workerFilter) return false;
       if (orderFilter !== 'ALL' && t.orderId !== orderFilter) return false;
+
+      // Match worker with both displayName ("박세령 (가공)") and baseName ("박세령")
+      if (workerFilter !== 'ALL') {
+        const baseSelected = getBaseWorkerName(workerFilter);
+        const taskWorker = t.worker || '';
+        const baseTaskWorker = getBaseWorkerName(taskWorker);
+        const matches =
+          taskWorker === workerFilter ||
+          baseTaskWorker === baseSelected ||
+          taskWorker.includes(baseSelected);
+        if (!matches) return false;
+      }
 
       return true;
     });
   }, [tasksAnalysis, searchQuery, statusFilter, varianceFilter, machineFilter, workerFilter, orderFilter]);
 
-  // Export to CSV
-  const handleExportCSV = () => {
+  // Robust CSV Exporter using Blob and UTF-8 BOM
+  const escapeCsv = (val: any): string => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/\r\n/g, ' ').replace(/[\r\n]/g, ' ');
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const generateCsvContent = (items: typeof tasksAnalysis) => {
     const headers = [
       '수주번호',
       '수주명',
-      '호기(Unit)',
+      '호기',
       '공정순서',
       '공정명',
       '카테고리',
@@ -186,44 +325,278 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
       '메모'
     ];
 
-    const rows = filteredList.map((t) => [
-      t.orderId,
-      `"${t.orderName.replace(/"/g, '""')}"`,
-      `#${t.productNo}`,
-      t.processIndex + 1,
-      `"${t.groupName.replace(/"/g, '""')}"`,
-      t.category,
-      formatDateTime(t.plannedStart),
-      formatDateTime(t.plannedEnd),
-      t.plannedMins,
-      formatDateTime(t.actualStart),
-      formatDateTime(t.actualEnd),
-      t.actualMins !== null ? t.actualMins : '',
-      t.pauseTotal,
-      t.varianceMins,
-      t.status,
-      `"${t.worker || ''}"`,
-      `"${t.machine || ''}"`,
-      `"${t.pauseReason || ''}"`,
-      `"${t.delayReason || ''}"`,
-      `"${t.memo || ''}"`
-    ]);
+    const rows = items.map((t) => {
+      const pauseReasons =
+        t.pauseReason ||
+        (t.pauseHistory && t.pauseHistory.length > 0
+          ? t.pauseHistory.map((p) => p.reason).filter(Boolean).join(' / ')
+          : '');
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      return [
+        escapeCsv(t.orderId),
+        escapeCsv(t.orderName),
+        escapeCsv(`${t.productNo}호기`),
+        t.processIndex + 1,
+        escapeCsv(t.groupName),
+        escapeCsv(t.category),
+        escapeCsv(formatDateTime(t.plannedStart, true)),
+        escapeCsv(formatDateTime(t.plannedEnd, true)),
+        t.plannedMins,
+        escapeCsv(t.actualStart ? formatDateTime(t.actualStart, true) : '미착수'),
+        escapeCsv(t.actualEnd ? formatDateTime(t.actualEnd, true) : (t.actualStart ? '진행중' : '-')),
+        t.actualMins !== null && t.actualMins !== undefined ? t.actualMins : '',
+        t.pauseTotal || 0,
+        t.actualMins !== null && t.actualMins !== undefined ? t.varianceMins : (t.status === 'DELAYED' ? '지연' : 0),
+        escapeCsv(t.status),
+        escapeCsv(t.worker || '미지정'),
+        escapeCsv(t.machine || '미지정'),
+        escapeCsv(pauseReasons),
+        escapeCsv(t.delayReason || ''),
+        escapeCsv(t.memo || '')
+      ].join(',');
+    });
 
-    const encodedUri = encodeURI(csvContent);
+    return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  };
+
+  const triggerDownload = (csvData: string, filename: string) => {
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `공정분석_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.href = url;
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleExportCSV = (scope: 'FILTERED' | 'ALL' | 'ORDER', targetOrderId?: string) => {
+    let exportItems = filteredList;
+    let filename = `공정분석_리포트_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    if (scope === 'ALL') {
+      exportItems = tasksAnalysis;
+      filename = `공정분석_전체수주_${new Date().toISOString().slice(0, 10)}.csv`;
+    } else if (scope === 'ORDER') {
+      const ordId =
+        targetOrderId ||
+        selectedExportOrderId ||
+        (orderFilter !== 'ALL' ? orderFilter : uniqueOrders[0]?.orderId);
+
+      if (!ordId) {
+        alert('내보낼 수주를 선택해 주세요.');
+        return;
+      }
+      exportItems = tasksAnalysis.filter((t) => t.orderId === ordId);
+      const ordName = exportItems[0]?.orderName || ordId;
+      filename = `공정분석_${ordId}_${ordName.replace(/[/\\?%*:|"<>]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+    }
+
+    if (exportItems.length === 0) {
+      alert('내보낼 공정 실적 데이터가 없습니다.');
+      return;
+    }
+
+    const csvData = generateCsvContent(exportItems);
+    triggerDownload(csvData, filename);
+
+    setDownloadSuccessToast(
+      `${filename} 파일 다운로드가 완료되었습니다. (${exportItems.length}개 공정 행)`
+    );
+    setTimeout(() => setDownloadSuccessToast(null), 4000);
+    setIsExportModalOpen(false);
+  };
+
+  // 1단계 & 2단계: 수주(Order / 프로젝트) 단위 그룹 인터페이스
+  interface ProjectAnalysisGroup {
+    projectKey: string;
+    orderId: string;
+    quantity: number;
+    productNos: number[];
+    orderName: string;
+    pjtNo: string;
+    pjtName: string;
+    partName: string;
+    customer: string;
+    dueDate: string;
+    allTasks: typeof tasksAnalysis;
+    matchingTasks: typeof tasksAnalysis;
+    totalCount: number;
+    completedCount: number;
+    inProgressCount: number;
+    delayedCount: number;
+    pausedCount: number;
+    readyCount: number;
+    completionRate: number;
+    totalPlannedHours: string;
+    completedActualHours: string;
+    netVarianceMins: number;
+    hasDelay: boolean;
+  }
+
+  const projectGroups = useMemo<ProjectAnalysisGroup[]>(() => {
+    const map = new Map<string, ProjectAnalysisGroup>();
+
+    tasksAnalysis.forEach((t) => {
+      const pKey = t.orderId;
+      if (!map.has(pKey)) {
+        const orderInfo = orders[t.orderId];
+        map.set(pKey, {
+          projectKey: pKey,
+          orderId: t.orderId,
+          quantity: orderInfo?.qty || 1,
+          productNos: [],
+          orderName: t.orderName,
+          pjtNo: orderInfo?.pjtNo || t.orderId,
+          pjtName: orderInfo?.pjtName || orderInfo?.name || t.orderName,
+          partName: orderInfo?.partName || t.orderName,
+          customer: orderInfo?.customer || '',
+          dueDate: orderInfo?.dueDate || '',
+          allTasks: [],
+          matchingTasks: [],
+          totalCount: 0,
+          completedCount: 0,
+          inProgressCount: 0,
+          delayedCount: 0,
+          pausedCount: 0,
+          readyCount: 0,
+          completionRate: 0,
+          totalPlannedHours: '0',
+          completedActualHours: '0',
+          netVarianceMins: 0,
+          hasDelay: false
+        });
+      }
+
+      const group = map.get(pKey)!;
+      group.allTasks.push(t);
+      if (!group.productNos.includes(t.productNo)) {
+        group.productNos.push(t.productNo);
+      }
+    });
+
+    const filteredKeys = new Set(filteredList.map((f) => f.processKey));
+
+    map.forEach((group) => {
+      group.productNos.sort((a, b) => a - b);
+      group.quantity = Math.max(group.quantity, group.productNos.length);
+
+      group.matchingTasks = group.allTasks.filter((t) => filteredKeys.has(t.processKey));
+      // 정렬: 호기 오름차순, 공정순서 오름차순
+      group.allTasks.sort((a, b) => a.productNo - b.productNo || a.processIndex - b.processIndex);
+      group.matchingTasks.sort((a, b) => a.productNo - b.productNo || a.processIndex - b.processIndex);
+
+      group.totalCount = group.allTasks.length;
+      group.completedCount = group.allTasks.filter((t) => t.status === 'COMPLETED').length;
+      group.inProgressCount = group.allTasks.filter((t) => t.status === 'IN_PROGRESS').length;
+      group.delayedCount = group.allTasks.filter((t) => t.status === 'DELAYED' || t.varianceType === 'DELAYED').length;
+      group.pausedCount = group.allTasks.filter((t) => t.status === 'PAUSED').length;
+      group.readyCount = group.allTasks.filter((t) => t.status === 'READY' || t.status === 'PLANNED' || t.status === 'DISPATCHED').length;
+      group.completionRate = group.totalCount > 0 ? Math.round((group.completedCount / group.totalCount) * 100) : 0;
+      group.hasDelay = group.delayedCount > 0;
+
+      const plannedMins = group.allTasks.reduce((acc, t) => acc + (t.plannedMins || 0), 0);
+      const actualMins = group.allTasks.reduce((acc, t) => acc + (t.actualMins || 0), 0);
+      group.totalPlannedHours = (plannedMins / 60).toFixed(1);
+      group.completedActualHours = (actualMins / 60).toFixed(1);
+      group.netVarianceMins = group.allTasks.reduce((acc, t) => acc + (t.varianceMins || 0), 0);
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      return a.orderId.localeCompare(b.orderId);
+    });
+  }, [tasksAnalysis, filteredList, orders]);
+
+  // Projects to display based on active filters
+  const visibleProjects = useMemo(() => {
+    const isFilterActive =
+      searchQuery.trim() !== '' ||
+      statusFilter !== 'ALL' ||
+      varianceFilter !== 'ALL' ||
+      machineFilter !== 'ALL' ||
+      workerFilter !== 'ALL' ||
+      orderFilter !== 'ALL';
+
+    if (!isFilterActive) return projectGroups;
+    return projectGroups.filter((g) => g.matchingTasks.length > 0);
+  }, [projectGroups, searchQuery, statusFilter, varianceFilter, machineFilter, workerFilter, orderFilter]);
+
+  // Accordion Expand / Collapse
+  const toggleProjectExpand = (projectKey: string) => {
+    setExpandedProjects((prev) => ({
+      ...prev,
+      [projectKey]: !prev[projectKey]
+    }));
+  };
+
+  const expandAllProjects = () => {
+    const next: Record<string, boolean> = {};
+    visibleProjects.forEach((p) => {
+      next[p.projectKey] = true;
+    });
+    setExpandedProjects(next);
+  };
+
+  const collapseAllProjects = () => {
+    setExpandedProjects({});
+  };
+
+  // Checkbox Selection
+  const toggleProcessSelect = (projectKey: string, processKey: string) => {
+    setSelectedProcesses((prev) => {
+      const current = prev[projectKey] || [];
+      const exists = current.includes(processKey);
+      const updated = exists ? current.filter((k) => k !== processKey) : [...current, processKey];
+      return {
+        ...prev,
+        [projectKey]: updated
+      };
+    });
+  };
+
+  const toggleSelectAllInProject = (projectKey: string, tasksToSelect: typeof tasksAnalysis) => {
+    setSelectedProcesses((prev) => {
+      const current = prev[projectKey] || [];
+      const allKeys = tasksToSelect.map((t) => t.processKey);
+      const allSelected = allKeys.length > 0 && allKeys.every((k) => current.includes(k));
+      return {
+        ...prev,
+        [projectKey]: allSelected ? [] : allKeys
+      };
+    });
+  };
+
+  // Export selected processes in project
+  const handleExportSelectedProcesses = (project: ProjectAnalysisGroup) => {
+    const selectedKeys = selectedProcesses[project.projectKey] || [];
+    if (selectedKeys.length === 0) {
+      alert('내보낼 공정을 하나 이상 선택해 주세요.');
+      return;
+    }
+    const selectedTasks = project.allTasks.filter((t) => selectedKeys.includes(t.processKey));
+    const filename = `공정분석_선택_${project.orderId}_${project.orderName.replace(/[/\\?%*:|"<>]/g, '_')}_${selectedTasks.length}건_${new Date().toISOString().slice(0, 10)}.csv`;
+    const csvContent = generateCsvContent(selectedTasks);
+    triggerDownload(csvContent, filename);
+    setDownloadSuccessToast(
+      `[${project.orderId}] 선택된 ${selectedTasks.length}개 공정이 CSV로 다운로드되었습니다.`
+    );
+    setTimeout(() => setDownloadSuccessToast(null), 4000);
+  };
+
+  // Export entire project
+  const handleExportProjectAll = (project: ProjectAnalysisGroup) => {
+    const filename = `공정분석_${project.orderId}_${project.orderName.replace(/[/\\?%*:|"<>]/g, '_')}_전체${project.totalCount}건_${new Date().toISOString().slice(0, 10)}.csv`;
+    const csvContent = generateCsvContent(project.allTasks);
+    triggerDownload(csvContent, filename);
+    setDownloadSuccessToast(
+      `[${project.orderId}] 전체 ${project.totalCount}개 공정이 CSV로 다운로드되었습니다.`
+    );
+    setTimeout(() => setDownloadSuccessToast(null), 4000);
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-y-auto p-4 sm:p-6 space-y-6">
+    <div className="w-full flex-1 flex flex-col space-y-6 pb-28">
       {/* Header Banner */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
         <div className="flex items-center gap-3">
@@ -243,13 +616,34 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          className="px-4 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          <Download className="w-4 h-4" />
-          <span>분석 리포트 CSV 내보내기</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Quick Filtered Export Button */}
+          <button
+            onClick={() => handleExportCSV('FILTERED')}
+            className="px-4 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+            title="현재 화면에 필터링되어 표시 중인 전체 공정 실적을 CSV 파일로 다운로드합니다."
+          >
+            <Download className="w-4 h-4" />
+            <span>분석 리포트 CSV 내보내기 ({filteredList.length}건)</span>
+          </button>
+
+          {/* Export Range Selector Button */}
+          <button
+            onClick={() => {
+              if (orderFilter !== 'ALL') {
+                setSelectedExportOrderId(orderFilter);
+              } else if (uniqueOrders.length > 0) {
+                setSelectedExportOrderId(uniqueOrders[0].orderId);
+              }
+              setIsExportModalOpen(true);
+            }}
+            className="px-3.5 py-2 text-xs font-bold bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+            title="전체 수주 또는 특정 수주 지정 내보내기"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>범위 선택</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards Strip */}
@@ -366,6 +760,27 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
 
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Order Filter */}
+            <select
+              value={orderFilter}
+              onChange={(e) => {
+                setOrderFilter(e.target.value);
+                if (e.target.value !== 'ALL') {
+                  setSelectedExportOrderId(e.target.value);
+                }
+              }}
+              className="px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-200"
+              title="특정 수주 필터"
+            >
+              <option value="ALL">전체 수주</option>
+              {uniqueOrders.map((o) => (
+                <option key={o.orderId} value={o.orderId}>
+                  [{o.orderId}] {o.orderName} ({o.count}공정)
+                </option>
+              ))}
+            </select>
+
+            {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -380,6 +795,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
               <option value="READY">대기 (READY)</option>
             </select>
 
+            {/* Variance Filter */}
             <select
               value={varianceFilter}
               onChange={(e) => setVarianceFilter(e.target.value)}
@@ -391,6 +807,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
               <option value="ON_TIME">✓ 표준시간 정합 공정</option>
             </select>
 
+            {/* Equipment Filter */}
             <select
               value={machineFilter}
               onChange={(e) => setMachineFilter(e.target.value)}
@@ -404,197 +821,635 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
               ))}
             </select>
 
-            <select
-              value={workerFilter}
-              onChange={(e) => setWorkerFilter(e.target.value)}
-              className="px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900"
-            >
-              <option value="ALL">전체 작업자</option>
-              {approvedOperators.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
+            {/* Field Operator Filter (현장 담당자: 가공팀, 연마팀, 품질팀 동적 필터링) */}
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="worker-filter-select"
+                className="text-xs font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap hidden sm:inline"
+              >
+                현장 담당자:
+              </label>
+              <select
+                id="worker-filter-select"
+                value={workerFilter}
+                onChange={(e) => setWorkerFilter(e.target.value)}
+                className="px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-200"
+                title="현장 담당자 필터 (가공, 연마, 품질팀)"
+              >
+                <option value="ALL">현장 담당자 (전체)</option>
+                {fieldOperators.map((op) => (
+                  <option key={op.baseName} value={op.baseName}>
+                    {op.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Detailed Plan vs Actual Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-600" />
-            <span>상세 계획 대비 실적 목록 ({filteredList.length}건)</span>
-          </h2>
-          <span className="text-xs text-slate-500">
-            행을 클릭하면 상세 비교 및 이력을 확인하고 설비/작업자를 수정할 수 있습니다.
-          </span>
+      {/* 1단계 & 2단계: 프로젝트 단위 계층형 계획 대비 실적 목록 */}
+      <div className="space-y-4">
+        {/* Section Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+          <div>
+            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Layers className="w-4 h-4 text-blue-600" />
+              <span>프로젝트(수주)별 계획 대비 실적 목록 (총 {visibleProjects.length}개 수주 / {filteredList.length}건 공정)</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              1단계: 수주 요약 정보 확인 / 2단계: 행 클릭 시 호기별 세부 공정 단계(Step) 및 체크박스 선택 CSV 내보내기
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={expandAllProjects}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 transition cursor-pointer"
+            >
+              모두 펼치기
+            </button>
+            <button
+              type="button"
+              onClick={collapseAllProjects}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 transition cursor-pointer"
+            >
+              모두 접기
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs divide-y divide-slate-200 dark:divide-slate-700">
-            <thead className="bg-slate-50 dark:bg-slate-900/80 font-black text-slate-700 dark:text-slate-300">
-              <tr>
-                <th className="py-3 px-3">수주 / 품번</th>
-                <th className="py-3 px-3">공정명 (Step)</th>
-                <th className="py-3 px-3">계획 일정 & 시간</th>
-                <th className="py-3 px-3">실제 실적 & 시간</th>
-                <th className="py-3 px-3">일시정지</th>
-                <th className="py-3 px-3">차이 / 지연 여부</th>
-                <th className="py-3 px-3">상태</th>
-                <th className="py-3 px-3">설비 / 담당자</th>
-                <th className="py-3 px-3">특이사항 / 사유</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {filteredList.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 font-bold">
-                    일치하는 공정 실적 데이터가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                filteredList.map((task) => (
-                  <tr
-                    key={task.processKey}
-                    onClick={() => {
-                      setSelectedTask(task);
-                      setIsDetailModalOpen(true);
-                    }}
-                    className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition cursor-pointer"
+        {/* Project List */}
+        {visibleProjects.length === 0 ? (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center shadow-2xs">
+            <Layers className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+              조건에 일치하는 수주 또는 공정 실적 데이터가 없습니다.
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              상단 검색어 및 필터 조건을 초기화해 보세요.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {visibleProjects.map((project) => {
+              const isExpanded = !!expandedProjects[project.projectKey];
+              const displayTasks = project.matchingTasks.length > 0 ? project.matchingTasks : project.allTasks;
+              const currentUnitFilter = unitFilters[project.projectKey] || 'ALL';
+              const unitFilteredTasks = currentUnitFilter === 'ALL'
+                ? displayTasks
+                : displayTasks.filter((t) => t.productNo === currentUnitFilter);
+
+              const selectedKeys = selectedProcesses[project.projectKey] || [];
+              const allSelected = unitFilteredTasks.length > 0 && unitFilteredTasks.every((t) => selectedKeys.includes(t.processKey));
+              const hasSomeSelected = selectedKeys.length > 0 && !allSelected;
+
+              return (
+                <div
+                  key={project.projectKey}
+                  className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs overflow-hidden transition-all duration-200"
+                >
+                  {/* 1단계: 프로젝트 요약 헤더 (클릭 시 아코디언 토글) */}
+                  <div
+                    onClick={() => toggleProjectExpand(project.projectKey)}
+                    className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-750 transition"
                   >
-                    {/* Order & Product Unit */}
-                    <td className="py-3 px-3">
-                      <div className="font-mono font-black text-blue-700 dark:text-blue-400">
-                        {task.orderId} #{task.productNo}호기
+                    {/* Left: Expand icon + Project Identifier */}
+                    <div className="flex items-center gap-3 min-w-[280px]">
+                      <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
                       </div>
-                      <div className="text-[11px] text-slate-600 dark:text-slate-400 font-bold truncate max-w-[130px]">
-                        {task.orderName}
-                      </div>
-                    </td>
 
-                    {/* Process Step */}
-                    <td className="py-3 px-3">
-                      <div className="font-extrabold text-slate-900 dark:text-white">
-                        {task.processIndex + 1}. {task.groupName}
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold">
-                        {task.category}
-                      </span>
-                    </td>
-
-                    {/* Planned Schedule */}
-                    <td className="py-3 px-3">
-                      <div className="font-mono text-slate-700 dark:text-slate-300">
-                        {formatDateTime(task.plannedStart)} ~ {formatDateTime(task.plannedEnd)}
-                      </div>
-                      <div className="font-black text-blue-600 dark:text-blue-400 text-[11px]">
-                        {task.plannedMins}분 ({task.duration}시간)
-                      </div>
-                    </td>
-
-                    {/* Actual Schedule */}
-                    <td className="py-3 px-3">
-                      {task.actualStart ? (
-                        <>
-                          <div className="font-mono text-slate-700 dark:text-slate-300">
-                            {formatDateTime(task.actualStart)} ~ {task.actualEnd ? formatDateTime(task.actualEnd) : '진행중'}
-                          </div>
-                          <div className="font-black text-emerald-600 dark:text-emerald-400 text-[11px]">
-                            {task.actualMins !== null ? `${task.actualMins}분` : '작업 진행중'}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-slate-400 font-mono">미착수</span>
-                      )}
-                    </td>
-
-                    {/* Pause Time */}
-                    <td className="py-3 px-3">
-                      {task.pauseTotal > 0 ? (
-                        <div className="text-orange-600 dark:text-orange-400 font-bold">
-                          {task.pauseTotal}분 ({task.pauseHistory?.length}회)
-                          {task.pauseReason && (
-                            <div className="text-[10px] text-slate-500 font-normal">
-                              ({task.pauseReason})
-                            </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-black text-sm text-blue-700 dark:text-blue-400">
+                            {project.orderId}
+                          </span>
+                          {project.productNos.length > 1 ? (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-black bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              수량 {project.quantity}개 (#{project.productNos.join(', #')}호기)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                              #{project.productNos[0] || 1}호기 (1개)
+                            </span>
+                          )}
+                          {project.customer && (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                              {project.customer}
+                            </span>
+                          )}
+                          {project.dueDate && (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                              납기: {project.dueDate}
+                            </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
 
-                    {/* Variance */}
-                    <td className="py-3 px-3">
-                      {task.actualMins !== null && task.actualMins > 0 ? (
-                        task.varianceMins > 0 ? (
-                          <span className="inline-flex items-center gap-1 font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
-                            <TrendingUp className="w-3 h-3" />
-                            +{task.varianceMins}분 지연
+                        <div className="text-xs font-bold text-slate-900 dark:text-white mt-1">
+                          {project.pjtName || project.orderName}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle: Progress Bar & Process Counts */}
+                    <div className="flex flex-wrap items-center gap-4 text-xs">
+                      {/* Process Count Badge */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 text-xs font-black bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-blue-800">
+                          총 {project.totalCount}개 공정
+                        </span>
+                        {project.matchingTasks.length !== project.totalCount && (
+                          <span className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md">
+                            ({project.matchingTasks.length}건 일치)
                           </span>
-                        ) : task.varianceMins < 0 ? (
-                          <span className="inline-flex items-center gap-1 font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                            <TrendingDown className="w-3 h-3" />
-                            {Math.abs(task.varianceMins)}분 단축
+                        )}
+                      </div>
+
+                      {/* Mini Progress Bar */}
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 sm:w-28 bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${project.completionRate}%` }}
+                          />
+                        </div>
+                        <span className="font-black text-emerald-600 dark:text-emerald-400">
+                          {project.completionRate}%
+                        </span>
+                        <span className="text-[11px] text-slate-500 hidden md:inline">
+                          (완료 {project.completedCount} / 진행 {project.inProgressCount} / 대기 {project.readyCount})
+                        </span>
+                      </div>
+
+                      {/* Time Plan vs Actual */}
+                      <div className="hidden lg:flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-bold">
+                        <span>계획 {project.totalPlannedHours}h</span>
+                        <span className="text-slate-400">/</span>
+                        <span>실적 {project.completedActualHours}h</span>
+                        {project.netVarianceMins > 0 ? (
+                          <span className="text-rose-600 dark:text-rose-400 text-[11px]">
+                            (+{project.netVarianceMins}분)
+                          </span>
+                        ) : project.netVarianceMins < 0 ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 text-[11px]">
+                            ({project.netVarianceMins}분)
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Delay Status */}
+                      <div>
+                        {project.hasDelay ? (
+                          <span className="px-2.5 py-1 text-xs font-black bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 rounded-lg border border-rose-200 dark:border-rose-800 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>지연 {project.delayedCount}건</span>
                           </span>
                         ) : (
-                          <span className="font-bold text-blue-600">✓ 표준시간 정합</span>
-                        )
-                      ) : task.status === 'DELAYED' ? (
-                        <span className="font-bold text-rose-500">기한 지연</span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
+                          <span className="px-2.5 py-1 text-xs font-black bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>정상</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                    {/* Status */}
-                    <td className="py-3 px-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${
-                          task.status === 'COMPLETED'
-                            ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
-                            : task.status === 'IN_PROGRESS'
-                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-300 animate-pulse'
-                            : task.status === 'PAUSED'
-                            ? 'bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-300'
-                            : task.status === 'DELAYED'
-                            ? 'bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-300'
-                            : 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-                        }`}
+                    {/* Right: Project-level Export & Expand Toggle Button */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportProjectAll(project);
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-600 hover:border-emerald-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                        title={`[${project.orderId}] 전체 ${project.totalCount}개 공정을 CSV로 다운로드합니다.`}
                       >
-                        {task.status}
-                      </span>
-                    </td>
+                        <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>이 수주 전체 CSV</span>
+                      </button>
 
-                    {/* Machine & Worker */}
-                    <td className="py-3 px-3">
-                      <div className="font-bold text-slate-800 dark:text-slate-200">
-                        {task.machine || '(설비 미지정)'}
+                      <div className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-0.5 px-2 py-1 bg-blue-50 dark:bg-blue-950/50 rounded-lg">
+                        <span>{isExpanded ? '접기' : `공정 목록 (${displayTasks.length})`}</span>
                       </div>
-                      <div className="text-[11px] text-slate-500">
-                        {task.worker || '(작업자 미지정)'}
-                      </div>
-                    </td>
+                    </div>
+                  </div>
 
-                    {/* Notes & Delay Reason */}
-                    <td className="py-3 px-3 text-[11px] text-slate-600 dark:text-slate-400 max-w-[160px] truncate">
-                      {task.delayReason ? (
-                        <span className="text-rose-600 font-bold">{task.delayReason}</span>
-                      ) : task.memo ? (
-                        <span>{task.memo}</span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                  {/* 2단계: 아코디언 바디 (공정별 체크박스 및 상세 목록) */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-4 sm:p-5 space-y-3">
+                      {/* Sub-toolbar: Unit filter tabs (if multiple units) + Checkbox select all & Selection CSV Export */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-3">
+                          {/* Unit filter tabs for multi-quantity orders */}
+                          {project.productNos.length > 1 && (
+                            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 p-1 rounded-xl">
+                              <button
+                                type="button"
+                                onClick={() => setUnitFilters((prev) => ({ ...prev, [project.projectKey]: 'ALL' }))}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  currentUnitFilter === 'ALL'
+                                    ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                              >
+                                전체 호기 ({displayTasks.length})
+                              </button>
+                              {project.productNos.map((pNo) => (
+                                <button
+                                  key={pNo}
+                                  type="button"
+                                  onClick={() => setUnitFilters((prev) => ({ ...prev, [project.projectKey]: pNo }))}
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                    currentUnitFilter === pNo
+                                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                  }`}
+                                >
+                                  #{pNo}호기 ({displayTasks.filter((t) => t.productNo === pNo).length})
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {project.productNos.length > 1 && (
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                          )}
+
+                          {/* Toggle Select All */}
+                          <button
+                            type="button"
+                            onClick={() => toggleSelectAllInProject(project.projectKey, unitFilteredTasks)}
+                            className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                          >
+                            {allSelected ? (
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                            ) : hasSomeSelected ? (
+                              <MinusSquare className="w-4 h-4 text-blue-500" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-400" />
+                            )}
+                            <span>현재 화면 전체 선택</span>
+                          </button>
+
+                          <span className="text-slate-300 dark:text-slate-700">|</span>
+
+                          {/* Selection status */}
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                            선택: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedKeys.length}</strong> / {displayTasks.length}건
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Export Selected Processes Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleExportSelectedProcesses(project)}
+                            disabled={selectedKeys.length === 0}
+                            className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                            title={
+                              selectedKeys.length > 0
+                                ? `선택한 ${selectedKeys.length}개 공정만 CSV 파일로 다운로드합니다.`
+                                : '내보낼 공정을 체크박스로 선택해 주세요.'
+                            }
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>선택 항목 CSV 내보내기 ({selectedKeys.length}건)</span>
+                          </button>
+
+                          {/* Export Project All */}
+                          <button
+                            type="button"
+                            onClick={() => handleExportProjectAll(project)}
+                            className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                            title="해당 수주의 전체 공정을 CSV로 다운로드합니다."
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span>수주 전체 내보내기</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Process Steps Table */}
+                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs divide-y divide-slate-200 dark:divide-slate-700">
+                            <thead className="bg-slate-50 dark:bg-slate-900/80 font-black text-slate-700 dark:text-slate-300">
+                              <tr>
+                                <th className="py-3 px-3 w-10 text-center">선택</th>
+                                <th className="py-3 px-3">공정명 (Step)</th>
+                                <th className="py-3 px-3">계획 일정 & 시간</th>
+                                <th className="py-3 px-3">실제 실적 & 시간</th>
+                                <th className="py-3 px-3">일시정지</th>
+                                <th className="py-3 px-3">차이 / 지연 여부</th>
+                                <th className="py-3 px-3">상태</th>
+                                <th className="py-3 px-3">설비 / 담당자</th>
+                                <th className="py-3 px-3">특이사항 / 사유</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                              {unitFilteredTasks.map((task) => {
+                                const isChecked = selectedKeys.includes(task.processKey);
+
+                                return (
+                                  <tr
+                                    key={task.processKey}
+                                    onClick={() => {
+                                      setSelectedTask(task);
+                                      setIsDetailModalOpen(true);
+                                    }}
+                                    className={`transition cursor-pointer ${
+                                      isChecked
+                                        ? 'bg-blue-50/60 dark:bg-blue-950/30'
+                                        : 'hover:bg-slate-50 dark:hover:bg-slate-750'
+                                    }`}
+                                  >
+                                    {/* Checkbox */}
+                                    <td
+                                      className="py-3 px-3 text-center"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleProcessSelect(project.projectKey, task.processKey);
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}}
+                                        className="w-4 h-4 text-blue-600 rounded cursor-pointer focus:ring-blue-500"
+                                      />
+                                    </td>
+
+                                    {/* Process Step Name */}
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="px-1.5 py-0.5 text-[10px] font-black bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded border border-indigo-200 dark:border-indigo-800">
+                                          #{task.productNo}호기
+                                        </span>
+                                        <span className="px-1.5 py-0.5 text-[10px] font-black bg-slate-200 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-300">
+                                          Step {task.processIndex + 1}
+                                        </span>
+                                        <span className="font-bold text-slate-900 dark:text-white">
+                                          {task.groupName}
+                                        </span>
+                                        <span
+                                          className={`text-[10px] px-1.5 py-0.5 rounded font-extrabold ${
+                                            task.category === '가공'
+                                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                                              : task.category === '연마'
+                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                              : task.category === '외주'
+                                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                                          }`}
+                                        >
+                                          {task.category}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Planned Start / End / Duration */}
+                                    <td className="py-3 px-3">
+                                      <div className="font-semibold text-slate-700 dark:text-slate-300">
+                                        {formatDateTime(task.plannedStart)} ~ {formatDateTime(task.plannedEnd)}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-bold">
+                                        계획 {task.plannedMins}분 ({(task.plannedMins / 60).toFixed(1)}h)
+                                      </div>
+                                    </td>
+
+                                    {/* Actual Start / End / Duration */}
+                                    <td className="py-3 px-3">
+                                      {task.actualStart ? (
+                                        <div>
+                                          <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                            {formatDateTime(task.actualStart)} ~{' '}
+                                            {task.actualEnd ? formatDateTime(task.actualEnd) : '진행중'}
+                                          </div>
+                                          <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                                            실적 {task.actualMins !== null ? `${task.actualMins}분` : '-'}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-400 font-semibold">미착수</span>
+                                      )}
+                                    </td>
+
+                                    {/* Pause History */}
+                                    <td className="py-3 px-3">
+                                      {task.pauseTotal > 0 ? (
+                                        <div className="flex items-center gap-1 text-orange-600 dark:text-orange-400 font-bold">
+                                          <Pause className="w-3 h-3" />
+                                          <span>{task.pauseTotal}분</span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+
+                                    {/* Variance */}
+                                    <td className="py-3 px-3">
+                                      {task.actualMins !== null ? (
+                                        task.varianceType === 'DELAYED' ? (
+                                          <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+                                            <TrendingDown className="w-3.5 h-3.5" />
+                                            <span>+{task.varianceMins}분 초과</span>
+                                          </span>
+                                        ) : task.varianceType === 'ADVANCED' ? (
+                                          <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                                            <TrendingUp className="w-3.5 h-3.5" />
+                                            <span>{task.varianceMins}분 단축</span>
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 font-bold text-slate-600 dark:text-slate-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                            <span>표준 정합</span>
+                                          </span>
+                                        )
+                                      ) : task.status === 'DELAYED' ? (
+                                        <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+                                          <AlertTriangle className="w-3.5 h-3.5" />
+                                          <span>지연 중</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+
+                                    {/* Status Badge */}
+                                    <td className="py-3 px-3">
+                                      <span
+                                        className={`px-2 py-1 rounded-md text-[11px] font-black ${
+                                          task.status === 'COMPLETED'
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                                            : task.status === 'IN_PROGRESS'
+                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 animate-pulse'
+                                            : task.status === 'PAUSED'
+                                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300'
+                                            : task.status === 'DELAYED'
+                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
+                                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                                        }`}
+                                      >
+                                        {task.status}
+                                      </span>
+                                    </td>
+
+                                    {/* Machine / Worker */}
+                                    <td className="py-3 px-3">
+                                      <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                                        <Cpu className="w-3 h-3 text-slate-400" />
+                                        <span>{task.machine || '미지정'}</span>
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                        <UserIcon className="w-3 h-3 text-slate-400" />
+                                        <span>{task.worker || '미지정'}</span>
+                                      </div>
+                                    </td>
+
+                                    {/* Notes & Delay Reason */}
+                                    <td className="py-3 px-3 text-[11px] text-slate-600 dark:text-slate-400 max-w-[160px] truncate">
+                                      {task.delayReason ? (
+                                        <span className="text-rose-600 font-bold">{task.delayReason}</span>
+                                      ) : task.memo ? (
+                                        <span>{task.memo}</span>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* CSV Export Scope Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    분석 리포트 CSV 내보내기 범위 선택
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    내보낼 공정 실적 데이터의 범위를 지정해 다운로드합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Option 1: Entire All Projects */}
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-500 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>전체 프로젝트 공정 일괄 내보내기</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                    필터와 무관하게 시스템 내 등록된 전체 공정 실적 데이터 ({tasksAnalysis.length}건)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleExportCSV('ALL')}
+                  className="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>전체 다운로드</span>
+                </button>
+              </div>
+
+              {/* Option 2: Specific Single Project */}
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-500 bg-slate-50/50 dark:bg-slate-800/50 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>특정 프로젝트 지정 내보내기</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                      원하는 프로젝트를 드롭다운에서 선택하여 해당 공정만 다운로드
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleExportCSV('ORDER', selectedExportOrderId)}
+                    disabled={!selectedExportOrderId}
+                    className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>프로젝트 다운로드</span>
+                  </button>
+                </div>
+                <div>
+                  <select
+                    value={selectedExportOrderId}
+                    onChange={(e) => setSelectedExportOrderId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
+                  >
+                    {uniqueOrders.map((o) => (
+                      <option key={o.orderId} value={o.orderId}>
+                        [{o.orderId}] {o.orderName} ({o.count}개 공정)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition cursor-pointer"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Feedback Toast */}
+      {downloadSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 dark:border-slate-200 flex items-center gap-3 animate-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{downloadSuccessToast}</span>
+          <button
+            onClick={() => setDownloadSuccessToast(null)}
+            className="p-1 hover:bg-white/20 dark:hover:bg-black/20 rounded-md transition cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Modal */}
       {isDetailModalOpen && currentSelectedTask && (
@@ -608,6 +1463,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
           onUpdateProgress={onUpdateProgress}
           currentUser={currentUser}
           approvedOperators={approvedOperators}
+          onExportOrderCsv={(orderId) => handleExportCSV('ORDER', orderId)}
         />
       )}
     </div>
