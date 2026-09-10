@@ -137,14 +137,14 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     currentUser?.department === '시스템 관리자';
 
   const canExecuteMES =
-    !currentUser ||
-    currentUser.role === 'ADMIN' ||
-    effectivePerms.isAdmin ||
-    effectivePerms.canExecuteMES ||
-    effectivePerms.canEditMenu['execution'] === true ||
-    currentUser.permissions?.canExecuteMES === true ||
-    currentUser.permissions?.menuEdits?.['execution'] === true ||
-    isFieldDept;
+    Boolean(currentUser) &&
+    (currentUser?.role === 'ADMIN' ||
+      effectivePerms.isAdmin ||
+      effectivePerms.canExecuteMES ||
+      effectivePerms.canEditMenu['execution'] === true ||
+      currentUser?.permissions?.canExecuteMES === true ||
+      currentUser?.permissions?.menuEdits?.['execution'] === true ||
+      isFieldDept);
 
   // Filter tasks with complete field search support (pjtNo, pjtName, orderId, processKey, orderName, worker, machine, memo)
   const filteredTasks = taskList.filter((task) => {
@@ -198,6 +198,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
 
   // Actions
   const handleStartProcess = (processKey: string) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (조회 전용 모드)');
+      return;
+    }
     const task = taskList.find((t) => t.processKey === processKey);
     const nowIso = new Date().toISOString();
     const workerName = task?.worker || currentUser?.name || '현장 작업자';
@@ -216,6 +220,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   const handleOpenPauseModal = (task: ScheduledTaskItem) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     setPauseTask(task);
     setIsPauseOpen(true);
   };
@@ -226,6 +234,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     operatorName: string,
     detailNote?: string
   ) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     const task = taskList.find((t) => t.processKey === processKey);
     const nowIso = new Date().toISOString();
@@ -248,6 +260,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   const handleResumeProcess = (processKey: string) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     const task = taskList.find((t) => t.processKey === processKey);
     const now = new Date();
@@ -274,6 +290,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   const handleCompleteProcess = (processKey: string) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     const task = taskList.find((t) => t.processKey === processKey);
     const now = new Date();
     const nowIso = now.toISOString();
@@ -313,6 +333,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   const handleResetProcess = (processKey: string) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     onUpdateProgress(processKey, {
       ...existing,
@@ -327,6 +351,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
   };
 
   const handleUpdateDefectQty = (processKey: string, defectQty: number) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 불량 수량 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     onUpdateProgress(processKey, {
       ...existing,
@@ -346,6 +374,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     note: string,
     reporterName: string
   ) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 이상 발생 신고 및 상태 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     const nowIso = new Date().toISOString();
     const newIssue = {
@@ -373,6 +405,10 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
     resolveNote: string,
     resolverName?: string
   ) => {
+    if (!canExecuteMES) {
+      alert('⚠️ 이상 발생 해제 및 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
     const existing = processProgressMap[processKey] || {};
     const nowIso = new Date().toISOString();
     const effectiveResolver = resolverName || currentUser?.name || '시스템 관리자';

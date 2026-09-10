@@ -27,8 +27,10 @@ import {
   Info,
   Flame,
   CheckCheck,
-  Download
+  Download,
+  Lock
 } from 'lucide-react';
+import { computeEffectivePermissions } from '../utils/permissionManager';
 
 interface CalendarTaskDetailModalProps {
   task: ScheduledTaskItem | null;
@@ -67,6 +69,25 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   const [customPauseReason, setCustomPauseReason] = useState('');
   const [elapsedMinutes, setElapsedMinutes] = useState<number>(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Department RBAC Permission Check
+  const effectivePerms = computeEffectivePermissions(currentUser);
+  const isFieldDept =
+    currentUser?.department === '가공팀' ||
+    currentUser?.department === '연마팀' ||
+    currentUser?.department === '생산관리' ||
+    currentUser?.department === '생산 관리' ||
+    currentUser?.department === '시스템 관리자';
+
+  const canExecuteMES =
+    Boolean(currentUser) &&
+    (currentUser?.role === 'ADMIN' ||
+      effectivePerms.isAdmin ||
+      effectivePerms.canExecuteMES ||
+      effectivePerms.canEditMenu['execution'] === true ||
+      currentUser?.permissions?.canExecuteMES === true ||
+      currentUser?.permissions?.menuEdits?.['execution'] === true ||
+      isFieldDept);
 
   // Optimistic local override for instantaneous UI transition
   const [localTaskOverride, setLocalTaskOverride] = useState<Partial<ScheduledTaskItem> | null>(null);
@@ -265,6 +286,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
   // Actions
   const handleStartTask = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (영업팀/경영진 등 읽기 전용 계정은 모니터링만 가능합니다)');
+      return;
+    }
+
     const nowIso = new Date().toISOString();
     const workerName = selectedWorker || currentUser?.name || '현장담당자';
     const effectiveMachine = selectedMachine || task.machine;
@@ -306,10 +332,19 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const handlePauseTask = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (읽기 전용 계정)');
+      return;
+    }
     setIsPausePromptOpen(true);
   };
 
   const confirmPause = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다.');
+      return;
+    }
+
     const nowIso = new Date().toISOString();
     const reasonText =
       selectedPauseReason === '기타' ? customPauseReason || '기타 사유' : selectedPauseReason;
@@ -349,6 +384,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const handleResumeTask = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (읽기 전용 계정)');
+      return;
+    }
+
     const now = new Date();
     const nowIso = now.toISOString();
     const currentHistory: PauseLog[] = [...(activeTask.pauseHistory || [])];
@@ -390,6 +430,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const handleCompleteTask = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (읽기 전용 계정)');
+      return;
+    }
+
     const now = new Date();
     const nowIso = now.toISOString();
     const start = activeTask.actualStart
@@ -450,6 +495,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const handleResetOrCancel = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 공정 상태 변경 권한이 없습니다. (읽기 전용 계정)');
+      return;
+    }
+
     if (window.confirm('이 공정의 실적을 초기화하고 대기(미착수) 상태로 되돌리시겠습니까?')) {
       setLocalTaskOverride({
         status: 'READY',
@@ -491,6 +541,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
   };
 
   const handleSaveAssignments = () => {
+    if (!canExecuteMES) {
+      alert('⚠️ 설비 및 작업자 저장 권한이 없습니다. (읽기 전용 계정)');
+      return;
+    }
+
     onUpdateProgress(task.processKey, {
       worker: selectedWorker,
       machine: selectedMachine,
@@ -609,6 +664,26 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {/* Read-only Notice for Unauthorized / Sales / Executive Accounts */}
+          {!canExecuteMES && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 rounded-xl p-3 flex items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2.5">
+                <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div>
+                  <p className="text-xs font-black text-amber-900 dark:text-amber-200">
+                    조회 전용 모드 ({currentUser?.department || '조회 전용'})
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    현재 계정은 공정 상태 변경 및 작업자/설비 수정 권한이 없습니다. 실시간 진행 현황 모니터링만 가능합니다.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 shrink-0">
+                읽기 전용
+              </span>
+            </div>
+          )}
+
           {/* Real-time Running Status Banner */}
           {activeTask.status === 'IN_PROGRESS' && (
             <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border border-amber-300 dark:border-amber-700/70 rounded-xl p-3 flex items-center justify-between gap-3 animate-in fade-in duration-200">
@@ -804,6 +879,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
               <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-blue-500" />
                 <span>담당 가공 설비</span>
+                {!canExecuteMES && <Lock className="w-3 h-3 text-slate-400" />}
               </label>
               <SearchableSelect
                 options={machineOptions}
@@ -811,8 +887,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                 onChange={(val) => setSelectedMachine(val)}
                 placeholder="담당 설비 선택 (총 21대)"
                 icon={Cpu}
+                disabled={!canExecuteMES}
                 className="w-full"
-                triggerClassName="w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+                triggerClassName={`w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium ${
+                  !canExecuteMES ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800/80' : ''
+                }`}
               />
             </div>
 
@@ -820,6 +899,7 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
               <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
                 <UserIcon className="w-3.5 h-3.5 text-emerald-500" />
                 <span>공정 담당 작업자</span>
+                {!canExecuteMES && <Lock className="w-3 h-3 text-slate-400" />}
               </label>
               <SearchableSelect
                 options={operatorOptions}
@@ -827,8 +907,11 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
                 onChange={(val) => setSelectedWorker(val)}
                 placeholder="공정 담당 작업자 선택"
                 icon={UserIcon}
+                disabled={!canExecuteMES}
                 className="w-full"
-                triggerClassName="w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+                triggerClassName={`w-full text-xs py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium ${
+                  !canExecuteMES ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800/80' : ''
+                }`}
               />
             </div>
           </div>
@@ -928,28 +1011,38 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
               <label className="block text-xs font-extrabold text-rose-700 dark:text-rose-400 mb-1 flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>지연 사유 기록</span>
+                {!canExecuteMES && <Lock className="w-3 h-3 text-rose-400" />}
               </label>
               <input
                 type="text"
                 value={delayReason}
+                disabled={!canExecuteMES}
+                readOnly={!canExecuteMES}
                 onChange={(e) => setDelayReason(e.target.value)}
                 placeholder="예: 공구 마모로 인한 지그 재세팅, 소재 불량 교체 등"
-                className="w-full px-3 py-1.5 text-xs border border-rose-300 dark:border-rose-800 rounded-lg bg-rose-50/30 dark:bg-rose-950/20 text-slate-900 dark:text-white"
+                className={`w-full px-3 py-1.5 text-xs border border-rose-300 dark:border-rose-800 rounded-lg bg-rose-50/30 dark:bg-rose-950/20 text-slate-900 dark:text-white ${
+                  !canExecuteMES ? 'opacity-60 cursor-not-allowed' : ''
+                }`}
               />
             </div>
           )}
 
           {/* Work Memo */}
           <div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-              작업자 메모 & 인수인계 사항
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+              <span>작업자 메모 & 인수인계 사항</span>
+              {!canExecuteMES && <Lock className="w-3 h-3 text-slate-400" />}
             </label>
             <input
               type="text"
               value={memo}
+              disabled={!canExecuteMES}
+              readOnly={!canExecuteMES}
               onChange={(e) => setMemo(e.target.value)}
               placeholder="특이사항, 치수 측정값, 다음 공정 전달사항..."
-              className="w-full px-3 py-1.5 text-xs border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className={`w-full px-3 py-1.5 text-xs border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white ${
+                !canExecuteMES ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800/80' : ''
+              }`}
             />
           </div>
         </div>
@@ -957,34 +1050,50 @@ export const CalendarTaskDetailModal: React.FC<CalendarTaskDetailModalProps> = (
         {/* Modal Action Footer */}
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/90 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <button
-              id="btn-save-assignments"
-              onClick={handleSaveAssignments}
-              className="px-3 py-2 text-xs font-bold bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition flex items-center gap-1 cursor-pointer"
-            >
-              {saveSuccess ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Save className="w-3.5 h-3.5" />}
-              <span>{saveSuccess ? '저장됨' : '설비/작업자 저장'}</span>
-            </button>
-
-            {(activeTask.status === 'IN_PROGRESS' ||
-              activeTask.status === 'COMPLETED' ||
-              activeTask.status === 'PAUSED') && (
+            {canExecuteMES && (
               <button
-                id="btn-reset-task"
-                onClick={handleResetOrCancel}
-                className="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition flex items-center gap-1 cursor-pointer"
+                id="btn-save-assignments"
+                onClick={handleSaveAssignments}
+                className="px-3 py-2 text-xs font-bold bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition flex items-center gap-1 cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>대기로 초기화</span>
+                {saveSuccess ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Save className="w-3.5 h-3.5" />}
+                <span>{saveSuccess ? '저장됨' : '설비/작업자 저장'}</span>
               </button>
             )}
+
+            {canExecuteMES &&
+              (activeTask.status === 'IN_PROGRESS' ||
+                activeTask.status === 'COMPLETED' ||
+                activeTask.status === 'PAUSED') && (
+                <button
+                  id="btn-reset-task"
+                  onClick={handleResetOrCancel}
+                  className="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>대기로 초기화</span>
+                </button>
+              )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Primary Action Buttons depending on status */}
-            {activeTask.status === 'READY' ||
-            activeTask.status === 'PLANNED' ||
-            activeTask.status === 'DELAYED' ? (
+            {!canExecuteMES ? (
+              <>
+                <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 select-none">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>조회 전용 (상태 변경 불가)</span>
+                </div>
+                <button
+                  id="btn-close-modal-readonly"
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
+                >
+                  닫기
+                </button>
+              </>
+            ) : activeTask.status === 'READY' ||
+              activeTask.status === 'PLANNED' ||
+              activeTask.status === 'DELAYED' ? (
               <>
                 <button
                   id="btn-start-task"

@@ -186,7 +186,9 @@ async function sendSolapiSms(
       const rawMsg = errJson.errorMessage || errJson.statusMessage || errText;
       const errCode = errJson.errorCode || errJson.statusCode || 'N/A';
       
-      if (rawMsg.includes('허용되지 않은 IP') || errCode === 'Forbidden' || response.status === 403) {
+      if (rawMsg.includes('잔액이 부족') || errCode === 'NotEnoughBalance' || response.status === 402) {
+        errMsg = `Solapi 잔액 부족 (402 NotEnoughBalance): 보유 잔액이 부족하여 알림 문자를 발송할 수 없습니다. 👉 [해결방법: solapi.com 로그인 후 잔액 충전(충전/결제)을 진행해 주세요]`;
+      } else if (rawMsg.includes('허용되지 않은 IP') || errCode === 'Forbidden' || response.status === 403) {
         errMsg = `Solapi 접근 거부 (403 IP 제한): ${rawMsg} 👉 [해결방법: solapi.com 로그인 > 개발/API 설정 > API Key 관리에서 'IP 화이트리스트 제한'을 해제(모든 IP 허용)하거나 클라우드 IP를 추가하세요]`;
       } else if (errCode === 'InvalidApiKey' || rawMsg.includes('API Key') || response.status === 401) {
         errMsg = `Solapi API 키 인증 실패: ${rawMsg} 👉 [해결방법: SOLAPI_API_KEY 및 SOLAPI_API_SECRET 값을 다시 확인해 주세요]`;
