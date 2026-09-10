@@ -65,10 +65,6 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap">
                 준성테크 MES 생산 스케줄러
               </h1>
-              <span className="text-[10px] bg-[#00C4B4]/10 text-[#00A396] dark:text-[#00C4B4] border border-[#00C4B4]/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00C4B4] animate-pulse" />
-                Firebase Realtime Sync
-              </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden xl:block">
               2차전지 코팅 장비 (Slot Die) 및 정밀 가공 생산 관리 시스템

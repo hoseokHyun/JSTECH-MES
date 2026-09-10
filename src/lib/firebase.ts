@@ -410,8 +410,10 @@ export async function setUserOnlineStatus(userIdent: string | null | undefined, 
 export async function loginUserAccount(email: string, pass: string): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   let matchedUser: User | null = null;
+  let authErrorCode: string | null = null;
+  let authErrorMessage: string | null = null;
 
-  // Try Firebase Auth first
+  // 1. Try Firebase Auth first
   try {
     const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, pass);
     const uid = userCredential.user.uid;
@@ -430,39 +432,45 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
       }
     });
   } catch (err: any) {
-    console.warn('Firebase auth login fallback to Firestore lookup:', err?.code || err?.message);
+    authErrorCode = err?.code || null;
+    authErrorMessage = err?.message || null;
+    console.warn('[Firebase Auth] signInWithEmailAndPassword failed:', authErrorCode, authErrorMessage);
   }
 
-  // Fallback to Firestore users collection
+  // 2. Fallback to Firestore users collection
   if (!matchedUser) {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    usersSnap.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-      if (data.email && data.email.toLowerCase() === normalizedEmail) {
-        // If password stored, verify
-        if (!data.password || data.password === pass) {
-          const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
-          const rawName = (data.name || '').trim();
-          const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
-          const cleanName = rawName === '대표 관리자' || rawName.includes('대표') ? '시스템 관리자' : rawName;
-          let dept = data.department;
-          if (!dept || dept === '미지정') {
-            dept = KNOWN_MEMBER_DEPARTMENTS[baseName] || (data.role === 'ADMIN' ? '시스템 관리자' : '가공팀');
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      usersSnap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        if (data.email && data.email.toLowerCase() === normalizedEmail) {
+          // If password stored in document, verify (plain text or legacy)
+          if (!data.password || data.password === pass) {
+            const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
+            const rawName = (data.name || '').trim();
+            const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+            const cleanName = rawName === '대표 관리자' || rawName.includes('대표') ? '시스템 관리자' : rawName;
+            let dept = data.department;
+            if (!dept || dept === '미지정') {
+              dept = KNOWN_MEMBER_DEPARTMENTS[baseName] || (data.role === 'ADMIN' ? '시스템 관리자' : '가공팀');
+            }
+            matchedUser = {
+              ...data,
+              name: cleanName,
+              uid: data.uid || docSnap.id,
+              phoneNumber: phone,
+              phone_number: phone,
+              department: dept,
+            };
           }
-          matchedUser = {
-            ...data,
-            name: cleanName,
-            uid: data.uid || docSnap.id,
-            phoneNumber: phone,
-            phone_number: phone,
-            department: dept,
-          };
         }
-      }
-    });
+      });
+    } catch (dbErr: any) {
+      console.error('[Firestore Users] Read users collection failed:', dbErr);
+    }
   }
 
-  // If super admin email or default admin or no user found for first login attempt
+  // 3. Special handling for super admin or initial setup
   const isSuperAdmin =
     normalizedEmail === 'noworriesmate01@gmail.com' ||
     normalizedEmail === 'admin@jstech.co.kr' ||
@@ -493,10 +501,23 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
           canShipmentControl: true,
         },
       };
-      await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
+      try {
+        await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
+      } catch (saveErr) {
+        console.warn('Superadmin user document creation warning:', saveErr);
+      }
     } else {
-      const usersSnap = await getDocs(collection(db, 'users'));
-      if (usersSnap.empty) {
+      // Check if users collection is completely empty (first run initialization)
+      let isEmptyDb = false;
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        isEmptyDb = usersSnap.empty;
+      } catch (e) {
+        // In case getDocs fails due to offline/permission
+        isEmptyDb = false;
+      }
+
+      if (isEmptyDb) {
         const uid = `user_init_${Date.now()}`;
         matchedUser = {
           uid,
@@ -520,8 +541,18 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
             canShipmentControl: true,
           },
         };
-        await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
+        try {
+          await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
+        } catch (e) {
+          console.warn('Init user save warning:', e);
+        }
       } else {
+        // If Firebase Auth returned an explicit specific error, bubble that error code
+        if (authErrorCode) {
+          const customError: any = new Error(authErrorMessage || 'AUTH_ERROR');
+          customError.code = authErrorCode;
+          throw customError;
+        }
         throw new Error('INVALID_CREDENTIALS');
       }
     }
@@ -541,9 +572,9 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     throw new Error('PENDING_APPROVAL');
   }
 
-  // Mark user as online in Firestore
+  // Mark user as online in Firestore (non-blocking)
   const ident = matchedUser.uid || matchedUser.email || matchedUser.name;
-  await setUserOnlineStatus(ident, true);
+  setUserOnlineStatus(ident, true).catch(() => {});
   matchedUser.isOnline = true;
   matchedUser.loginAt = new Date().toISOString();
 
@@ -611,23 +642,8 @@ export function subscribeUsersList(
           dept = '시스템 관리자';
           role = 'ADMIN';
           isApproved = true;
-
-          // Auto-repair Firestore document if it had legacy "대표 관리자"
-          if (rawName === '대표 관리자' || raw.name !== '시스템 관리자' || raw.department !== '시스템 관리자') {
-            setDoc(
-              doc(db, 'users', docId),
-              {
-                name: '시스템 관리자',
-                department: '시스템 관리자',
-                role: 'ADMIN',
-                isApproved: true,
-                status: 'approved',
-              },
-              { merge: true }
-            ).catch(() => {});
-          }
         } else {
-          // If department is missing or explicitly '미지정', provide an intelligent initial fallback without overriding user-set values
+          // If department is missing or explicitly '미지정', provide an intelligent fallback in memory
           if (!dept || dept === '미지정') {
             const baseName = name.replace(/\s*\([^)]*\)/g, '').trim();
             if (KNOWN_MEMBER_DEPARTMENTS[baseName]) {
@@ -638,11 +654,6 @@ export function subscribeUsersList(
               dept = '가공팀';
             }
             isApproved = true;
-            setDoc(
-              doc(db, 'users', docId),
-              { department: dept, isApproved: true, status: 'approved' },
-              { merge: true }
-            ).catch(() => {});
           }
         }
 

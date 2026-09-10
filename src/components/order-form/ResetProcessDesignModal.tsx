@@ -97,7 +97,7 @@ export const ResetProcessDesignModal: React.FC<ResetProcessDesignModalProps> = (
               <RotateCcw className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm text-white">공정그룹 및 공정설계 초기화</h3>
+              <h3 className="font-extrabold text-sm text-white">공정 설계 초기화</h3>
               <p className="text-[11px] text-slate-300">
                 공정 구성 및 배정 정보를 기본 상태로 되돌립니다
               </p>
@@ -165,12 +165,12 @@ export const ResetProcessDesignModal: React.FC<ResetProcessDesignModalProps> = (
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-900 flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-blue-600" />
-                    <span>사용자 추가 Phase 제거 및 표준 Phase 복원</span>
+                    <span>표준 기본 공정 순서 및 내부 그룹 복원</span>
                   </span>
-                  <span className="font-mono text-[10px] text-slate-500">현재 {currentPhasesCount}개</span>
+                  <span className="font-mono text-[10px] text-slate-500">표준 기본값</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  추가/수정된 Phase 구간을 초기 표준 4단계(Phase 1~4) 구성으로 복원합니다.
+                  내부 공정 분류와 순서를 시스템 표준 상태로 복원합니다.
                 </p>
               </div>
             </label>
