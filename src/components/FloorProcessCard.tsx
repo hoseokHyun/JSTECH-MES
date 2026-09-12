@@ -24,12 +24,14 @@ import {
 } from 'lucide-react';
 import { ScheduledTaskItem, ProcessProgressItem, Order, PauseLog } from '../types';
 import { getIndividualSerialNo } from '../utils/serialHelper';
+import { parseComponentTag, TaskPrerequisiteCheckResult } from '../utils/trackDependencyHelper';
 
 interface FloorProcessCardProps {
   task: ScheduledTaskItem;
   order?: Order;
   progressItem?: ProcessProgressItem;
   canExecuteMES: boolean;
+  prerequisiteStatus?: TaskPrerequisiteCheckResult;
   onStartProcess: (processKey: string) => void;
   onPauseProcess?: (task: ScheduledTaskItem) => void;
   onResumeProcess?: (processKey: string) => void;
@@ -46,6 +48,7 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
   order,
   progressItem,
   canExecuteMES,
+  prerequisiteStatus,
   onStartProcess,
   onPauseProcess,
   onResumeProcess,
@@ -211,6 +214,24 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
             >
               {task.category}
             </span>
+
+            {/* 부품 트랙 (Component Tag) 뱃지 */}
+            {(() => {
+              const effectiveTag = task.componentTag || parseComponentTag(task.content || task.title, '', '');
+              if (!effectiveTag) return null;
+              const isAssembly = effectiveTag.includes('+');
+              return (
+                <span
+                  className={`text-[11px] sm:text-xs font-black px-2.5 py-0.5 rounded-lg border shadow-xs whitespace-nowrap ${
+                    isAssembly
+                      ? 'bg-amber-400 text-slate-950 border-amber-300'
+                      : 'bg-indigo-500 text-white border-indigo-300'
+                  }`}
+                >
+                  {isAssembly ? `🔗 조립: ${effectiveTag}` : `부품: ${effectiveTag}`}
+                </span>
+              );
+            })()}
           </div>
 
           {/* 3. STATUS BADGE: High-contrast state indicator with clear icon and text */}
@@ -518,16 +539,54 @@ export const FloorProcessCard: React.FC<FloorProcessCardProps> = ({
       {/* 3. TOUCH ACTION BUTTONS (TOUCH TARGET >= 44px)                            */}
       {/* ========================================================================= */}
       <div className="p-4 pt-0 space-y-2.5">
+        {/* Prerequisite Missing Warning Banner */}
+        {prerequisiteStatus && !prerequisiteStatus.canStart && isPending && (
+          <div className="bg-amber-50 border border-amber-300 p-2.5 rounded-xl text-xs space-y-1 text-amber-900 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-1.5 font-black text-amber-950">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>선행 부품 공정 완료 대기 중</span>
+            </div>
+            <p className="text-[11px] text-amber-800 font-semibold">
+              아래 선행 공정이 아직 완료되지 않았습니다:
+            </p>
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {prerequisiteStatus.missingTasks.slice(0, 3).map((t, idx) => (
+                <span key={idx} className="bg-white px-2 py-0.5 rounded border border-amber-200 text-[10px] font-bold text-amber-900">
+                  {t.groupName || t.content || t.title}
+                </span>
+              ))}
+              {prerequisiteStatus.missingTasks.length > 3 && (
+                <span className="text-[10px] text-amber-700 font-bold self-center">
+                  외 {prerequisiteStatus.missingTasks.length - 3}건
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* State 1: PENDING -> START */}
         {isPending && (
           <button
             type="button"
             disabled={!canExecuteMES || isAndonHold}
             onClick={() => onStartProcess(task.processKey)}
-            className="w-full h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-base sm:text-lg shadow-lg flex items-center justify-center gap-3 cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50 border border-blue-400/40"
+            className={`w-full h-14 rounded-2xl font-black text-base sm:text-lg shadow-lg flex items-center justify-center gap-3 cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50 border ${
+              prerequisiteStatus && !prerequisiteStatus.canStart
+                ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white border-amber-400/40'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-blue-400/40'
+            }`}
           >
-            <Play className="w-6 h-6 fill-white" />
-            <span>공정 시작 (START PROCESS)</span>
+            {prerequisiteStatus && !prerequisiteStatus.canStart ? (
+              <>
+                <AlertTriangle className="w-5 h-5 text-amber-200" />
+                <span>선행 대기중 (클릭 시 확인)</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-6 h-6 fill-white" />
+                <span>공정 시작 (START PROCESS)</span>
+              </>
+            )}
           </button>
         )}
 

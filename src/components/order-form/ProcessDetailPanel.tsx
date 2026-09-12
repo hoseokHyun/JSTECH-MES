@@ -31,19 +31,19 @@ import {
   Info
 } from 'lucide-react';
 import { ProcessStep, ProcessCategory, Order, ProcessProgressMap, User } from '../../types';
-import { StepAssignment, ResourceBusyInfo, PhaseDefinition } from './orderFormTypes';
+import { StepAssignment, ResourceBusyInfo } from './orderFormTypes';
 import { SearchableSelect, SelectOption } from '../SearchableSelect';
 import {
   getProcessPairRecommendations,
   PairRecommendationItem,
   RecommendationContext
 } from '../../utils/aiRecommendationEngine';
+import { parseComponentTag, PRESET_COMPONENT_TAGS } from '../../utils/trackDependencyHelper';
 
 interface ProcessDetailPanelProps {
   stepIndex: number | null;
   currentProcesses: ProcessStep[];
   stepAssignments: Record<number, StepAssignment>;
-  phases: PhaseDefinition[];
   equipmentOptions: SelectOption[];
   operatorOptions: SelectOption[];
   busyMachinesMap: Map<string, ResourceBusyInfo>;
@@ -67,7 +67,6 @@ export const ProcessDetailPanel: React.FC<ProcessDetailPanelProps> = ({
   stepIndex,
   currentProcesses,
   stepAssignments,
-  phases,
   equipmentOptions,
   operatorOptions,
   busyMachinesMap,
@@ -154,10 +153,6 @@ export const ProcessDetailPanel: React.FC<ProcessDetailPanelProps> = ({
   const isComplete = !!(currentMach && currentWork);
   const hasConflict = isMachBusy || isWorkBusy;
 
-  // Phase Name lookup
-  const phaseDef = phases.find((p) => p.id === proc.phaseId);
-  const phaseNumber = phases.findIndex((p) => p.id === proc.phaseId) + 1 || 1;
-
   const handleSelectRecommendation = (rec: PairRecommendationItem) => {
     if (onApplyRecommendedPair) {
       onApplyRecommendedPair(stepIndex, rec.worker, rec.machine);
@@ -214,10 +209,21 @@ export const ProcessDetailPanel: React.FC<ProcessDetailPanelProps> = ({
       {/* Process Header Summary Banner */}
       <div className="px-3.5 py-2.5 bg-gradient-to-r from-slate-50 to-blue-50/40 border-b border-slate-100 flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
-              {phaseDef ? phaseDef.name.split(':')[0] : `Phase ${phaseNumber}`}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+              #{stepIndex + 1}
             </span>
+            {proc.componentTag && (
+              <span
+                className={`text-[10px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
+                  proc.componentTag.includes('+')
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-indigo-100 text-indigo-900 border-indigo-200'
+                }`}
+              >
+                {proc.componentTag.includes('+') ? `🔗 ${proc.componentTag}` : `[${proc.componentTag}]`}
+              </span>
+            )}
             <span
               className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 ${
                 proc.category === '가공'
@@ -324,36 +330,73 @@ export const ProcessDetailPanel: React.FC<ProcessDetailPanelProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">공정 구분</label>
-                  <select
-                    value={proc.category}
-                    onChange={(e) =>
-                      onUpdateProcessField(stepIndex, 'category', e.target.value as ProcessCategory)
-                    }
-                    className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-800 bg-white"
-                  >
-                    <option value="가공">가공</option>
-                    <option value="연마">연마</option>
-                    <option value="품질">품질</option>
-                    <option value="외주">외주</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">공정 구분</label>
+                <select
+                  value={proc.category}
+                  onChange={(e) =>
+                    onUpdateProcessField(stepIndex, 'category', e.target.value as ProcessCategory)
+                  }
+                  className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-800 bg-white"
+                >
+                  <option value="가공">가공</option>
+                  <option value="연마">연마</option>
+                  <option value="품질">품질</option>
+                  <option value="외주">외주</option>
+                </select>
+              </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Phase (단계)</label>
-                  <select
-                    value={proc.phaseId || (phases[0] && phases[0].id) || ''}
-                    onChange={(e) => onUpdateProcessField(stepIndex, 'phaseId', e.target.value)}
-                    className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg text-slate-800 bg-white font-medium"
+              {/* 부품/트랙 태그 (componentTag) 설정 */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>부품 트랙 (멀티 트랙 / 조립 태그)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prevTag = stepIndex > 0 ? currentProcesses[stepIndex - 1]?.componentTag : '';
+                      const parsed = parseComponentTag(proc.name, '', prevTag);
+                      if (parsed) onUpdateProcessField(stepIndex, 'componentTag', parsed);
+                    }}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded cursor-pointer transition"
+                    title="공정명에서 _부품명 또는 [부품명] 자동 파싱"
                   >
-                    {phases.map((p, pIdx) => (
-                      <option key={p.id} value={p.id}>
-                        Phase {pIdx + 1}: {p.name.split(':')[0]}
-                      </option>
-                    ))}
-                  </select>
+                    공정명 자동 추출
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={proc.componentTag || ''}
+                  onChange={(e) => onUpdateProcessField(stepIndex, 'componentTag', e.target.value)}
+                  placeholder="예: Base, Head, Block, Pipe, Block+Pipe"
+                  className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {PRESET_COMPONENT_TAGS.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => onUpdateProcessField(stepIndex, 'componentTag', tag)}
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                        proc.componentTag === tag
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                  {proc.componentTag && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateProcessField(stepIndex, 'componentTag', '')}
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"
+                    >
+                      초기화
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

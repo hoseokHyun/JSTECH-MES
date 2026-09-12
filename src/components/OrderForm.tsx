@@ -60,9 +60,7 @@ import { extractSerialBase, formatSerialRange, getIndividualSerialNo, getSerialN
 import {
   StepAssignment,
   ResourceBusyInfo,
-  ConflictItem,
-  PhaseDefinition,
-  PhaseGroup
+  ConflictItem
 } from './order-form/orderFormTypes';
 import { OrderFormHeader } from './order-form/OrderFormHeader';
 import { ProcessGridPanel } from './order-form/ProcessGridPanel';
@@ -98,50 +96,6 @@ interface OrderFormProps {
   onOpenCopyTypeModal?: () => void;
   onOrderCreatedSuccess?: () => void;
 }
-
-const INITIAL_PHASE_DEFS: PhaseDefinition[] = [
-  {
-    id: 'phase_1',
-    name: '소재 준비 및 1차 황삭/밀링 가공',
-    titleSuffix: '소재 준비 및 1차 황삭',
-    defaultDesc: '소재 입고 검사, 소재 가공, 황삭 및 1차 밀링 가공 구간',
-    icon: '📦',
-    badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
-  },
-  {
-    id: 'phase_2',
-    name: '열처리, 1차 연마 및 평면도 가공',
-    titleSuffix: '열처리 및 1차 연마',
-    defaultDesc: '열처리(서브제로), 평면 연마, 기준면 형성 및 중간 CMM 검사 구간',
-    icon: '⚙️',
-    badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-  },
-  {
-    id: 'phase_3',
-    name: '초정밀 립(LIP) 가공 및 유로/홈 정밀 가공',
-    titleSuffix: '초정밀 립/유로 정밀가공',
-    defaultDesc: '슬롯다이 립(LIP) 정밀연마, 매니폴드 유로 가공 및 고정밀 방전 가공 구간',
-    icon: '✨',
-    badgeColor: 'bg-purple-100 text-purple-900 border-purple-300',
-  },
-  {
-    id: 'phase_4',
-    name: '최종 CMM 검사, 세척, 조립 및 출하 포장',
-    titleSuffix: '최종검사 및 조립/출하',
-    defaultDesc: '초정밀 3차원 측정(CMM), 클린룸 세척, 최종 조립 및 방청 포장 구간',
-    icon: '📐',
-    badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
-  },
-];
-
-const CUSTOM_INITIAL_PHASE: PhaseDefinition = {
-  id: 'phase_custom_1',
-  name: '사용자 정의 기본 공정 구간',
-  titleSuffix: '사용자 정의 공정',
-  defaultDesc: '자유롭게 세부 공정을 추가하고 설비와 담당자를 지정할 수 있습니다.',
-  icon: '🛠️',
-  badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
-};
 
 export const OrderForm: React.FC<OrderFormProps> = ({
   productTypes,
@@ -235,15 +189,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [dueDate, setDueDate] = useState<string>(() => getDefaultDueDateString());
   const [specialNotes, setSpecialNotes] = useState('공정 간 인수인계 철저히 할 것!');
 
-  // Routing and Phase States
-  const [phases, setPhases] = useState<PhaseDefinition[]>(INITIAL_PHASE_DEFS);
-  const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({
-    phase_1: true,
-    phase_2: true,
-    phase_3: true,
-    phase_4: true,
-  });
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  // Routing and Process States
   const [currentProcesses, setCurrentProcesses] = useState<ProcessStep[]>([]);
   const [stepAssignments, setStepAssignments] = useState<Record<number, StepAssignment>>({});
   const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
@@ -257,7 +203,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [batchMachine, setBatchMachine] = useState<string>('');
   const [batchWorker, setBatchWorker] = useState<string>('');
   const [batchDuration, setBatchDuration] = useState<string>('');
-  const [batchTargetPhase, setBatchTargetPhase] = useState<string>('phase_1');
   const [batchSuccessMessage, setBatchSuccessMessage] = useState<string>('');
 
   // AI Recommendation Engine Integration States
@@ -274,18 +219,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [showCreatedOrderModal, setShowCreatedOrderModal] = useState(false);
   const [createdOrderForTraveler, setCreatedOrderForTraveler] = useState<Order | null>(null);
 
-  const [isAddPhaseModalOpen, setIsAddPhaseModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [newPhaseName, setNewPhaseName] = useState('');
-  const [newPhaseDesc, setNewPhaseDesc] = useState('');
-  const [newPhaseIcon, setNewPhaseIcon] = useState('⚙️');
-  const [newPhaseColor, setNewPhaseColor] = useState('bg-blue-100 text-blue-900 border-blue-300');
-
-  const [deletePhaseTarget, setDeletePhaseTarget] = useState<{
-    phase: { id: string; name: string };
-    stepsCount: number;
-  } | null>(null);
-  const [deleteTargetPhaseId, setDeleteTargetPhaseId] = useState<string>('');
 
   const [pendingConflicts, setPendingConflicts] = useState<ConflictItem[] | null>(null);
   const [pendingSubmitPayload, setPendingSubmitPayload] = useState<{
@@ -294,34 +228,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   } | null>(null);
 
   const skipTypeResetRef = useRef(false);
-
-  // Helper to ensure steps have phaseId
-  const ensureStepsWithPhases = (steps: ProcessStep[], phaseList: PhaseDefinition[] = phases) => {
-    if (!steps || steps.length === 0) return [];
-    const total = steps.length;
-    const pCount = Math.max(1, phaseList.length);
-
-    // If there is only 1 phase, all steps must belong to this single phase without arbitrary splitting
-    if (pCount === 1) {
-      const singlePhaseId = phaseList[0].id;
-      return steps.map((step) => ({
-        ...step,
-        phaseId: singlePhaseId,
-      }));
-    }
-
-    return steps.map((step, idx) => {
-      if (step.phaseId && phaseList.some((p) => p.id === step.phaseId)) {
-        return step;
-      }
-      const targetPhaseIdx = Math.min(Math.floor((idx / total) * pCount), pCount - 1);
-      const assignedPhase = phaseList[targetPhaseIdx] || phaseList[0];
-      return {
-        ...step,
-        phaseId: assignedPhase.id,
-      };
-    });
-  };
 
   // Initialize stepAssignments
   const initStepAssignments = (steps: ProcessStep[]) => {
@@ -344,23 +250,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
     if (typeId === 'TYPE_CUSTOM') {
       setIsCustomMode(true);
-      setPhases([CUSTOM_INITIAL_PHASE]);
-      setExpandedPhases({ phase_custom_1: true });
       setCurrentProcesses([]);
       setStepAssignments({});
     } else if (productTypes[typeId]?.processes) {
       setIsCustomMode(false);
-      setPhases(INITIAL_PHASE_DEFS);
       const rawSteps = productTypes[typeId].processes.map((p) => ({ ...p }));
-      const stepsWithPhases = ensureStepsWithPhases(rawSteps, INITIAL_PHASE_DEFS);
-      setCurrentProcesses(stepsWithPhases);
-      initStepAssignments(stepsWithPhases);
-      setExpandedPhases({
-        phase_1: true,
-        phase_2: true,
-        phase_3: true,
-        phase_4: true,
-      });
+      setCurrentProcesses(rawSteps);
+      initStepAssignments(rawSteps);
     }
   }, [typeId, productTypes]);
 
@@ -515,50 +411,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
     return list;
   }, [approvedOperators, usersList, busyWorkersMap]);
-
-  // Phase grouping calculation
-  const phaseGroups: PhaseGroup[] = useMemo(() => {
-    return phases.map((phaseDef, pIdx) => {
-      const phaseSteps = currentProcesses
-        .map((proc, originalIndex) => ({ proc, originalIndex }))
-        .filter(({ proc }) => proc.phaseId === phaseDef.id);
-
-      let totalHours = 0;
-      let assignedMachineCount = 0;
-      let assignedWorkerCount = 0;
-
-      phaseSteps.forEach(({ proc, originalIndex }) => {
-        totalHours += proc.estimatedHours || 0;
-        const assign = stepAssignments[originalIndex];
-        const mach = assign !== undefined ? assign.machine : (proc.assignedMachine || '');
-        const work = assign !== undefined ? assign.worker : (proc.worker || proc.assignedWorker || '');
-        if (mach) assignedMachineCount++;
-        if (work) assignedWorkerCount++;
-      });
-
-      return {
-        id: phaseDef.id,
-        phaseNumber: pIdx + 1,
-        title: phaseDef.name,
-        titleSuffix: phaseDef.titleSuffix,
-        description: phaseDef.defaultDesc,
-        icon: phaseDef.icon,
-        badgeColor: phaseDef.badgeColor,
-        steps: phaseSteps,
-        totalHours: Math.round(totalHours * 10) / 10,
-        assignedMachineCount,
-        assignedWorkerCount,
-        unassignedMachineCount: phaseSteps.length - assignedMachineCount,
-        unassignedWorkerCount: phaseSteps.length - assignedWorkerCount,
-        startStep: phaseSteps.length > 0 ? phaseSteps[0].originalIndex + 1 : 0,
-        endStep: phaseSteps.length > 0 ? phaseSteps[phaseSteps.length - 1].originalIndex + 1 : 0,
-        startStepFormatted: phaseSteps.length > 0 ? String(phaseSteps[0].originalIndex + 1).padStart(2, '0') : '00',
-        endStepFormatted: phaseSteps.length > 0 ? String(phaseSteps[phaseSteps.length - 1].originalIndex + 1).padStart(2, '0') : '00',
-        rangeText: phaseSteps.length > 0 ? `#${String(phaseSteps[0].originalIndex + 1).padStart(2, '0')} ~ #${String(phaseSteps[phaseSteps.length - 1].originalIndex + 1).padStart(2, '0')}` : '공정 없음',
-        matchingCount: phaseSteps.length,
-      };
-    });
-  }, [phases, currentProcesses, stepAssignments]);
 
   // Overall Completion Rates
   const {
@@ -863,18 +715,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setTimeout(() => setBatchSuccessMessage(''), 3000);
   };
 
-  const handleBatchMovePhases = () => {
-    if (selectedStepIndices.size === 0 || !batchTargetPhase) return;
-    setIsCustomMode(true);
-    setCurrentProcesses((prev) =>
-      prev.map((proc, idx) =>
-        selectedStepIndices.has(idx) ? { ...proc, phaseId: batchTargetPhase } : proc
-      )
-    );
-    setBatchSuccessMessage(`✨ 선택된 ${selectedStepIndices.size}개 공정이 '${batchTargetPhase}' 구간으로 이동되었습니다.`);
-    setTimeout(() => setBatchSuccessMessage(''), 3000);
-  };
-
   const handleBatchDeleteSelectedSteps = () => {
     if (selectedStepIndices.size === 0) return;
     if (!confirm(`선택한 ${selectedStepIndices.size}개 공정을 목록에서 삭제하시겠습니까?`)) return;
@@ -904,9 +744,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setActiveStepIndex(newProcesses.length > 0 ? 0 : null);
   };
 
-  const handleAddProcess = (category: ProcessCategory = '가공', targetPhaseId?: string) => {
+  const handleAddProcess = (category: ProcessCategory = '가공') => {
     setIsCustomMode(true);
-    const targetPhase = targetPhaseId || selectedPhaseId || phases[0]?.id || 'phase_1';
     const newIndex = currentProcesses.length;
     const newCode = `OP${String(newIndex + 1).padStart(3, '0')}`;
 
@@ -915,7 +754,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       name: `신규 ${category} 공정`,
       code: newCode,
       category,
-      phaseId: targetPhase,
       durationHours: 1.0,
       estimatedHours: 1.0,
       assignedMachine: '',
@@ -976,125 +814,17 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setActiveStepIndex(newIndex);
   };
 
-  // Phase Management Handlers
-  const handleAddPhaseSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPhaseName.trim()) {
-      alert('Phase 명칭을 입력해주세요.');
-      return;
-    }
-
-    const newId = `phase_custom_${Date.now()}`;
-    const newPhase: PhaseDefinition = {
-      id: newId,
-      name: newPhaseName.trim(),
-      titleSuffix: newPhaseName.trim(),
-      defaultDesc: newPhaseDesc.trim() || '사용자 정의 공정 구간',
-      icon: newPhaseIcon,
-      badgeColor: newPhaseColor,
-    };
-
-    setPhases((prev) => [...prev, newPhase]);
-    setExpandedPhases((prev) => ({ ...prev, [newId]: true }));
-    setIsAddPhaseModalOpen(false);
-    setNewPhaseName('');
-    setNewPhaseDesc('');
-  };
-
-  const handleMovePhaseUp = (idx: number) => {
-    if (idx <= 0) return;
-    setPhases((prev) => {
-      const next = [...prev];
-      const temp = next[idx];
-      next[idx] = next[idx - 1];
-      next[idx - 1] = temp;
-      return next;
-    });
-  };
-
-  const handleMovePhaseDown = (idx: number) => {
-    if (idx >= phases.length - 1) return;
-    setPhases((prev) => {
-      const next = [...prev];
-      const temp = next[idx];
-      next[idx] = next[idx + 1];
-      next[idx + 1] = temp;
-      return next;
-    });
-  };
-
-  const handleRequestDeletePhase = (phase: { id: string; name: string }, stepsCount: number) => {
-    if (phases.length <= 1) {
-      alert('최소 1개 이상의 Phase 구간이 유지되어야 합니다.');
-      return;
-    }
-
-    if (stepsCount === 0) {
-      setPhases((prev) => prev.filter((p) => p.id !== phase.id));
-      return;
-    }
-
-    const fallbackPhase = phases.find((p) => p.id !== phase.id)?.id || '';
-    setDeleteTargetPhaseId(fallbackPhase);
-    setDeletePhaseTarget({ phase, stepsCount });
-  };
-
-  const executeMigrateStepsAndDeletePhase = () => {
-    if (!deletePhaseTarget || !deleteTargetPhaseId) return;
-    setIsCustomMode(true);
-    setCurrentProcesses((prev) =>
-      prev.map((proc) =>
-        proc.phaseId === deletePhaseTarget.phase.id
-          ? { ...proc, phaseId: deleteTargetPhaseId }
-          : proc
-      )
-    );
-    setPhases((prev) => prev.filter((p) => p.id !== deletePhaseTarget.phase.id));
-    setDeletePhaseTarget(null);
-  };
-
-  const executeDeletePhaseAndAllSteps = () => {
-    if (!deletePhaseTarget) return;
-    setIsCustomMode(true);
-    const newProcesses = currentProcesses.filter(
-      (proc) => proc.phaseId !== deletePhaseTarget.phase.id
-    );
-    const newAssignments: Record<number, StepAssignment> = {};
-    newProcesses.forEach((_, idx) => {
-      newAssignments[idx] = { machine: MCT_MACHINES[0], worker: approvedOperators[0] || '김현수' };
-    });
-    setCurrentProcesses(newProcesses);
-    setStepAssignments(newAssignments);
-    setPhases((prev) => prev.filter((p) => p.id !== deletePhaseTarget.phase.id));
-    setDeletePhaseTarget(null);
-  };
-
-  // Reset Process Design & Phase Groups Handler
+  // Reset Process Design Handler
   const handleExecuteResetProcessDesign = (options: ResetProcessOptions) => {
     const isCustom = typeId === 'TYPE_CUSTOM';
-    const defaultPhases: PhaseDefinition[] = isCustom ? [CUSTOM_INITIAL_PHASE] : INITIAL_PHASE_DEFS;
-
     const rawTemplateSteps: ProcessStep[] =
       !isCustom && productTypes[typeId]?.processes
         ? productTypes[typeId].processes.map((p) => ({ ...p }))
         : [];
 
-    let targetPhases = phases;
-    if (options.resetPhases) {
-      targetPhases = defaultPhases;
-      setPhases(defaultPhases);
-      setExpandedPhases(
-        isCustom
-          ? { phase_custom_1: true }
-          : { phase_1: true, phase_2: true, phase_3: true, phase_4: true }
-      );
-      setSelectedPhaseId(null);
-    }
-
     let workingSteps: ProcessStep[] = [];
     if (options.resetProcesses) {
-      const stepsWithPhases = ensureStepsWithPhases(rawTemplateSteps, targetPhases);
-      workingSteps = stepsWithPhases.map((step) => ({
+      workingSteps = rawTemplateSteps.map((step) => ({
         ...step,
         assignedMachine: options.resetMachines ? '' : step.assignedMachine || '',
         worker: options.resetWorkers ? '' : step.worker || step.assignedWorker || '',
@@ -1102,8 +832,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       }));
       setIsCustomMode(false);
     } else {
-      const remapped = ensureStepsWithPhases(currentProcesses, targetPhases);
-      workingSteps = remapped.map((step) => ({
+      workingSteps = currentProcesses.map((step) => ({
         ...step,
         assignedMachine: options.resetMachines ? '' : step.assignedMachine || '',
         worker: options.resetWorkers ? '' : step.worker || step.assignedWorker || '',
@@ -1153,76 +882,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         ? productTypes[sourceOrder.typeId].processes.map((p) => ({ ...p }))
         : [];
 
-    // 1. Resolve Target Phases accurately preserving the source order's exact phase architecture
-    let targetPhases: PhaseDefinition[] = [];
-
-    if (sourceOrder.customPhases && sourceOrder.customPhases.length > 0) {
-      // Direct preservation if source order has customPhases
-      targetPhases = sourceOrder.customPhases.map((p) => ({ ...p }));
-    } else {
-      // For existing / legacy / archived orders without customPhases explicitly saved:
-      const usedPhaseIds = Array.from(
-        new Set(rawProcesses.map((p) => p.phaseId).filter(Boolean) as string[])
-      );
-
-      // If source was created with TYPE_CUSTOM or only 1 phase was used (or no phase was assigned)
-      if (sourceOrder.typeId === 'TYPE_CUSTOM' || usedPhaseIds.length <= 1) {
-        if (usedPhaseIds.length === 1) {
-          const usedId = usedPhaseIds[0];
-          const matchedDef =
-            INITIAL_PHASE_DEFS.find((p) => p.id === usedId) ||
-            (usedId === CUSTOM_INITIAL_PHASE.id ? CUSTOM_INITIAL_PHASE : null);
-
-          if (matchedDef) {
-            targetPhases = [{ ...matchedDef }];
-          } else {
-            targetPhases = [
-              {
-                id: usedId,
-                name: '사용자 정의 기본 공정 구간',
-                titleSuffix: '사용자 정의 공정',
-                defaultDesc: '공정 및 설비/담당자가 지정된 공정 구간입니다.',
-                icon: '🛠️',
-                badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
-              },
-            ];
-          }
-        } else {
-          // Default single phase for custom projects created with 1 phase
-          targetPhases = [{ ...CUSTOM_INITIAL_PHASE }];
-        }
-      } else {
-        // Multiple phases were used by processes
-        const matchedDefs: PhaseDefinition[] = [];
-        usedPhaseIds.forEach((uId, uIdx) => {
-          const found = INITIAL_PHASE_DEFS.find((p) => p.id === uId);
-          if (found) {
-            matchedDefs.push({ ...found });
-          } else {
-            matchedDefs.push({
-              id: uId,
-              name: `사용자 정의 공정 구간 ${uIdx + 1}`,
-              titleSuffix: `구간 ${uIdx + 1}`,
-              defaultDesc: '공정 구간',
-              icon: '⚙️',
-              badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
-            });
-          }
-        });
-        targetPhases = matchedDefs.length > 0 ? matchedDefs : INITIAL_PHASE_DEFS;
-      }
-    }
-
-    // Set phases and open expansion states to display all copied phases
-    setPhases(targetPhases);
-    const expMap: Record<string, boolean> = {};
-    targetPhases.forEach((p) => {
-      expMap[p.id] = true;
-    });
-    setExpandedPhases(expMap);
-
-    // Map steps strictly using targetPhases (ensuring 1-phase orders remain 1-phase with all steps intact)
-    const steps = ensureStepsWithPhases(rawProcesses, targetPhases);
+    const steps = rawProcesses.map((p) => ({ ...p }));
     setCurrentProcesses(steps);
     setIsCustomMode(true);
 
@@ -1319,7 +979,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       mctMachine: stepAssignments[0]?.machine || MCT_MACHINES[0],
       memo: (memo || specialNotes || '공정 간 인수인계 철저히 할 것!').trim(),
       customProcesses: finalProcesses,
-      customPhases: phases, // 작성한 Phase 구조 보존
       customer: customer.trim() || '고객사 지정',
       poNumber: poNumber.trim() || finalPjtNo,
       partName: partName.trim() || finalPjtName,
@@ -1568,25 +1227,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             onSetActiveStepIndex={setActiveStepIndex}
             routingSearchTerm={routingSearchTerm}
             setRoutingSearchTerm={setRoutingSearchTerm}
-            selectedPhaseId={selectedPhaseId}
-            onSelectPhase={setSelectedPhaseId}
-            phases={phases}
-            phaseGroups={phaseGroups}
-            expandedPhases={expandedPhases}
-            onTogglePhaseExpand={(id) =>
-              setExpandedPhases((prev) => ({ ...prev, [id]: !prev[id] }))
-            }
-            onExpandAllPhases={() => {
-              const all: Record<string, boolean> = {};
-              phases.forEach((p) => (all[p.id] = true));
-              setExpandedPhases(all);
-            }}
-            onCollapseAllPhases={() => setExpandedPhases({})}
-            onOpenAddPhaseModal={() => setIsAddPhaseModalOpen(true)}
             onOpenResetModal={() => setIsResetModalOpen(true)}
-            onRequestDeletePhase={handleRequestDeletePhase}
-            onMovePhaseUp={handleMovePhaseUp}
-            onMovePhaseDown={handleMovePhaseDown}
             equipmentOptions={equipmentOptions}
             operatorOptions={operatorOptions}
             busyMachinesMap={busyMachinesMap}
@@ -1605,10 +1246,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             setBatchWorker={setBatchWorker}
             batchDuration={batchDuration}
             setBatchDuration={setBatchDuration}
-            batchTargetPhase={batchTargetPhase}
-            setBatchTargetPhase={setBatchTargetPhase}
             onApplyBatchAssignment={handleApplyBatchAssignment}
-            onBatchMovePhases={handleBatchMovePhases}
             filterOnlyUnassigned={filterOnlyUnassigned}
             setFilterOnlyUnassigned={setFilterOnlyUnassigned}
             filterOnlyConflicts={filterOnlyConflicts}
@@ -1630,7 +1268,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             stepIndex={activeStepIndex}
             currentProcesses={currentProcesses}
             stepAssignments={stepAssignments}
-            phases={phases}
             equipmentOptions={equipmentOptions}
             operatorOptions={operatorOptions}
             busyMachinesMap={busyMachinesMap}
@@ -1662,129 +1299,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       {/* ------------------------------------------------------------- */}
       {/* 3. MODALS & SAFETY CONFIRMATION DIALOGS */}
       {/* ------------------------------------------------------------- */}
-
-      {/* ADD PHASE MODAL */}
-      {isAddPhaseModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
-              <h3 className="font-extrabold text-sm flex items-center gap-2">
-                <FolderPlus className="w-4 h-4" />
-                <span>새로운 공정 구간(Phase) 추가</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsAddPhaseModalOpen(false)}
-                className="text-white/80 hover:text-white p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddPhaseSubmit} className="p-4 space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Phase 명칭 *</label>
-                <input
-                  type="text"
-                  value={newPhaseName}
-                  onChange={(e) => setNewPhaseName(e.target.value)}
-                  placeholder="예: Phase 5: 특수 코팅 및 베벨링 가공"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">구간 상세 설명</label>
-                <input
-                  type="text"
-                  value={newPhaseDesc}
-                  onChange={(e) => setNewPhaseDesc(e.target.value)}
-                  placeholder="예: 코팅 전처리 및 표면 정밀 조도 측정 구간"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddPhaseModalOpen(false)}
-                  className="px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-lg shadow-xs"
-                >
-                  Phase 생성
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE PHASE SAFETY MODAL */}
-      {deletePhaseTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-rose-200 animate-in fade-in zoom-in-95">
-            <div className="p-4 bg-rose-600 text-white flex justify-between items-center">
-              <h3 className="font-extrabold text-sm flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>공정 구간(Phase) 삭제 확인</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setDeletePhaseTarget(null)}
-                className="text-white/80 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 text-xs">
-              <p className="text-slate-700">
-                '{deletePhaseTarget.phase.name}' 구간에 소속된 {deletePhaseTarget.stepsCount}개 공정을 다른 구간으로 이동시키시겠습니까?
-              </p>
-
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-600">이동 대상 Phase:</span>
-                <select
-                  value={deleteTargetPhaseId}
-                  onChange={(e) => setDeleteTargetPhaseId(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded-lg font-bold"
-                >
-                  {phases
-                    .filter((p) => p.id !== deletePhaseTarget.phase.id)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={executeMigrateStepsAndDeletePhase}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black"
-                >
-                  공정 이동 후 구간 삭제
-                </button>
-                <button
-                  type="button"
-                  onClick={executeDeletePhaseAndAllSteps}
-                  className="w-full py-2 bg-white hover:bg-rose-50 border border-rose-300 text-rose-700 rounded-lg font-bold"
-                >
-                  소속 공정도 함께 영구 삭제
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* CONFLICT WARNING CONFIRMATION MODAL */}
       {pendingConflicts && pendingSubmitPayload && (
@@ -2013,7 +1527,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           currentProcesses={currentProcesses}
           stepAssignments={stepAssignments}
           selectedStepIndices={selectedStepIndices}
-          phases={phases}
           availableMachines={equipmentOptions.map((o) => o.value)}
           availableOperators={operatorOptions.map((o) => o.value)}
           orderContext={orderContext}
@@ -2026,13 +1539,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         />
       )}
 
-      {/* PROCESS DESIGN & PHASE RESET MODAL */}
+      {/* PROCESS DESIGN RESET MODAL */}
       {isResetModalOpen && (
         <ResetProcessDesignModal
           isOpen={isResetModalOpen}
           onClose={() => setIsResetModalOpen(false)}
           onConfirmReset={handleExecuteResetProcessDesign}
-          currentPhasesCount={phases.length}
           currentProcessesCount={currentProcesses.length}
           assignedMachineCount={assignedMachCount}
           assignedWorkerCount={assignedWorkCount}

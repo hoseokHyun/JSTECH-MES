@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
               <UserIcon className="w-3.5 h-3.5 text-[#00C4B4]" />
               <span className="text-slate-800 dark:text-slate-200 font-bold">{currentUser.name}</span>
               {(() => {
-                const isSysAdmin = currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자' || currentUser.email === 'noworriesmate01@gmail.com';
+                const isSysAdmin = currentUser.role === 'ADMIN' || currentUser.department === '시스템 관리자' || currentUser.email === 'noworriesmate01@gmail.com' || currentUser.email?.toLowerCase().includes('noworries');
                 const dept = currentUser.department || (isSysAdmin ? '시스템 관리자' : '가공팀');
 
                 if (isSysAdmin) {

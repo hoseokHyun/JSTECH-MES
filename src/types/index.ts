@@ -50,6 +50,7 @@ export interface ProcessStep {
   code?: string;
   description?: string;
   estimatedHours?: number;
+  componentTag?: string; // 부품/트랙 태그 (예: 'Base', 'Head', 'Block', 'Pipe', 'Block+Pipe', 'Block+Pipe+Head', 'Block+Pipe+Head+Base')
 }
 
 export interface ProductType {
@@ -222,6 +223,7 @@ export interface ScheduledTaskItem {
   machine: string;
   processIndex: number;
   totalProcessesInOrder: number;
+  componentTag?: string; // 부품/트랙 태그 (예: 'Base', 'Head', 'Block', 'Pipe', 'Block+Pipe')
   pauseHistory?: PauseLog[];
   pauseReason?: string;
   delayMinutes?: number;

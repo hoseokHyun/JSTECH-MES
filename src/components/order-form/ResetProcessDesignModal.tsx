@@ -25,7 +25,6 @@ interface ResetProcessDesignModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirmReset: (options: ResetProcessOptions) => void;
-  currentPhasesCount: number;
   currentProcessesCount: number;
   assignedMachineCount: number;
   assignedWorkerCount: number;
@@ -36,7 +35,6 @@ export const ResetProcessDesignModal: React.FC<ResetProcessDesignModalProps> = (
   isOpen,
   onClose,
   onConfirmReset,
-  currentPhasesCount,
   currentProcessesCount,
   assignedMachineCount,
   assignedWorkerCount,

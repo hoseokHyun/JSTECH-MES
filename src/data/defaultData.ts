@@ -434,6 +434,57 @@ export const DEFAULT_PRODUCT_TYPES: Record<string, ProductType> = {
       { name: "광학검사", category: "품질", durationHours: 1.0 },
       { name: "포장 및 납품준비", category: "품질", durationHours: 1.0 }
     ]
+  },
+  "TYPE_N2_NOZZLE": {
+    id: "TYPE_N2_NOZZLE",
+    isReference: true,
+    name: "N2 Nozzle",
+    processes: [
+      // [Base 트랙]
+      { name: "소재 입고_Base", category: "외주", durationHours: 1.0, componentTag: "Base" },
+      { name: "MCT 형상 가공_Base", category: "가공", durationHours: 4.0, componentTag: "Base" },
+      { name: "MCT 홀,탭가공_Base", category: "가공", durationHours: 2.0, componentTag: "Base" },
+      { name: "디버링_Base", category: "가공", durationHours: 1.0, componentTag: "Base" },
+      { name: "전해연마_Base", category: "연마", durationHours: 3.0, componentTag: "Base" },
+
+      // [Head 트랙]
+      { name: "CNC 가공_Head", category: "가공", durationHours: 3.0, componentTag: "Head" },
+      { name: "MCT 홈,탭가공_Head", category: "가공", durationHours: 2.5, componentTag: "Head" },
+      { name: "방전가공_Head", category: "가공", durationHours: 4.0, componentTag: "Head" },
+      { name: "솔세척_Head", category: "품질", durationHours: 1.0, componentTag: "Head" },
+      { name: "초음파세척_Head", category: "품질", durationHours: 1.5, componentTag: "Head" },
+      { name: "화학연마_Head", category: "연마", durationHours: 2.0, componentTag: "Head" },
+      { name: "수압검사_Head", category: "품질", durationHours: 1.0, componentTag: "Head" },
+      { name: "솔세정_Head", category: "품질", durationHours: 0.5, componentTag: "Head" },
+      { name: "고압세척_Head", category: "품질", durationHours: 1.0, componentTag: "Head" },
+
+      // [Block 트랙]
+      { name: "MCT 형상가공_Block", category: "가공", durationHours: 2.0, componentTag: "Block" },
+      { name: "초음파세척_Block", category: "품질", durationHours: 1.0, componentTag: "Block" },
+
+      // [Pipe 트랙]
+      { name: "원소재입고_Pipe", category: "외주", durationHours: 1.0, componentTag: "Pipe" },
+      { name: "성형작업_Pipe", category: "가공", durationHours: 2.0, componentTag: "Pipe" },
+      { name: "와이어컷팅_Pipe", category: "가공", durationHours: 3.0, componentTag: "Pipe" },
+      { name: "그라인더절단_Pipe", category: "가공", durationHours: 1.5, componentTag: "Pipe" },
+      { name: "MCT단면가공_Pipe", category: "가공", durationHours: 2.0, componentTag: "Pipe" },
+      { name: "초음파세척_Pipe", category: "품질", durationHours: 1.0, componentTag: "Pipe" },
+
+      // [합류 및 조립 공정]
+      { name: "레이저용접(Block+Pipe)", category: "가공", durationHours: 2.0, componentTag: "Block+Pipe" },
+      { name: "화학연마(Block+Pipe)", category: "연마", durationHours: 2.0, componentTag: "Block+Pipe" },
+      { name: "레이저용접(+Head)", category: "가공", durationHours: 2.5, componentTag: "Block+Pipe+Head" },
+      { name: "전해연마액세정(+Head)", category: "연마", durationHours: 1.5, componentTag: "Block+Pipe+Head" },
+      { name: "수압검사(+Head)", category: "품질", durationHours: 1.0, componentTag: "Block+Pipe+Head" },
+      { name: "레이저용접(+Base)", category: "가공", durationHours: 2.5, componentTag: "Block+Pipe+Head+Base" },
+      { name: "고압세척", category: "품질", durationHours: 1.0, componentTag: "Block+Pipe+Head+Base" },
+      { name: "평면도보정", category: "연마", durationHours: 2.0, componentTag: "Block+Pipe+Head+Base" },
+      { name: "부품조립", category: "품질", durationHours: 3.0, componentTag: "Block+Pipe+Head+Base" },
+      { name: "풍속테스트", category: "품질", durationHours: 1.5, componentTag: "Block+Pipe+Head+Base" },
+      { name: "에어세정", category: "품질", durationHours: 0.5, componentTag: "Block+Pipe+Head+Base" },
+      { name: "마스킹부착", category: "품질", durationHours: 1.0, componentTag: "Block+Pipe+Head+Base" },
+      { name: "포장", category: "품질", durationHours: 1.0, componentTag: "Block+Pipe+Head+Base" }
+    ]
   }
 };
 

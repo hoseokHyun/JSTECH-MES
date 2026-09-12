@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { ProcessStep, ProcessCategory, Order, ProcessProgressMap, User } from '../../types';
-import { StepAssignment, ResourceBusyInfo, PhaseDefinition } from './orderFormTypes';
+import { StepAssignment, ResourceBusyInfo } from './orderFormTypes';
 import {
   getProcessPairRecommendations,
   PairRecommendationItem,
@@ -46,7 +46,6 @@ interface AiBatchRecommendationModalProps {
   currentProcesses: ProcessStep[];
   stepAssignments: Record<number, StepAssignment>;
   selectedStepIndices: Set<number>;
-  phases: PhaseDefinition[];
   busyMachinesMap: Map<string, ResourceBusyInfo>;
   busyWorkersMap: Map<string, ResourceBusyInfo>;
   availableMachines: string[];
@@ -64,7 +63,6 @@ type ScopeFilterType =
   | 'UNASSIGNED_ANY'
   | 'UNASSIGNED_MACHINE'
   | 'UNASSIGNED_WORKER'
-  | 'CURRENT_PHASE'
   | 'CONFLICT_ONLY';
 
 export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProps> = ({
@@ -73,7 +71,6 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
   currentProcesses,
   stepAssignments,
   selectedStepIndices,
-  phases,
   busyMachinesMap,
   busyWorkersMap,
   availableMachines,
@@ -88,7 +85,6 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
   const [scopeFilter, setScopeFilter] = useState<ScopeFilterType>(
     selectedStepIndices.size > 0 ? 'SELECTED' : 'UNASSIGNED_ANY'
   );
-  const [selectedPhaseFilter, setSelectedPhaseFilter] = useState<string>(phases[0]?.id || '');
 
   // Protection & Confidence Settings
   const [protectExisting, setProtectExisting] = useState<boolean>(true);
@@ -132,9 +128,6 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
         case 'UNASSIGNED_WORKER':
           inScope = isWorkUnassigned;
           break;
-        case 'CURRENT_PHASE':
-          inScope = proc.phaseId === selectedPhaseFilter;
-          break;
         case 'CONFLICT_ONLY':
           inScope = hasConflict;
           break;
@@ -151,7 +144,7 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
         isWorkUnassigned,
       };
     });
-  }, [currentProcesses, stepAssignments, selectedStepIndices, scopeFilter, selectedPhaseFilter, busyMachinesMap, busyWorkersMap]);
+  }, [currentProcesses, stepAssignments, selectedStepIndices, scopeFilter, busyMachinesMap, busyWorkersMap]);
 
   // Compute AI Recommendations for all in-scope steps
   const previewItems = useMemo(() => {
@@ -229,7 +222,7 @@ export const AiBatchRecommendationModal: React.FC<AiBatchRecommendationModalProp
       }
     });
     setIncludedStepIndices(defaultIncluded);
-  }, [scopeFilter, protectExisting, minConfidenceScore, selectedPhaseFilter]);
+  }, [scopeFilter, protectExisting, minConfidenceScore]);
 
   if (!isOpen) return null;
 

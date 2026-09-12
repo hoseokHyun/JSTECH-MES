@@ -453,19 +453,21 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
     role: 'USER',
     label: '영업팀',
     badgeClass: 'bg-sky-100 text-sky-800 border-sky-300',
-    desc: '영업 업무 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
+    desc: '영업 업무 모니터링 - 대시보드, 공정 분석, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
     icon: '💼',
-    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
     defaultEdits: {
       dashboard: false,
+      'actual-analysis': false,
       calendar: false,
       timeline: false,
       equipment: false,
     },
     permissions: {
-      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      allowedMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
       menuEdits: {
         dashboard: false,
+        'actual-analysis': false,
         calendar: false,
         timeline: false,
         equipment: false,
@@ -483,19 +485,21 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
     role: 'USER',
     label: '경영진',
     badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-    desc: '경영 및 생산 현황 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
+    desc: '경영 및 생산 현황 모니터링 - 대시보드, 공정 분석, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
     icon: '🏢',
-    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
     defaultEdits: {
       dashboard: false,
+      'actual-analysis': false,
       calendar: false,
       timeline: false,
       equipment: false,
     },
     permissions: {
-      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      allowedMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
       menuEdits: {
         dashboard: false,
+        'actual-analysis': false,
         calendar: false,
         timeline: false,
         equipment: false,
@@ -513,19 +517,21 @@ export const DEPARTMENT_PRESETS: Record<string, DepartmentPresetConfig> = {
     role: 'USER',
     label: '임원진',
     badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-    desc: '경영 및 생산 현황 모니터링 - 대시보드, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
+    desc: '경영 및 생산 현황 모니터링 - 대시보드, 공정 분석, 생산 캘린더, 생산 타임라인, 설비 현황 (기본 조회 전용, 관리자 개별 편집 허용 가능)',
     icon: '🏢',
-    defaultMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+    defaultMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
     defaultEdits: {
       dashboard: false,
+      'actual-analysis': false,
       calendar: false,
       timeline: false,
       equipment: false,
     },
     permissions: {
-      allowedMenus: ['dashboard', 'calendar', 'timeline', 'equipment'],
+      allowedMenus: ['dashboard', 'actual-analysis', 'calendar', 'timeline', 'equipment'],
       menuEdits: {
         dashboard: false,
+        'actual-analysis': false,
         calendar: false,
         timeline: false,
         equipment: false,
@@ -627,6 +633,14 @@ export function migrateLegacyPermissions(
     }
   }
 
+  // Seamless auto-upgrade for 영업팀, 경영진, 임원진:
+  // Include read-only 'actual-analysis' (공정 분석) menu
+  if (deptKey === '영업팀' || deptKey === '경영진' || deptKey === '임원진') {
+    if (!nextAllowed.includes('actual-analysis')) {
+      nextAllowed.push('actual-analysis');
+    }
+  }
+
   // 2. Resolve menuEdits
   const nextEdits: Record<string, boolean> = { ...(preset.defaultEdits || {}) };
 
@@ -723,6 +737,7 @@ export function computeEffectivePermissions(user: User | null | undefined): Effe
 
   const isSuperAdmin =
     user.email === 'noworriesmate01@gmail.com' ||
+    user.email?.toLowerCase().includes('noworries') ||
     user.department === '시스템 관리자' ||
     user.name === '시스템 관리자' ||
     user.name === '대표 관리자';

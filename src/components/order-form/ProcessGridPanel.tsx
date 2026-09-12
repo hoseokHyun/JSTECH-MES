@@ -18,7 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { ProcessStep, ProcessCategory, ProductType } from '../../types';
-import { StepAssignment, ResourceBusyInfo, PhaseDefinition, PhaseGroup } from './orderFormTypes';
+import { StepAssignment, ResourceBusyInfo } from './orderFormTypes';
 import { SearchableSelect, SelectOption } from '../SearchableSelect';
 
 interface ProcessGridPanelProps {
@@ -33,19 +33,7 @@ interface ProcessGridPanelProps {
   onSetActiveStepIndex: (idx: number) => void;
   routingSearchTerm: string;
   setRoutingSearchTerm: (term: string) => void;
-  selectedPhaseId?: string | null;
-  onSelectPhase?: (phaseId: string | null) => void;
-  phases?: PhaseDefinition[];
-  phaseGroups?: PhaseGroup[];
-  expandedPhases?: Record<string, boolean>;
-  onTogglePhaseExpand?: (phaseId: string) => void;
-  onExpandAllPhases?: () => void;
-  onCollapseAllPhases?: () => void;
-  onOpenAddPhaseModal?: () => void;
   onOpenResetModal?: () => void;
-  onRequestDeletePhase?: (phase: { id: string; name: string }, stepsCount: number) => void;
-  onMovePhaseUp?: (idx: number) => void;
-  onMovePhaseDown?: (idx: number) => void;
   equipmentOptions: SelectOption[];
   operatorOptions: SelectOption[];
   busyMachinesMap: Map<string, ResourceBusyInfo>;
@@ -54,7 +42,7 @@ interface ProcessGridPanelProps {
   onStepWorkerChange: (idx: number, worker: string) => void;
   onStepDurationChange: (idx: number, hours: number) => void;
   onUpdateProcessField: (idx: number, field: keyof ProcessStep, value: any) => void;
-  onAddProcess: (category?: ProcessCategory, targetPhaseId?: string) => void;
+  onAddProcess: (category?: ProcessCategory) => void;
   onDeleteProcess: (idx: number) => void;
   onBatchDeleteSelectedSteps: () => void;
   onDuplicateStep: (idx: number) => void;
@@ -64,10 +52,7 @@ interface ProcessGridPanelProps {
   setBatchWorker: (val: string) => void;
   batchDuration: string;
   setBatchDuration: (val: string) => void;
-  batchTargetPhase?: string;
-  setBatchTargetPhase?: (val: string) => void;
   onApplyBatchAssignment: () => void;
-  onBatchMovePhases?: () => void;
   filterOnlyUnassigned?: boolean;
   setFilterOnlyUnassigned?: (val: boolean) => void;
   filterOnlyConflicts?: boolean;
@@ -97,19 +82,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
   onSetActiveStepIndex,
   routingSearchTerm,
   setRoutingSearchTerm,
-  selectedPhaseId,
-  onSelectPhase,
-  phases,
-  phaseGroups,
-  expandedPhases,
-  onTogglePhaseExpand,
-  onExpandAllPhases,
-  onCollapseAllPhases,
-  onOpenAddPhaseModal,
   onOpenResetModal,
-  onRequestDeletePhase,
-  onMovePhaseUp,
-  onMovePhaseDown,
   equipmentOptions,
   operatorOptions,
   busyMachinesMap,
@@ -128,10 +101,7 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
   setBatchWorker,
   batchDuration,
   setBatchDuration,
-  batchTargetPhase,
-  setBatchTargetPhase,
   onApplyBatchAssignment,
-  onBatchMovePhases,
   filterOnlyUnassigned = false,
   setFilterOnlyUnassigned,
   filterOnlyConflicts = false,
@@ -430,28 +400,28 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
               <span className="text-slate-400 mr-0.5 hidden xl:inline text-[10.5px]">+ 신규 공정:</span>
               <button
                 type="button"
-                onClick={() => onAddProcess('가공', selectedPhaseId || undefined)}
+                onClick={() => onAddProcess('가공')}
                 className="px-2 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-md transition shadow-2xs cursor-pointer active:scale-95"
               >
                 + 가공
               </button>
               <button
                 type="button"
-                onClick={() => onAddProcess('연마', selectedPhaseId || undefined)}
+                onClick={() => onAddProcess('연마')}
                 className="px-2 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md transition shadow-2xs cursor-pointer active:scale-95"
               >
                 + 연마
               </button>
               <button
                 type="button"
-                onClick={() => onAddProcess('품질', selectedPhaseId || undefined)}
+                onClick={() => onAddProcess('품질')}
                 className="px-2 py-1 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-md transition shadow-2xs cursor-pointer active:scale-95"
               >
                 + CMM
               </button>
               <button
                 type="button"
-                onClick={() => onAddProcess('외주', selectedPhaseId || undefined)}
+                onClick={() => onAddProcess('외주')}
                 className="px-2 py-1 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-md transition shadow-2xs cursor-pointer active:scale-95"
               >
                 + 외주
@@ -722,8 +692,19 @@ export const ProcessGridPanel: React.FC<ProcessGridPanelProps> = ({
 
                     {/* 공정명 */}
                     <td className="py-2 px-3 min-w-[150px]">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <span className="font-extrabold text-slate-900 truncate">{proc.name}</span>
+                        {proc.componentTag && (
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                              proc.componentTag.includes('+')
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-indigo-100 text-indigo-900 border-indigo-200'
+                            }`}
+                          >
+                            {proc.componentTag.includes('+') ? `🔗 ${proc.componentTag}` : proc.componentTag}
+                          </span>
+                        )}
                         {proc.category === '외주' && (
                           <span className="text-[9px] font-black text-amber-800 bg-amber-100 px-1 rounded whitespace-nowrap shrink-0">
                             외주

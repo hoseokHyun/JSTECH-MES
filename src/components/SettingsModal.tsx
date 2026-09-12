@@ -119,13 +119,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       return;
     }
 
-    // Check demo password or admin password input
-    const validPasswords = ['admin1234', '1234', 'admin', 'jstech1234', 'admin@jstech.co.kr'];
-    const isValidPassword =
-      validPasswords.includes(adminPassword.trim()) || adminPassword.length >= 4;
+    // Check admin password against current user's password
+    const userPassword = (currentUser as any)?.password;
+    const isValidPassword = userPassword ? adminPassword.trim() === userPassword : adminPassword.trim().length >= 4;
 
     if (!isValidPassword) {
-      setPasswordError('비밀번호가 일치하지 않습니다. 올바른 관리자 암호를 입력해주세요.');
+      setPasswordError('비밀번호가 일치하지 않습니다. 현재 관리자 계정의 비밀번호를 입력해주세요.');
       return;
     }
 
@@ -655,9 +654,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                         <span>관리자 확인 비밀번호 입력</span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          (데모 암호 예시: admin1234 또는 1234)
-                        </span>
                       </label>
                       <input
                         type="password"

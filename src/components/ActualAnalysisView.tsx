@@ -3,7 +3,8 @@ import {
   ScheduledTaskItem,
   ProcessProgressItem,
   User,
-  Order
+  Order,
+  OrderStatus
 } from '../types';
 import { ALL_EQUIPMENT_LIST } from '../data/defaultData';
 import { CalendarTaskDetailModal } from './CalendarTaskDetailModal';
@@ -39,14 +40,20 @@ import {
   Square,
   MinusSquare,
   Calendar,
-  Sparkles
+  Sparkles,
+  List,
+  Workflow
 } from 'lucide-react';
+import { OrderProcessFlowDiagram } from './routing/OrderProcessFlowDiagram';
+import { parseComponentTag } from '../utils/trackDependencyHelper';
 
 interface ActualAnalysisViewProps {
   scheduledTasks: ScheduledTaskItem[];
   orders: Record<string, Order>;
+  productTypes?: Record<string, import('../types').ProductType>;
   processProgressMap: import('../types').ProcessProgressMap;
   onUpdateProgress: (processKey: string, progress: ProcessProgressItem) => void;
+  onUpdateOrder?: (updatedOrder: Order) => void;
   currentUser?: User | null;
   approvedOperators?: string[];
   usersList?: User[];
@@ -55,8 +62,10 @@ interface ActualAnalysisViewProps {
 export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   scheduledTasks,
   orders,
+  productTypes = {},
   processProgressMap,
   onUpdateProgress,
+  onUpdateOrder,
   currentUser,
   approvedOperators = [],
   usersList = [],
@@ -76,8 +85,9 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
   const [selectedExportOrderId, setSelectedExportOrderId] = useState<string>('');
   const [downloadSuccessToast, setDownloadSuccessToast] = useState<string | null>(null);
 
-  // 1단계 & 2단계: 프로젝트 단위 아코디언 및 체크박스 상태
+  // 1단계 & 2단계: 프로젝트 단위 아코디언, 뷰 모드(리스트 vs 흐름도) 및 체크박스 상태
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [projectViewModes, setProjectViewModes] = useState<Record<string, 'LIST' | 'FLOW'>>({});
   const [selectedProcesses, setSelectedProcesses] = useState<Record<string, string[]>>({}); // projectKey -> string[] of processKeys
   const [unitFilters, setUnitFilters] = useState<Record<string, number | 'ALL'>>({}); // projectKey -> number | 'ALL'
 
@@ -832,6 +842,33 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
               const selectedKeys = selectedProcesses[project.projectKey] || [];
               const allSelected = unitFilteredTasks.length > 0 && unitFilteredTasks.every((t) => selectedKeys.includes(t.processKey));
               const hasSomeSelected = selectedKeys.length > 0 && !allSelected;
+              const viewMode = projectViewModes[project.projectKey] || 'LIST';
+
+              const targetOrder: Order = orders[project.orderId] || {
+                id: project.orderId,
+                name: project.orderName,
+                pjtNo: project.orderId,
+                pjtName: project.pjtName || project.orderName,
+                customer: project.customer || '고객사',
+                partName: project.pjtName || project.orderName,
+                qty: project.quantity,
+                typeId: 'TYPE_CUSTOM',
+                status: (project.completedCount === project.totalCount ? 'COMPLETED' : 'IN_PROGRESS') as OrderStatus,
+                startDate: '',
+                dueDate: project.dueDate || '',
+                customProcesses: project.allTasks.map((t, idx) => ({
+                  id: t.processKey || `proc_${idx}`,
+                  name: t.groupName,
+                  code: `OP${String(idx + 1).padStart(3, '0')}`,
+                  category: t.category,
+                  componentTag: t.componentTag || parseComponentTag(t.groupName, '', ''),
+                  durationHours: (t.plannedMinutes || 60) / 60,
+                  estimatedHours: (t.plannedMinutes || 60) / 60,
+                  assignedMachine: t.machine,
+                  assignedWorker: t.worker,
+                })),
+              };
+              const currentProductType = productTypes && targetOrder.typeId ? productTypes[targetOrder.typeId] : null;
 
               return (
                 <div
@@ -962,25 +999,65 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
                         <span>이 수주 전체 CSV</span>
                       </button>
 
-                      <div className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-0.5 px-2 py-1 bg-blue-50 dark:bg-blue-950/50 rounded-lg">
-                        <span>{isExpanded ? '접기' : `공정 목록 (${displayTasks.length})`}</span>
+                      <div className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/50 rounded-lg">
+                        {isExpanded && viewMode === 'FLOW' ? (
+                          <>
+                            <Workflow className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            <span>공정 흐름도</span>
+                          </>
+                        ) : (
+                          <>
+                            <List className="w-3.5 h-3.5" />
+                            <span>{isExpanded ? '접기' : `공정 목록 (${displayTasks.length})`}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* 2단계: 아코디언 바디 (공정별 체크박스 및 상세 목록) */}
+                  {/* 2단계: 아코디언 바디 (리스트 보기 / 공정 흐름도 보기 토글 통합) */}
                   {isExpanded && (
                     <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-4 sm:p-5 space-y-3">
-                      {/* Sub-toolbar: Unit filter tabs (if multiple units) + Checkbox select all & Selection CSV Export */}
+                      {/* Sub-toolbar: View Mode Toggle (리스트 보기 vs 흐름도 보기) + Unit filter tabs + Checkbox select all & Selection CSV Export */}
                       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
                         <div className="flex flex-wrap items-center gap-3">
+                          {/* View Mode Toggle: 리스트 보기 vs 흐름도 보기 */}
+                          <div className="inline-flex items-center bg-slate-100 dark:bg-slate-700/60 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                            <button
+                              type="button"
+                              onClick={() => setProjectViewModes((prev) => ({ ...prev, [project.projectKey]: 'LIST' }))}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-lg transition cursor-pointer whitespace-nowrap ${
+                                viewMode === 'LIST'
+                                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <List className="w-3.5 h-3.5" />
+                              <span>리스트 보기</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setProjectViewModes((prev) => ({ ...prev, [project.projectKey]: 'FLOW' }))}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-lg transition cursor-pointer whitespace-nowrap ${
+                                viewMode === 'FLOW'
+                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <Workflow className="w-3.5 h-3.5" />
+                              <span>흐름도 보기</span>
+                            </button>
+                          </div>
+
+                          <span className="text-slate-300 dark:text-slate-700">|</span>
+
                           {/* Unit filter tabs for multi-quantity orders */}
                           {project.productNos.length > 1 && (
                             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 p-1 rounded-xl">
                               <button
                                 type="button"
                                 onClick={() => setUnitFilters((prev) => ({ ...prev, [project.projectKey]: 'ALL' }))}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap ${
                                   currentUnitFilter === 'ALL'
                                     ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
                                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -993,7 +1070,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
                                   key={pNo}
                                   type="button"
                                   onClick={() => setUnitFilters((prev) => ({ ...prev, [project.projectKey]: pNo }))}
-                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap ${
                                     currentUnitFilter === pNo
                                       ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
                                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -1005,56 +1082,62 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
                             </div>
                           )}
 
-                          {project.productNos.length > 1 && (
+                          {project.productNos.length > 1 && viewMode === 'LIST' && (
                             <span className="text-slate-300 dark:text-slate-700">|</span>
                           )}
 
-                          {/* Toggle Select All */}
-                          <button
-                            type="button"
-                            onClick={() => toggleSelectAllInProject(project.projectKey, unitFilteredTasks)}
-                            className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
-                          >
-                            {allSelected ? (
-                              <CheckSquare className="w-4 h-4 text-blue-600" />
-                            ) : hasSomeSelected ? (
-                              <MinusSquare className="w-4 h-4 text-blue-500" />
-                            ) : (
-                              <Square className="w-4 h-4 text-slate-400" />
-                            )}
-                            <span>현재 화면 전체 선택</span>
-                          </button>
+                          {/* Toggle Select All (only relevant in List mode) */}
+                          {viewMode === 'LIST' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => toggleSelectAllInProject(project.projectKey, unitFilteredTasks)}
+                                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer whitespace-nowrap"
+                              >
+                                {allSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                                ) : hasSomeSelected ? (
+                                  <MinusSquare className="w-4 h-4 text-blue-500" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-400" />
+                                )}
+                                <span>현재 화면 전체 선택</span>
+                              </button>
 
-                          <span className="text-slate-300 dark:text-slate-700">|</span>
+                              <span className="text-slate-300 dark:text-slate-700">|</span>
 
-                          {/* Selection status */}
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            선택: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedKeys.length}</strong> / {displayTasks.length}건
-                          </span>
+                              {/* Selection status */}
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                선택: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedKeys.length}</strong> / {displayTasks.length}건
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {/* Export Selected Processes Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleExportSelectedProcesses(project)}
-                            disabled={selectedKeys.length === 0}
-                            className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
-                            title={
-                              selectedKeys.length > 0
-                                ? `선택한 ${selectedKeys.length}개 공정만 CSV 파일로 다운로드합니다.`
-                                : '내보낼 공정을 체크박스로 선택해 주세요.'
-                            }
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>선택 항목 CSV 내보내기 ({selectedKeys.length}건)</span>
-                          </button>
+                          {/* Export Selected Processes Button (only in List view) */}
+                          {viewMode === 'LIST' && (
+                            <button
+                              type="button"
+                              onClick={() => handleExportSelectedProcesses(project)}
+                              disabled={selectedKeys.length === 0}
+                              className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+                              title={
+                                selectedKeys.length > 0
+                                  ? `선택한 ${selectedKeys.length}개 공정만 CSV 파일로 다운로드합니다.`
+                                  : '내보낼 공정을 체크박스로 선택해 주세요.'
+                              }
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>선택 항목 CSV 내보내기 ({selectedKeys.length}건)</span>
+                            </button>
+                          )}
 
                           {/* Export Project All */}
                           <button
                             type="button"
                             onClick={() => handleExportProjectAll(project)}
-                            className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                            className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                             title="해당 수주의 전체 공정을 CSV로 다운로드합니다."
                           >
                             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1063,83 +1146,116 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Process Steps Table */}
-                      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs overflow-hidden">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs divide-y divide-slate-200 dark:divide-slate-700">
-                            <thead className="bg-slate-50 dark:bg-slate-900/80 font-black text-slate-700 dark:text-slate-300">
-                              <tr>
-                                <th className="py-3 px-3 w-10 text-center">선택</th>
-                                <th className="py-3 px-3">공정명 (Step)</th>
-                                <th className="py-3 px-3">계획 일정 & 시간</th>
-                                <th className="py-3 px-3">실제 실적 & 시간</th>
-                                <th className="py-3 px-3">일시정지</th>
-                                <th className="py-3 px-3">차이 / 지연 여부</th>
-                                <th className="py-3 px-3">상태</th>
-                                <th className="py-3 px-3">설비 / 담당자</th>
-                                <th className="py-3 px-3">특이사항 / 사유</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                              {unitFilteredTasks.map((task) => {
-                                const isChecked = selectedKeys.includes(task.processKey);
+                      {/* Content: List View vs Flow Diagram View */}
+                      {viewMode === 'FLOW' ? (
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs p-3 sm:p-5">
+                          <OrderProcessFlowDiagram
+                            order={targetOrder}
+                            productType={currentProductType}
+                            scheduledTasks={scheduledTasks.filter((t) => t.orderId === project.orderId)}
+                            processProgressMap={processProgressMap}
+                            currentUser={currentUser}
+                            canEdit={Boolean(onUpdateOrder)}
+                            onUpdateOrder={onUpdateOrder}
+                            approvedOperators={approvedOperators}
+                            usersList={usersList}
+                            defaultUnit={currentUnitFilter}
+                          />
+                        </div>
+                      ) : (
+                        /* Process Steps Table */
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs divide-y divide-slate-200 dark:divide-slate-700">
+                              <thead className="bg-slate-50 dark:bg-slate-900/80 font-black text-slate-700 dark:text-slate-300">
+                                <tr>
+                                  <th className="py-3 px-3 w-10 text-center">선택</th>
+                                  <th className="py-3 px-3">공정명 (Step)</th>
+                                  <th className="py-3 px-3">계획 일정 & 시간</th>
+                                  <th className="py-3 px-3">실제 실적 & 시간</th>
+                                  <th className="py-3 px-3">일시정지</th>
+                                  <th className="py-3 px-3">차이 / 지연 여부</th>
+                                  <th className="py-3 px-3">상태</th>
+                                  <th className="py-3 px-3">설비 / 담당자</th>
+                                  <th className="py-3 px-3">특이사항 / 사유</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                                {unitFilteredTasks.map((task) => {
+                                  const isChecked = selectedKeys.includes(task.processKey);
 
-                                return (
-                                  <tr
-                                    key={task.processKey}
-                                    onClick={() => {
-                                      setSelectedTask(task);
-                                      setIsDetailModalOpen(true);
-                                    }}
-                                    className={`transition cursor-pointer ${
-                                      isChecked
-                                        ? 'bg-blue-50/60 dark:bg-blue-950/30'
-                                        : 'hover:bg-slate-50 dark:hover:bg-slate-750'
-                                    }`}
-                                  >
-                                    {/* Checkbox */}
-                                    <td
-                                      className="py-3 px-3 text-center"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleProcessSelect(project.projectKey, task.processKey);
+                                  return (
+                                    <tr
+                                      key={task.processKey}
+                                      onClick={() => {
+                                        setSelectedTask(task);
+                                        setIsDetailModalOpen(true);
                                       }}
+                                      className={`transition cursor-pointer ${
+                                        isChecked
+                                          ? 'bg-blue-50/60 dark:bg-blue-950/30'
+                                          : 'hover:bg-slate-50 dark:hover:bg-slate-750'
+                                      }`}
                                     >
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => {}}
-                                        className="w-4 h-4 text-blue-600 rounded cursor-pointer focus:ring-blue-500"
-                                      />
-                                    </td>
+                                      {/* Checkbox */}
+                                      <td
+                                        className="py-3 px-3 text-center"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleProcessSelect(project.projectKey, task.processKey);
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={() => {}}
+                                          className="w-4 h-4 text-blue-600 rounded cursor-pointer focus:ring-blue-500"
+                                        />
+                                      </td>
 
-                                    {/* Process Step Name */}
-                                    <td className="py-3 px-3">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="px-1.5 py-0.5 text-[10px] font-black bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded border border-indigo-200 dark:border-indigo-800">
-                                          #{task.productNo}호기
-                                        </span>
-                                        <span className="px-1.5 py-0.5 text-[10px] font-black bg-slate-200 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-300">
-                                          Step {task.processIndex + 1}
-                                        </span>
-                                        <span className="font-bold text-slate-900 dark:text-white">
-                                          {task.groupName}
-                                        </span>
-                                        <span
-                                          className={`text-[10px] px-1.5 py-0.5 rounded font-extrabold ${
-                                            task.category === '가공'
-                                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                                              : task.category === '연마'
-                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
-                                              : task.category === '외주'
-                                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
-                                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                                          }`}
-                                        >
-                                          {task.category}
-                                        </span>
-                                      </div>
-                                    </td>
+                                      {/* Process Step Name */}
+                                      <td className="py-3 px-3">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="whitespace-nowrap px-1.5 py-0.5 text-[10px] font-black bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded border border-indigo-200 dark:border-indigo-800">
+                                            #{task.productNo}호기
+                                          </span>
+                                          <span className="whitespace-nowrap px-1.5 py-0.5 text-[10px] font-black bg-slate-200 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-300">
+                                            Step {task.processIndex + 1}
+                                          </span>
+                                          <span className="font-bold text-slate-900 dark:text-white">
+                                            {task.groupName}
+                                          </span>
+                                          <span
+                                            className={`whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded font-extrabold ${
+                                              task.category === '가공'
+                                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                                                : task.category === '연마'
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                                : task.category === '외주'
+                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                                                : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                                            }`}
+                                          >
+                                            {task.category}
+                                          </span>
+                                          {(() => {
+                                            const compTag = task.componentTag || parseComponentTag(task.groupName, '', '');
+                                            if (!compTag) return null;
+                                            const isAssembly = compTag.includes('+');
+                                            return (
+                                              <span
+                                                className={`whitespace-nowrap text-[10px] px-2 py-0.5 rounded-md font-black border shadow-2xs ${
+                                                  isAssembly
+                                                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                                                    : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700'
+                                                }`}
+                                              >
+                                                {isAssembly ? `🔗 ${compTag}` : `[${compTag}]`}
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
+                                      </td>
 
                                     {/* Planned Start / End / Duration */}
                                     <td className="py-3 px-3">
@@ -1257,6 +1373,7 @@ export const ActualAnalysisView: React.FC<ActualAnalysisViewProps> = ({
                           </table>
                         </div>
                       </div>
+                    )}
                     </div>
                   )}
                 </div>

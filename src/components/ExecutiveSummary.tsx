@@ -748,7 +748,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. 최적화된 수주별 컴팩트 스윔레인(Swimlane) & 공정 파이프라인 뷰              */}
+      {/* 3. 최적화된 수주별 컴팩트 공정 흐름도 & 공정 파이프라인 뷰              */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -782,7 +782,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           </div>
         </div>
 
-        {/* Compact Process Swimlane List */}
+        {/* Compact Process Flow Diagram List */}
         <div className="space-y-3">
           {activeOrders.length === 0 ? (
             <div className="p-8 text-center text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
@@ -870,7 +870,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                     </div>
                   </div>
 
-                  {/* Compact Step Swimlane Pipeline */}
+                  {/* Compact Step Flow Diagram Pipeline */}
                   <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin">
                     {processes.map((proc, idx) => {
                       const matchingTask = orderTasks.find(

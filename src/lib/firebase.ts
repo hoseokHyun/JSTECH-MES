@@ -299,6 +299,21 @@ export const KNOWN_MEMBER_DEPARTMENTS: Record<string, string> = {
   '박세령': '가공팀',
 };
 
+export function isSuperAdminEmail(emailOrId: string): boolean {
+  const norm = (emailOrId || '').toLowerCase().trim();
+  return (
+    norm.startsWith('noworries') ||
+    norm.includes('noworries') ||
+    norm === 'admin@jstech.co.kr' ||
+    norm === 'admin@jun-sung.co.kr' ||
+    norm === 'admin@jstech.kr' ||
+    norm === 'admin' ||
+    norm === '관리자' ||
+    norm === '시스템 관리자' ||
+    norm === '시스템관리자'
+  );
+}
+
 // 4. User Auth & Approval Functions
 export async function registerUserAccount(
   email: string,
@@ -314,7 +329,7 @@ export async function registerUserAccount(
   const cleanPhone = (phoneNumber || '').trim();
   const cleanName = (name || '').trim();
   const usersSnap = await getDocs(collection(db, 'users'));
-  const isSuperAdmin = normalizedEmail === 'noworriesmate01@gmail.com';
+  const isSuperAdmin = isSuperAdminEmail(normalizedEmail);
   const isFirstUser = usersSnap.empty;
 
   // Derive canonical department if not explicitly given or set to '미지정'
@@ -413,14 +428,14 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
   let authErrorCode: string | null = null;
   let authErrorMessage: string | null = null;
 
-  // 1. Try Firebase Auth first
+  // 1. Try Firebase Auth first (if enabled in project)
   try {
     const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, pass);
     const uid = userCredential.user.uid;
     const usersSnap = await getDocs(collection(db, 'users'));
     usersSnap.forEach((docSnap) => {
       const data = docSnap.data() as any;
-      if (data.uid === uid || (data.email && data.email.toLowerCase() === normalizedEmail)) {
+      if (data.uid === uid || (data.email && data.email.toLowerCase().trim() === normalizedEmail)) {
         const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
         matchedUser = {
           ...data,
@@ -434,7 +449,11 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
   } catch (err: any) {
     authErrorCode = err?.code || null;
     authErrorMessage = err?.message || null;
-    console.warn('[Firebase Auth] signInWithEmailAndPassword failed:', authErrorCode, authErrorMessage);
+    if (authErrorCode === 'auth/operation-not-allowed') {
+      console.info('[Firebase Auth] Email/Password provider not enabled in Firebase Console. Using Firestore user credentials store.');
+    } else {
+      console.warn('[Firebase Auth] signInWithEmailAndPassword notice:', authErrorCode, authErrorMessage);
+    }
   }
 
   // 2. Fallback to Firestore users collection
@@ -443,9 +462,25 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
       const usersSnap = await getDocs(collection(db, 'users'));
       usersSnap.forEach((docSnap) => {
         const data = docSnap.data() as any;
-        if (data.email && data.email.toLowerCase() === normalizedEmail) {
-          // If password stored in document, verify (plain text or legacy)
-          if (!data.password || data.password === pass) {
+        const docEmail = (data.email || '').toLowerCase().trim();
+        const docName = (data.name || '').trim();
+        const docPhone = (data.phoneNumber || data.phone_number || data.phone || '').replace(/[^0-9]/g, '');
+        const cleanInputPhone = normalizedEmail.replace(/[^0-9]/g, '');
+        const emailPrefix = docEmail.includes('@') ? docEmail.split('@')[0] : '';
+        const uidStr = String(data.uid || docSnap.id || '').toLowerCase().trim();
+
+        const isEmailMatch = docEmail && docEmail === normalizedEmail;
+        const isNameMatch = docName && (docName.toLowerCase() === normalizedEmail || docName.replace(/\s+/g, '') === normalizedEmail.replace(/\s+/g, ''));
+        const isPrefixMatch = emailPrefix && (emailPrefix === normalizedEmail || (normalizedEmail.includes('@') && normalizedEmail.split('@')[0] === emailPrefix));
+        const isPhoneMatch = cleanInputPhone.length >= 8 && docPhone && docPhone === cleanInputPhone;
+        const isUidMatch = uidStr && (uidStr === normalizedEmail);
+        const isSuperAdminMatch = isSuperAdminEmail(normalizedEmail) && (isSuperAdminEmail(docEmail) || data.role === 'ADMIN' || data.department === '시스템 관리자' || data.name === '시스템 관리자');
+
+        if (isEmailMatch || isNameMatch || isPrefixMatch || isPhoneMatch || isUidMatch || isSuperAdminMatch) {
+          // Strictly verify entered password against registered user password
+          const storedPassword = data.password ? String(data.password).trim() : '';
+          const inputPassword = pass ? String(pass).trim() : '';
+          if (storedPassword && (storedPassword === inputPassword || data.password === pass)) {
             const phone = (data.phoneNumber || data.phone_number || data.phone || '').trim();
             const rawName = (data.name || '').trim();
             const baseName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
@@ -470,15 +505,18 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
     }
   }
 
-  // 3. Special handling for super admin or initial setup
-  const isSuperAdmin =
-    normalizedEmail === 'noworriesmate01@gmail.com' ||
-    normalizedEmail === 'admin@jstech.co.kr' ||
-    normalizedEmail === 'admin@jun-sung.co.kr';
-
+  // 3. Fallback only if the database is completely empty (first-time initialization)
   if (!matchedUser) {
-    if (isSuperAdmin) {
-      const uid = `admin_${normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    let isEmptyDb = false;
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      isEmptyDb = usersSnap.empty;
+    } catch (e) {
+      isEmptyDb = false;
+    }
+
+    if (isEmptyDb) {
+      const uid = `user_init_${Date.now()}`;
       matchedUser = {
         uid,
         email: normalizedEmail,
@@ -503,63 +541,29 @@ export async function loginUserAccount(email: string, pass: string): Promise<Use
       };
       try {
         await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
-      } catch (saveErr) {
-        console.warn('Superadmin user document creation warning:', saveErr);
+      } catch (e) {
+        console.warn('Init user save warning:', e);
       }
     } else {
-      // Check if users collection is completely empty (first run initialization)
-      let isEmptyDb = false;
-      try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        isEmptyDb = usersSnap.empty;
-      } catch (e) {
-        // In case getDocs fails due to offline/permission
-        isEmptyDb = false;
+      // Never bubble 'auth/operation-not-allowed' or standard password mismatch as an unhandled system error
+      if (
+        authErrorCode &&
+        authErrorCode !== 'auth/operation-not-allowed' &&
+        authErrorCode !== 'auth/invalid-credential' &&
+        authErrorCode !== 'auth/user-not-found' &&
+        authErrorCode !== 'auth/wrong-password' &&
+        authErrorCode !== 'auth/invalid-email'
+      ) {
+        const customError: any = new Error(authErrorMessage || 'AUTH_ERROR');
+        customError.code = authErrorCode;
+        throw customError;
       }
-
-      if (isEmptyDb) {
-        const uid = `user_init_${Date.now()}`;
-        matchedUser = {
-          uid,
-          email: normalizedEmail,
-          password: pass,
-          name: '시스템 관리자',
-          phoneNumber: '010-1234-5678',
-          phone_number: '010-1234-5678',
-          role: 'ADMIN',
-          department: '시스템 관리자',
-          isApproved: true,
-          status: 'approved',
-          createdAt: new Date().toISOString(),
-          permissions: {
-            canEditOrder: true,
-            canExecuteMES: true,
-            canManageUsers: true,
-            canEditMaster: true,
-            canArchive: true,
-            canQualityInspection: true,
-            canShipmentControl: true,
-          },
-        };
-        try {
-          await setDoc(doc(db, 'users', uid), cleanUndefined(matchedUser));
-        } catch (e) {
-          console.warn('Init user save warning:', e);
-        }
-      } else {
-        // If Firebase Auth returned an explicit specific error, bubble that error code
-        if (authErrorCode) {
-          const customError: any = new Error(authErrorMessage || 'AUTH_ERROR');
-          customError.code = authErrorCode;
-          throw customError;
-        }
-        throw new Error('INVALID_CREDENTIALS');
-      }
+      throw new Error('INVALID_CREDENTIALS');
     }
   }
 
   // Ensure superAdmin has full admin role, system admin department and approved status
-  if (isSuperAdmin || matchedUser.email === 'noworriesmate01@gmail.com') {
+  if (isSuperAdminEmail(matchedUser.email) || matchedUser.email === 'noworriesmate01@gmail.com') {
     matchedUser.role = 'ADMIN';
     matchedUser.department = '시스템 관리자';
     matchedUser.name = '시스템 관리자';

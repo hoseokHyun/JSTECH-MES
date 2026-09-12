@@ -956,7 +956,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
   };
 
   const selectedUser = users.find((u) => (u.uid || u.email) === selectedUserUid) || users[0] || null;
-  const isSelectedSuperAdmin = selectedUser && (selectedUser.email === 'noworriesmate01@gmail.com' || selectedUser.department === '시스템 관리자' || selectedUser.name === '시스템 관리자');
+  const isSelectedSuperAdmin = selectedUser && (selectedUser.email === 'noworriesmate01@gmail.com' || selectedUser.email?.toLowerCase().includes('noworries') || selectedUser.department === '시스템 관리자' || selectedUser.name === '시스템 관리자');
   const selectedUserDept = (selectedUser?.department as UserDepartment) || (isSelectedSuperAdmin ? '시스템 관리자' : '가공팀');
   const selectedEffective = selectedUser ? computeEffectivePermissions(selectedUser) : null;
 
@@ -1124,7 +1124,7 @@ export const UserApprovalModal: React.FC<UserApprovalModalProps> = ({
                   const effective = computeEffectivePermissions(u);
                   const targetUid = u.uid || u.email || '';
                   const isSelected = selectedUser && (selectedUser.uid || selectedUser.email) === targetUid;
-                  const isSuperAdmin = u.email === 'noworriesmate01@gmail.com' || u.department === '시스템 관리자' || u.name === '시스템 관리자';
+                  const isSuperAdmin = u.email === 'noworriesmate01@gmail.com' || u.email?.toLowerCase().includes('noworries') || u.department === '시스템 관리자' || u.name === '시스템 관리자';
                   const isCurrent = currentUser?.email && u.email && currentUser.email === u.email;
                   const currentDept = (u.department as UserDepartment) || (isSuperAdmin ? '시스템 관리자' : '가공팀');
                   const displayName = u.name === '대표 관리자' || u.name.includes('대표') ? '시스템 관리자' : u.name;

@@ -24,8 +24,15 @@ import {
   ShieldX,
   Search,
   Sparkles,
-  ArrowRightLeft
+  ArrowRightLeft,
+  GitFork,
+  Tag
 } from 'lucide-react';
+import {
+  parseComponentTag,
+  getTrackColor,
+  PRESET_COMPONENT_TAGS
+} from '../utils/trackDependencyHelper';
 
 interface ProductRoutingViewProps {
   productTypes: Record<string, ProductType>;
@@ -179,6 +186,51 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
       ...currentType,
       processes: updatedProcesses,
     });
+  };
+
+  const handleProcessComponentTagChange = (index: number, newTag: string) => {
+    if (!currentType) return;
+    if (!checkRoutingPermission()) return;
+
+    const updatedProcesses = [...currentType.processes];
+    updatedProcesses[index] = {
+      ...updatedProcesses[index],
+      componentTag: newTag.trim() || undefined,
+    };
+
+    onUpdateProductType({
+      ...currentType,
+      processes: updatedProcesses,
+    });
+  };
+
+  const handleAutoExtractComponentTags = () => {
+    if (!currentType) return;
+    if (!checkRoutingPermission()) return;
+
+    let updatedCount = 0;
+    const updatedProcesses = currentType.processes.map((p) => {
+      const detected = parseComponentTag(p.name, '', '');
+      if (detected && detected !== p.componentTag) {
+        updatedCount++;
+        return {
+          ...p,
+          componentTag: detected,
+        };
+      }
+      return p;
+    });
+
+    if (updatedCount === 0) {
+      alert('공정명에서 새로 감지할 수 있는 부품명(_부품명 또는 [부품명])이 없거나 이미 모두 설정되어 있습니다.');
+      return;
+    }
+
+    onUpdateProductType({
+      ...currentType,
+      processes: updatedProcesses,
+    });
+    setSuccessToastMessage(`총 ${updatedCount}개 공정에 부품 트랙 태그가 자동 설정되었습니다.`);
   };
 
   const handleMoveStep = (index: number, direction: 'UP' | 'DOWN') => {
@@ -709,7 +761,7 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleAddStep}
                     className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
@@ -722,153 +774,179 @@ export const ProductRoutingView: React.FC<ProductRoutingViewProps> = ({
 
               {/* Steps Table */}
               <div className="overflow-x-auto border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-3 w-16 text-center">순서</th>
-                      <th className="p-3 w-20 text-center">순서 이동</th>
-                      <th className="p-3">공정명 (Process Step)</th>
-                      <th className="p-3 text-center w-28">공정 카테고리</th>
-                      <th className="p-3 text-right w-36">표준시간 (h)</th>
-                      <th className="p-3 text-center w-24">관리</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {currentType.processes.map((proc, idx) => {
-                      const isFirst = idx === 0;
-                      const isLast = idx === currentType.processes.length - 1;
-
-                      return (
-                        <tr key={idx} className="hover:bg-blue-50/30 transition">
-                          {/* Step Index */}
-                          <td className="p-3 text-center font-mono font-bold text-slate-500">
-                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-black">
-                              {idx + 1}
-                            </span>
-                          </td>
-
-                          {/* Reorder Up/Down */}
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                disabled={isFirst}
-                                onClick={() => handleMoveStep(idx, 'UP')}
-                                className={`p-1 rounded transition ${
-                                  isFirst
-                                    ? 'text-slate-200 cursor-not-allowed'
-                                    : 'text-slate-500 hover:text-blue-600 hover:bg-blue-100 cursor-pointer'
-                                }`}
-                                title="위로 이동"
-                              >
-                                <ArrowUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isLast}
-                                onClick={() => handleMoveStep(idx, 'DOWN')}
-                                className={`p-1 rounded transition ${
-                                  isLast
-                                    ? 'text-slate-200 cursor-not-allowed'
-                                    : 'text-slate-500 hover:text-blue-600 hover:bg-blue-100 cursor-pointer'
-                                }`}
-                                title="아래로 이동"
-                              >
-                                <ArrowDown className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* Process Name Input */}
-                          <td className="p-3 font-bold">
-                            <input
-                              type="text"
-                              value={proc.name}
-                              onChange={(e) => handleProcessNameChange(idx, e.target.value)}
-                              placeholder="공정명을 입력하세요"
-                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:border-blue-500 focus:bg-white focus:outline-none font-bold text-slate-900 bg-slate-50/50"
-                            />
-                          </td>
-
-                          {/* Category Select */}
-                          <td className="p-3 text-center">
-                            <select
-                              value={proc.category}
-                              onChange={(e) =>
-                                handleProcessCategoryChange(idx, e.target.value as ProcessCategory)
-                              }
-                              className={`text-xs px-2.5 py-1.5 border rounded-lg font-bold bg-white text-slate-800 ${
-                                proc.category === '가공'
-                                  ? 'border-blue-300 text-blue-800'
-                                  : proc.category === '연마'
-                                  ? 'border-amber-300 text-amber-800'
-                                  : proc.category === '외주'
-                                  ? 'border-purple-300 text-purple-800'
-                                  : 'border-emerald-300 text-emerald-800'
-                              }`}
-                            >
-                              <option value="가공">가공 (MCT)</option>
-                              <option value="연마">연마 (Grind)</option>
-                              <option value="외주">외주 (Outsource)</option>
-                              <option value="품질">품질 (CMM)</option>
-                            </select>
-                          </td>
-
-                          {/* Standard Duration Input */}
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0.01"
-                                value={proc.durationHours}
-                                onChange={(e) =>
-                                  handleProcessDurationChange(idx, parseFloat(e.target.value) || 0.1)
-                                }
-                                className="w-20 text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-right text-indigo-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:outline-none"
-                              />
-                              <span className="text-slate-400 font-bold">h</span>
-                            </div>
-                          </td>
-
-                          {/* Actions: Duplicate & Delete */}
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleDuplicateStep(idx)}
-                                className="text-slate-400 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition cursor-pointer"
-                                title="이 공정 복제"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRequestRemoveStep(idx)}
-                                className="text-slate-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition cursor-pointer"
-                                title="이 공정 삭제"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="p-3 w-16 text-center">순서</th>
+                          <th className="p-3 w-20 text-center">순서 이동</th>
+                          <th className="p-3">공정명 (Process Step)</th>
+                          <th className="p-3 text-center w-36">부품 트랙 (Tag)</th>
+                          <th className="p-3 text-center w-28">공정 카테고리</th>
+                          <th className="p-3 text-right w-36">표준시간 (h)</th>
+                          <th className="p-3 text-center w-24">관리</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {currentType.processes.map((proc, idx) => {
+                          const isFirst = idx === 0;
+                          const isLast = idx === currentType.processes.length - 1;
+                          const trackColor = getTrackColor(proc.componentTag);
 
-              {/* Table Footer Helper */}
-              <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-700">💡 팁:</span>
-                  <span>공정명과 표준시간은 수정 즉시 자동 저장됩니다. 순서 이동(↑, ↓)으로 작업 절차를 쉽게 조정할 수 있습니다.</span>
-                </div>
-                <div className="font-extrabold text-indigo-900">
-                  합계: {currentType.processes.length}단계 / {totalTypeHours.toFixed(1)}시간
-                </div>
-              </div>
+                          return (
+                            <tr key={idx} className="hover:bg-blue-50/30 transition">
+                              {/* Step Index */}
+                              <td className="p-3 text-center font-mono font-bold text-slate-500">
+                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-black">
+                                  {idx + 1}
+                                </span>
+                              </td>
+
+                              {/* Reorder Up/Down */}
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={isFirst}
+                                    onClick={() => handleMoveStep(idx, 'UP')}
+                                    className={`p-1 rounded transition ${
+                                      isFirst
+                                        ? 'text-slate-200 cursor-not-allowed'
+                                        : 'text-slate-500 hover:text-blue-600 hover:bg-blue-100 cursor-pointer'
+                                    }`}
+                                    title="위로 이동"
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isLast}
+                                    onClick={() => handleMoveStep(idx, 'DOWN')}
+                                    className={`p-1 rounded transition ${
+                                      isLast
+                                        ? 'text-slate-200 cursor-not-allowed'
+                                        : 'text-slate-500 hover:text-blue-600 hover:bg-blue-100 cursor-pointer'
+                                    }`}
+                                    title="아래로 이동"
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* Process Name Input */}
+                              <td className="p-3 font-bold">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={proc.name}
+                                    onChange={(e) => handleProcessNameChange(idx, e.target.value)}
+                                    placeholder="공정명을 입력하세요"
+                                    className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:border-blue-500 focus:bg-white focus:outline-none font-bold text-slate-900 bg-slate-50/50"
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Component Track Tag */}
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={proc.componentTag || ''}
+                                    onChange={(e) => handleProcessComponentTagChange(idx, e.target.value)}
+                                    placeholder="트랙 태그"
+                                    className={`w-28 text-center text-xs px-2 py-1.5 border rounded-lg font-black focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                                      proc.componentTag
+                                        ? proc.componentTag.includes('+')
+                                          ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                          : trackColor.badge
+                                        : 'bg-slate-50 text-slate-400 border-slate-200'
+                                    }`}
+                                    title="단품 부품(Base, Head, Block, Pipe) 또는 조립 합류(Block+Pipe 등) 태그"
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Category Select */}
+                              <td className="p-3 text-center">
+                                <select
+                                  value={proc.category}
+                                  onChange={(e) =>
+                                    handleProcessCategoryChange(idx, e.target.value as ProcessCategory)
+                                  }
+                                  className={`text-xs px-2.5 py-1.5 border rounded-lg font-bold bg-white text-slate-800 ${
+                                    proc.category === '가공'
+                                      ? 'border-blue-300 text-blue-800'
+                                      : proc.category === '연마'
+                                      ? 'border-amber-300 text-amber-800'
+                                      : proc.category === '외주'
+                                      ? 'border-purple-300 text-purple-800'
+                                      : 'border-emerald-300 text-emerald-800'
+                                  }`}
+                                >
+                                  <option value="가공">가공 (MCT)</option>
+                                  <option value="연마">연마 (Grind)</option>
+                                  <option value="외주">외주 (Outsource)</option>
+                                  <option value="품질">품질 (CMM)</option>
+                                </select>
+                              </td>
+
+                              {/* Standard Duration Input */}
+                              <td className="p-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={proc.durationHours}
+                                    onChange={(e) =>
+                                      handleProcessDurationChange(idx, parseFloat(e.target.value) || 0.1)
+                                    }
+                                    className="w-20 text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-right text-indigo-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                                  />
+                                  <span className="text-slate-400 font-bold">h</span>
+                                </div>
+                              </td>
+
+                              {/* Actions: Duplicate & Delete */}
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDuplicateStep(idx)}
+                                    className="text-slate-400 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition cursor-pointer"
+                                    title="이 공정 복제"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRequestRemoveStep(idx)}
+                                    className="text-slate-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition cursor-pointer"
+                                    title="이 공정 삭제"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Table Footer Helper */}
+                  <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-700">💡 팁:</span>
+                      <span>
+                        단품 부품 공정(Base, Head, Block, Pipe)은 병렬로 동시 진행되며, 조립(Block+Pipe 등) 공정은 선행 부품들이 모두 완료되어야 시작됩니다.
+                      </span>
+                    </div>
+                    <div className="font-extrabold text-indigo-900">
+                      합계: {currentType.processes.length}단계 / {totalTypeHours.toFixed(1)}시간
+                    </div>
+                  </div>
             </>
           ) : (
             <div className="text-center py-20 text-slate-400 space-y-3">

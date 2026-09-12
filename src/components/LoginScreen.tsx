@@ -127,12 +127,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
       const user = await loginUserAccount(email.trim(), password);
       onLoginSuccess(user, rememberMe);
     } catch (err: any) {
-      console.error('[LoginScreen] Login attempt failed with error details:', {
-        code: err?.code,
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-      });
+      const isAuthValidation =
+        err.message === 'INVALID_CREDENTIALS' ||
+        err.message === 'PENDING_APPROVAL' ||
+        err.code === 'auth/invalid-credential' ||
+        err.code === 'auth/user-not-found' ||
+        err.code === 'auth/wrong-password';
+
+      if (isAuthValidation) {
+        console.warn('[LoginScreen] Login validation:', err?.message || err?.code);
+      } else {
+        console.error('[LoginScreen] Login attempt failed with error details:', {
+          code: err?.code,
+          message: err?.message,
+          name: err?.name,
+        });
+      }
 
       if (err.message === 'PENDING_APPROVAL') {
         setErrorMsg('⏳ 회원가입 승인 대기 중입니다.\n관리자가 부서 및 권한을 지정하여 승인한 후 로그인하실 수 있습니다.');
@@ -145,11 +155,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, sessio
       } else if (err.code === 'auth/network-request-failed') {
         setErrorMsg(`📡 네트워크 연결 실패 (${err.code})\n네트워크 연결 또는 방화벽/보안 정책을 확인해 주세요.`);
       } else if (err.code === 'auth/operation-not-allowed') {
-        setErrorMsg(`🚫 이메일/비밀번호 로그인 미활성화 (${err.code})\nFirebase 콘솔 > Authentication > Sign-in method에서 이메일/비밀번호가 활성화되어 있는지 확인해 주세요.`);
+        setErrorMsg('아이디(이메일) 또는 비밀번호가 올바르지 않거나 인증 오류가 발생했습니다.\n정보를 다시 확인해 주세요.');
       } else if (err.code === 'auth/user-disabled') {
         setErrorMsg(`⛔ 비활성화된 계정 (${err.code})\n해당 계정은 관리자에 의해 비활성화되었습니다.`);
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setErrorMsg(`아이디(이메일) 또는 비밀번호가 올바르지 않습니다.\n정보를 다시 확인해 주세요. (${err.code})`);
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.message === 'INVALID_CREDENTIALS') {
+        setErrorMsg('아이디(이메일) 또는 비밀번호가 올바르지 않습니다.\n정보를 다시 확인해 주세요.');
       } else {
         const errorDetail = err?.code ? `[${err.code}] ` : (err?.message ? `[${err.message}] ` : '');
         setErrorMsg(`${errorDetail}아이디(이메일) 또는 비밀번호가 올바르지 않거나 인증 오류가 발생했습니다.\n정보를 다시 확인해 주세요.`);

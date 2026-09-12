@@ -15,6 +15,7 @@ import { EasyTravelerModal } from './EasyTravelerModal';
 import { AndonReportModal } from './AndonReportModal';
 import { PausePromptModal } from './PausePromptModal';
 import { computeEffectivePermissions } from '../utils/permissionManager';
+import { checkTaskPrerequisites } from '../utils/trackDependencyHelper';
 import {
   Play,
   Pause,
@@ -202,6 +203,24 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
       alert('⚠️ 공정 상태 변경 권한이 없습니다. (조회 전용 모드)');
       return;
     }
+
+    // Check multi-track and assembly prerequisites
+    const prereq = checkTaskPrerequisites(processKey, taskList, processProgressMap, orders);
+    if (!prereq.canStart) {
+      const task = taskList.find((t) => t.processKey === processKey);
+      const missingList = prereq.missingTasks
+        .map((t) => ` • ${t.tag ? `[${t.tag}] ` : ''}${t.name || t.groupName || t.content || t.title}`)
+        .join('\n');
+      const tagText = task?.componentTag ? `[${task.componentTag} 공정]` : '';
+      alert(
+        `⚠️ 조립/선행 공정 미완료 안내\n\n` +
+        `${tagText} 공정을 시작하기 전에 선행 부품 공정들이 먼저 완료되어야 합니다.\n\n` +
+        `[미완료 선행 공정 목록]\n${missingList}\n\n` +
+        `해당 공정을 완료한 후 다시 시작해주세요.`
+      );
+      return;
+    }
+
     const task = taskList.find((t) => t.processKey === processKey);
     const nowIso = new Date().toISOString();
     const workerName = task?.worker || currentUser?.name || '현장 작업자';
@@ -712,6 +731,8 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
                 task.processKey.includes(deepLinkInfo.processId) ||
                 task.processKey.endsWith(`_${deepLinkInfo.processId}`));
 
+            const prereqStatus = checkTaskPrerequisites(task, taskList, processProgressMap, taskOrder?.customProcesses || orders);
+
             return (
               <FloorProcessCard
                 key={task.processKey}
@@ -719,6 +740,7 @@ export const FloorExecutionView: React.FC<FloorExecutionViewProps> = ({
                 order={taskOrder}
                 progressItem={progressItem}
                 canExecuteMES={canExecuteMES}
+                prerequisiteStatus={prereqStatus}
                 onStartProcess={handleStartProcess}
                 onPauseProcess={handleOpenPauseModal}
                 onResumeProcess={handleResumeProcess}

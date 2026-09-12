@@ -137,7 +137,7 @@ export default function App() {
   const [productTypes, setProductTypes] = useState<Record<string, ProductType>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_TYPES);
-      return saved ? JSON.parse(saved) : DEFAULT_PRODUCT_TYPES;
+      return saved ? { ...DEFAULT_PRODUCT_TYPES, ...JSON.parse(saved) } : DEFAULT_PRODUCT_TYPES;
     } catch {
       return DEFAULT_PRODUCT_TYPES;
     }
@@ -199,7 +199,11 @@ export default function App() {
     });
     const unsubTypes = subscribeProductTypes((fireTypes) => {
       if (fireTypes && Object.keys(fireTypes).length > 0) {
-        setProductTypes(fireTypes);
+        setProductTypes((prev) => ({
+          ...DEFAULT_PRODUCT_TYPES,
+          ...prev,
+          ...fireTypes
+        }));
       }
     });
     const unsubProgress = subscribeProcessProgress((fireProgress) => {
@@ -1402,8 +1406,10 @@ export default function App() {
                   <ActualAnalysisView
                     scheduledTasks={scheduledTasks}
                     orders={orders}
+                    productTypes={productTypes}
                     processProgressMap={processProgressMap}
                     onUpdateProgress={handleUpdateProgress}
+                    onUpdateOrder={handleUpdateOrder}
                     currentUser={currentUser}
                     approvedOperators={approvedOperators}
                     usersList={usersList}
